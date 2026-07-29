@@ -2,10 +2,12 @@ import { NewAuditForm } from "@/components/audit/new-audit-form";
 import { getSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { ProductFrame } from "@/components/layout/product-frame";
+import { evaluateServerMonthlyAvailability } from "@/lib/payments/square/monthly-availability";
 
 export default async function NewAuditPage() {
   const user = await getSessionUser();
   const isAdmin = user ? await requireAdminByAuthUserId(user.id) : false;
+  const monthlyAvailable = (await evaluateServerMonthlyAvailability(user, isAdmin)).available;
 
   return (
     <ProductFrame backHref={user ? "/dashboard" : "/"} backLabel={user ? "Workspace" : "Home"} maxWidth="narrow" utility={user ? <a href="/auth/logout">Sign out</a> : undefined}>
@@ -26,7 +28,7 @@ export default async function NewAuditPage() {
             </div>
           </div>
         ) : (
-          <NewAuditForm isAdmin={isAdmin} />
+          <NewAuditForm isAdmin={isAdmin} monthlyAvailable={monthlyAvailable} />
         )}
       </section>
     </ProductFrame>

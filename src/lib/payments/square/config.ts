@@ -12,6 +12,11 @@ export type SquareConfig = {
   creatorPackCatalogVariationId: string;
 };
 
+export type SquareConfigDiagnostics = {
+  valid: boolean;
+  invalidOrMissing: string[];
+};
+
 function value(name: string): string | null {
   const configured = process.env[name]?.trim();
   return configured || null;
@@ -83,4 +88,27 @@ export function getSquareConfig(): SquareConfig | null {
     singleAuditCatalogVariationId,
     creatorPackCatalogVariationId,
   };
+}
+
+/** Server-only, redacted configuration diagnosis. Never returns values. */
+export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
+  const invalidOrMissing: string[] = [];
+  const required = (name: string) => {
+    if (!value(name)) invalidOrMissing.push(name);
+  };
+
+  required("SQUARE_ACCESS_TOKEN");
+  required("SQUARE_LOCATION_ID");
+  required("SQUARE_WEBHOOK_SIGNATURE_KEY");
+  required("SQUARE_CATALOG_VARIATION_LIFETIME");
+  required("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
+  required("SQUARE_CATALOG_VARIATION_SINGLE_AUDIT");
+  required("SQUARE_CATALOG_VARIATION_CREATOR_PACK");
+
+  if (!currencyCode(value("SQUARE_CURRENCY"))) invalidOrMissing.push("SQUARE_CURRENCY");
+  if (!httpsUrl(value("SQUARE_WEBHOOK_NOTIFICATION_URL"))) invalidOrMissing.push("SQUARE_WEBHOOK_NOTIFICATION_URL");
+  if (!httpsUrl(value("APP_BASE_URL"))) invalidOrMissing.push("APP_BASE_URL");
+  if (positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS")) !== 1900) invalidOrMissing.push("SQUARE_MONTHLY_PRICE_CENTS");
+
+  return { valid: invalidOrMissing.length === 0, invalidOrMissing };
 }

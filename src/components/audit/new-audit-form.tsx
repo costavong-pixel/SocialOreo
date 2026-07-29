@@ -25,7 +25,7 @@ const initialBrief: CampaignBrief = {
   tone: campaignToneOptions[0].value,
 };
 
-export function NewAuditForm({ isAdmin = false }: { isAdmin?: boolean }) {
+export function NewAuditForm({ isAdmin = false, monthlyAvailable = false }: { isAdmin?: boolean; monthlyAvailable?: boolean }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("url");
   const [url, setUrl] = useState("");
@@ -301,7 +301,7 @@ export function NewAuditForm({ isAdmin = false }: { isAdmin?: boolean }) {
                 </span>
               </span>
             </label>
-            {requestedTier === "paid" ? <PurchaseButtons /> : null}
+            {requestedTier === "paid" ? <PurchaseButtons monthlyAvailable={monthlyAvailable} /> : null}
           </fieldset>
 
           {error ? <p className="text-sm font-semibold text-red-700">{error}</p> : null}
