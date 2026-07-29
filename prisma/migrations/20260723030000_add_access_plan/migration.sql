@@ -1,0 +1,4 @@
+CREATE TYPE "AccessPlan" AS ENUM ('NONE', 'LIFETIME', 'MONTHLY');
+
+ALTER TABLE "User"
+ADD COLUMN "accessPlan" "AccessPlan" NOT NULL DEFAULT 'NONE';

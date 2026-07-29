@@ -44,7 +44,7 @@ pnpm-debug.log*
 next-env.d.ts
 
 # Local databases, dumps, backups, logs, and uploads
-*.sql
+*.sql.gz
 *.dump
 *.backup
 *.bak
