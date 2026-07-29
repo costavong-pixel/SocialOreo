@@ -15,8 +15,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci_placeholder
           POSTGRES_DB: socialoreo_ci
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -26,7 +26,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:ci_placeholder@localhost:5432/socialoreo_ci?schema=public
+      DATABASE_URL: postgresql://postgres@localhost:5432/socialoreo_ci?schema=public
 
     steps:
       - uses: actions/checkout@v4
