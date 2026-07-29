@@ -14,14 +14,18 @@ export function getSquareSandboxTesterEmails(value = process.env.SQUARE_SANDBOX_
   );
 }
 
+export async function isSquareSandboxTester(authUser: VerifiedSessionUser): Promise<boolean> {
+  const testerEmails = getSquareSandboxTesterEmails();
+  if (!testerEmails.has(normalizeEmail(authUser.email))) return false;
+
+  return requireAdminByAuthUserId(authUser.id);
+}
+
 // Monthly Sandbox checkout is deliberately closed unless both gates pass:
 // a verified ADMIN user and an explicit server-only tester allowlist entry.
 export async function requireSquareSandboxTester(): Promise<VerifiedSessionUser | null> {
   const authUser = await getVerifiedSessionUser();
   if (!authUser) return null;
 
-  const testerEmails = getSquareSandboxTesterEmails();
-  if (!testerEmails.has(normalizeEmail(authUser.email))) return null;
-
-  return await requireAdminByAuthUserId(authUser.id) ? authUser : null;
+  return await isSquareSandboxTester(authUser) ? authUser : null;
 }

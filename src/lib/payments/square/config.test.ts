@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getSquareConfig } from "./config";
+import { getSquareConfig, getSquareConfigDiagnostics } from "./config";
 
 const originalEnv = { ...process.env };
 
@@ -52,5 +52,16 @@ describe("Square sandbox config", () => {
     process.env.SQUARE_MONTHLY_PRICE_CENTS = "2000";
 
     expect(getSquareConfig()).toBeNull();
+  });
+
+  it("reports only invalid configuration names", () => {
+    configureSandbox();
+    process.env.SQUARE_MONTHLY_PRICE_CENTS = "2000";
+    process.env.SQUARE_WEBHOOK_NOTIFICATION_URL = "http://insecure.example/webhook";
+
+    expect(getSquareConfigDiagnostics()).toEqual({
+      valid: false,
+      invalidOrMissing: ["SQUARE_WEBHOOK_NOTIFICATION_URL", "SQUARE_MONTHLY_PRICE_CENTS"],
+    });
   });
 });

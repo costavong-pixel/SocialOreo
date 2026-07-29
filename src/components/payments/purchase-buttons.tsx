@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type SquareProductId = "lifetime" | "monthly" | "single_audit" | "creator_pack";
 
@@ -19,16 +19,9 @@ const offers: Array<{
   { product: "creator_pack", title: "10 full audit credits", detail: "Credits for additional 30-post audits." },
 ];
 
-export function PurchaseButtons() {
+export function PurchaseButtons({ monthlyAvailable = false }: { monthlyAvailable?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [loadingProduct, setLoadingProduct] = useState<SquareProductId | null>(null);
-  const [monthlyAvailable, setMonthlyAvailable] = useState(false);
-
-  useEffect(() => {
-    void fetch("/api/square/monthly/availability").then((response) => {
-      if (response.ok) setMonthlyAvailable(true);
-    }).catch(() => undefined);
-  }, []);
 
   async function openCheckout(product: SquareProductId) {
     setError(null);
