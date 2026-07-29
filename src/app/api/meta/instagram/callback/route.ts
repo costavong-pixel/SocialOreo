@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
   if (!authUser || !config || !code) return NextResponse.redirect(dashboardUrl(request, "failed"));
   const user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
-  const validState = verifyInstagramOAuthState(request.cookies.get("reelana_meta_oauth")?.value, state, user.id);
+  const validState = verifyInstagramOAuthState(request.cookies.get("socialoreo_meta_oauth")?.value, state, user.id);
   if (!validState) return NextResponse.redirect(dashboardUrl(request, "invalid_state"));
   try {
     const token = await exchangeInstagramAuthorizationCode(config, code);
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
       create: { userId: user.id, instagramUserId: profile.id, username: profile.username, accountType: profile.account_type, tokenCiphertext: encryptInstagramToken(token.access_token, config.tokenEncryptionKey), tokenExpiresAt, scopes: ["instagram_business_basic", "instagram_business_manage_insights"] },
     });
     const response = NextResponse.redirect(dashboardUrl(request, "connected"));
-    response.cookies.delete("reelana_meta_oauth");
+    response.cookies.delete("socialoreo_meta_oauth");
     return response;
   } catch {
     return NextResponse.redirect(dashboardUrl(request, "failed"));
