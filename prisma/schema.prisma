@@ -1,0 +1,483 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AuditStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AngleStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum AuditFeedbackRating {
+  HELPFUL
+  NOT_YET
+}
+
+enum TranscriptEnrichmentStatus {
+  SUBMITTED
+  COMPLETED
+  FAILED
+}
+
+enum TrendPlatform {
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
+}
+
+enum TrendSourceType {
+  KEYWORD
+  HASHTAG
+  CREATOR
+}
+
+enum TrendScanStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum InstagramInsightsConnectionStatus {
+  CONNECTED
+  REAUTH_REQUIRED
+  DISCONNECTED
+}
+
+enum AccessPlan {
+  NONE
+  LIFETIME
+  MONTHLY
+}
+
+enum SquareProduct {
+  LIFETIME
+  MONTHLY
+  SINGLE_AUDIT
+  CREATOR_PACK
+}
+
+model User {
+  id                          String          @id @default(cuid())
+  authUserId                  String          @unique
+  email                       String
+  role                        UserRole        @default(USER)
+  accessPlan                  AccessPlan      @default(NONE)
+  freeAuditAllowanceRemaining Int             @default(1)
+  createdAt                   DateTime        @default(now())
+  creditAccount               CreditAccount?
+  creditLedger                CreditLedger[]
+  auditJobs                   AuditJob[]
+  competitorBoardEntries      CompetitorBoardEntry[]
+  publicProfileMonitors       PublicProfileMonitor[]
+  trendWatchlists             TrendWatchlist[]
+  instagramInsightsConnection InstagramInsightsConnection?
+  squareCheckouts             SquareCheckout[]
+  squareSubscriptions         SquareSubscription[]
+  squarePaymentAuditLogs      SquarePaymentAuditLog[]
+}
+
+model InstagramInsightsConnection {
+  id                    String                           @id @default(cuid())
+  userId                String                           @unique
+  instagramUserId       String                           @unique
+  username              String?
+  accountType           String?
+  tokenCiphertext       String
+  tokenExpiresAt        DateTime?
+  scopes                String[]                         @default([])
+  status                InstagramInsightsConnectionStatus @default(CONNECTED)
+  lastSyncedAt          DateTime?
+  lastError             String?
+  connectedAt           DateTime                         @default(now())
+  updatedAt             DateTime                         @updatedAt
+  user                  User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots             InstagramInsightsSnapshot[]
+
+  @@index([status, updatedAt])
+}
+
+model InstagramInsightsSnapshot {
+  id                         String                      @id @default(cuid())
+  connectionId               String
+  periodStart                DateTime
+  periodEnd                  DateTime
+  accountReach               Int?
+  accountViews               Int?
+  profileViews               Int?
+  totalInteractions          Int?
+  followerCount              Int?
+  audienceDemographicsJson   Json?
+  reelInsightsJson           Json?
+  fetchedAt                  DateTime                    @default(now())
+  connection                 InstagramInsightsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, periodStart, periodEnd])
+  @@index([connectionId, fetchedAt])
+}
+
+model CreditAccount {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditLedger {
+  id                  String   @id @default(cuid())
+  userId              String
+  delta               Int
+  reason              String
+  squarePaymentId     String?  @unique
+  squareCustomerId    String?
+  createdAt           DateTime @default(now())
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SquareCheckout {
+  id                String        @id @default(cuid())
+  userId            String
+  product           SquareProduct
+  squareOrderId     String?       @unique
+  squarePaymentId   String?       @unique
+  squareCustomerId  String?
+  squarePaymentLinkId String?       @unique
+  checkoutUrl       String?
+  idempotencyKey    String?       @unique
+  completedAt       DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, product])
+  @@index([squareCustomerId, product])
+}
+
+model SquareWebhookEvent {
+  squareEventId      String   @id
+  eventType          String
+  payloadHash        String
+  processingToken    String?
+  processingStartedAt DateTime?
+  createdAt          DateTime @default(now())
+  processedAt        DateTime?
+
+  @@index([eventType, createdAt])
+}
+
+model SquareSubscription {
+  squareSubscriptionId String   @id
+  userId               String?
+  squareCustomerId     String
+  planVariationId      String
+  status               String
+  canceledDate         String?
+  lastEventAt          DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([squareCustomerId, planVariationId])
+}
+
+model SquarePaymentAuditLog {
+  id                   String   @id @default(cuid())
+  userId               String?
+  squareCheckoutId     String?
+  squareSubscriptionId String?
+  source               String
+  eventType            String
+  subscriptionStatus   String?
+  effectiveDate        String?
+  createdAt            DateTime @default(now())
+  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([squareSubscriptionId, createdAt])
+}
+
+model AuditJob {
+  id                    String            @id @default(cuid())
+  userId                String?
+  platform              String
+  provider              String
+  profileUrl            String
+  status                AuditStatus       @default(PENDING)
+  reelLimit             Int               @default(30)
+  campaignBriefJson     Json?
+  providerCostEstimate  Decimal?          @db.Decimal(10, 4)
+  errorMessage          String?
+  createdAt             DateTime          @default(now())
+  completedAt           DateTime?
+  user                  User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  socialProfiles        SocialProfile[]
+  socialVideos          SocialVideo[]
+  auditReport           AuditReport?
+  feedback              AuditFeedback?
+  providerCallLogs      ProviderCallLog[]
+  transcriptEnrichment  TranscriptEnrichment?
+  competitorBoardEntries CompetitorBoardEntry[]
+  publicSnapshots      PublicProfileSnapshot[]
+}
+
+model SocialProfile {
+  id                 String   @id @default(cuid())
+  auditJobId         String
+  platform           String
+  provider           String
+  username           String?
+  displayName        String?
+  profileUrl         String
+  bio                String?
+  followerCount      Int?
+  followingCount     Int?
+  postCount          Int?
+  profileImageUrl    String?
+  rawProviderPayload Json?
+  auditJob           AuditJob @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+}
+
+model SocialVideo {
+  id                    String   @id @default(cuid())
+  auditJobId            String
+  platform              String
+  provider              String
+  providerVideoId       String?
+  url                   String
+  caption               String?
+  hashtags              String[]
+  mentions              String[]
+  audioName             String?
+  durationSeconds       Int?
+  viewCount             Int?
+  likeCount             Int?
+  commentCount          Int?
+  shareCount            Int?
+  saveCount             Int?
+  postedAt              DateTime?
+  thumbnailUrl          String?
+  videoUrlIfAvailable   String?
+  transcriptIfAvailable String?
+  rawProviderPayload    Json?
+  auditJob              AuditJob @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+}
+
+model AuditReport {
+  id              String   @id @default(cuid())
+  auditJobId      String   @unique
+  overallScore    Int
+  subScoresJson   Json
+  summaryJson     Json
+  actionPlanJson  Json
+  contentPackJson Json
+  r2ReportUrl     String?
+  createdAt       DateTime @default(now())
+  auditJob        AuditJob @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+}
+
+model CompetitorBoardEntry {
+  id         String   @id @default(cuid())
+  userId     String
+  auditJobId String
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auditJob   AuditJob @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, auditJobId])
+  @@index([userId, createdAt])
+}
+
+model PublicProfileMonitor {
+  id            String                  @id @default(cuid())
+  userId        String
+  profileUrl    String
+  platform      String
+  provider      String
+  reelLimit     Int                     @default(30)
+  enabled       Boolean                 @default(false)
+  cadenceHours  Int                     @default(168)
+  lastCapturedAt DateTime?
+  nextCaptureAt DateTime?
+  lastError     String?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots     PublicProfileSnapshot[]
+
+  @@unique([userId, profileUrl])
+  @@index([enabled, nextCaptureAt])
+  @@index([userId, updatedAt])
+}
+
+model PublicProfileSnapshot {
+  id                     String                @id @default(cuid())
+  monitorId              String
+  sourceAuditJobId       String?               @unique
+  capturedAt             DateTime
+  followerCount          Int?
+  followingCount         Int?
+  postCount              Int?
+  reelsCollected         Int                   @default(0)
+  totalViews             Int?
+  medianViews            Int?
+  visibleInteractions    Int?
+  visibleInteractionRate Float?
+  provider               String
+  createdAt              DateTime              @default(now())
+  monitor                PublicProfileMonitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  sourceAuditJob         AuditJob?             @relation(fields: [sourceAuditJobId], references: [id], onDelete: SetNull)
+
+  @@index([monitorId, capturedAt])
+}
+
+model AuditFeedback {
+  id               String              @id @default(cuid())
+  auditJobId       String              @unique
+  rating           AuditFeedbackRating
+  usefulSections   String[]            @default([])
+  comments         String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  auditJob         AuditJob            @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+}
+
+model ContactRequest {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  message   String
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model TranscriptEnrichment {
+  id              String                     @id @default(cuid())
+  auditJobId      String                     @unique
+  actorId         String
+  runId           String                     @unique
+  datasetId       String
+  status          TranscriptEnrichmentStatus @default(SUBMITTED)
+  expectedVideos  Int
+  completedVideos Int                        @default(0)
+  errorMessage    String?
+  submittedAt     DateTime                   @default(now())
+  completedAt     DateTime?
+  auditJob        AuditJob                   @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+}
+
+model TrendWatchlist {
+  id         String          @id @default(cuid())
+  userId     String
+  platform   TrendPlatform
+  sourceType TrendSourceType
+  query      String
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scans      TrendScan[]
+
+  @@unique([userId, platform, sourceType, query])
+  @@index([userId, updatedAt])
+}
+
+model TrendScan {
+  id             String          @id @default(cuid())
+  watchlistId    String
+  platform       TrendPlatform
+  sourceType     TrendSourceType
+  query          String
+  provider       String?
+  status         TrendScanStatus @default(PENDING)
+  estimatedCost  Decimal?        @db.Decimal(10, 4)
+  resultCount    Int             @default(0)
+  errorMessage   String?
+  requestedAt    DateTime        @default(now())
+  completedAt    DateTime?
+  watchlist      TrendWatchlist  @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  videos         TrendVideo[]
+
+  @@index([watchlistId, requestedAt])
+  @@index([status, requestedAt])
+}
+
+model TrendVideo {
+  id                    String    @id @default(cuid())
+  scanId                String
+  sourceUrl             String
+  providerVideoId       String?
+  creatorHandle         String?
+  caption               String?
+  hashtags              String[]  @default([])
+  postedAt              DateTime?
+  viewCount             Int?
+  likeCount             Int?
+  commentCount          Int?
+  shareCount            Int?
+  saveCount             Int?
+  visibleInteractionRate Float?
+  thumbnailUrl          String?
+  transcriptIfAvailable String?
+  rawProviderPayload    Json?
+  createdAt             DateTime  @default(now())
+  scan                  TrendScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@unique([scanId, sourceUrl])
+  @@index([scanId, viewCount])
+  @@index([scanId, postedAt])
+}
+
+model AngleLibrary {
+  id              String      @id @default(cuid())
+  angleName       String
+  category        String
+  platformFit     String[]
+  nicheFit        String[]
+  occasionFit     String[]
+  goalFit         String[]
+  tone            String[]
+  hookFormula     String
+  ctaFormula      String?
+  scriptStructure String?
+  shotListPattern String?
+  captionPattern  String?
+  riskLevel       String?
+  example         String?
+  whenToUse       String?
+  whenNotToUse    String?
+  status          AngleStatus @default(DRAFT)
+  internalOnly    Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model ProviderCallLog {
+  id                String    @id @default(cuid())
+  auditJobId        String?
+  provider          String
+  endpointOrActor   String
+  estimatedCost     Decimal?  @db.Decimal(10, 4)
+  status            String
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+  auditJob          AuditJob? @relation(fields: [auditJobId], references: [id], onDelete: SetNull)
+}

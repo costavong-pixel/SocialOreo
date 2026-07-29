@@ -1,0 +1,358 @@
+@import "tailwindcss";
+
+:root {
+  --background: oklch(0.105 0.006 70);
+  --foreground: oklch(0.96 0.006 70);
+  --muted: oklch(0.70 0.012 70);
+  --signal: oklch(0.75 0.18 65);
+  --social-ink: oklch(0.11 0.006 70);
+  --social-blue: oklch(0.75 0.18 65);
+  --social-blue-dark: oklch(0.58 0.16 62);
+  --social-lime: oklch(0.75 0.18 65);
+  --social-sky: oklch(0.18 0.012 70);
+  --social-paper: oklch(0.105 0.006 70);
+  --social-line: oklch(0.29 0.012 70 / 0.85);
+  --social-night: oklch(0.085 0.005 70);
+  --social-page: oklch(0.105 0.006 70);
+  --social-surface: oklch(0.15 0.009 70);
+  --social-surface-raised: oklch(0.19 0.012 70);
+  --social-text: oklch(0.96 0.006 70);
+  --social-muted-on-dark: oklch(0.72 0.012 70);
+  --social-line-dark: oklch(0.27 0.012 70 / 0.9);
+  --font-ui: var(--font-socialoreo-ui), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: var(--font-socialoreo-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-report: var(--font-socialoreo-ui), ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-ui);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+}
+
+.font-report {
+  font-family: var(--font-report);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: var(--social-lime);
+  color: var(--social-ink);
+}
+
+:focus-visible {
+  outline: 3px solid var(--social-lime);
+  outline-offset: 3px;
+}
+
+.so-task-page {
+  min-height: 100dvh;
+  background: var(--social-night);
+  color: var(--social-text);
+  padding: 1rem;
+}
+
+.so-task-shell {
+  width: min(100%, 76rem);
+  margin: 0 auto;
+  padding: 0.5rem 0 3rem;
+}
+
+.so-task-shell-narrow {
+  width: min(100%, 48rem);
+}
+
+.so-topbar {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--social-line-dark);
+}
+
+.so-topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--social-muted-on-dark);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.so-topbar-nav a,
+.so-back-link {
+  border-radius: 0.5rem;
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.so-topbar-nav a {
+  padding: 0.55rem 0.7rem;
+}
+
+.so-topbar-nav a:hover,
+.so-back-link:hover {
+  background: var(--social-surface-raised);
+  color: var(--social-text);
+}
+
+.so-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1.5rem;
+  padding: 0.5rem 0.65rem;
+  color: var(--social-muted-on-dark);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.so-page-content {
+  margin-top: 1rem;
+}
+
+.so-public-nav {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--social-line-dark);
+}
+
+.so-public-back {
+  margin-left: auto;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  color: var(--social-muted-on-dark);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.so-public-back:hover {
+  background: var(--social-surface-raised);
+  color: var(--social-text);
+}
+
+.so-admin,
+.so-task-form {
+  color: var(--social-text);
+}
+
+.so-admin [class*="bg-white"],
+.so-task-form [class*="bg-white"] {
+  background-color: var(--social-surface) !important;
+}
+
+.so-admin [class*="border-black"],
+.so-task-form [class*="border-black"] {
+  border-color: var(--social-line-dark) !important;
+}
+
+.so-admin [class*="text-black"],
+.so-task-form [class*="text-black"] {
+  color: var(--social-text) !important;
+}
+
+.so-admin input,
+.so-admin select,
+.so-admin textarea,
+.so-task-form input,
+.so-task-form select,
+.so-task-form textarea {
+  border-radius: 0.625rem !important;
+  border-color: var(--social-line-dark) !important;
+  background-color: var(--social-night) !important;
+  color: var(--social-text) !important;
+  box-shadow: none !important;
+}
+
+.so-admin input::placeholder,
+.so-admin textarea::placeholder,
+.so-task-form input::placeholder,
+.so-task-form textarea::placeholder {
+  color: var(--social-muted-on-dark) !important;
+  opacity: 0.8;
+}
+
+.so-admin input[type="checkbox"],
+.so-admin input[type="radio"],
+.so-task-form input[type="checkbox"],
+.so-task-form input[type="radio"] {
+  accent-color: var(--social-lime);
+}
+
+.so-admin [class*="rounded-[2rem]"],
+.so-task-form [class*="rounded-[2rem]"] {
+  border-radius: 0.875rem !important;
+}
+
+.so-admin [class*="rounded-2xl"],
+.so-task-form [class*="rounded-2xl"] {
+  border-radius: 0.75rem !important;
+}
+
+.so-admin [class*="shadow"],
+.so-task-form [class*="shadow"] {
+  box-shadow: none !important;
+}
+
+.so-admin button[class*="bg-black"],
+.so-task-form button[class*="bg-black"] {
+  border-radius: 0.625rem !important;
+  background: var(--social-lime) !important;
+  color: var(--social-ink) !important;
+}
+
+.so-admin button[class*="border-black"],
+.so-task-form button[class*="border-black"] {
+  border-radius: 0.625rem !important;
+  color: var(--social-text) !important;
+}
+
+.so-task-form [class*="bg-orange-50"] {
+  border-color: color-mix(in oklch, var(--social-lime) 45%, var(--social-line-dark)) !important;
+  background: color-mix(in oklch, var(--social-lime) 10%, var(--social-surface)) !important;
+}
+
+@media (max-width: 40rem) {
+  .so-task-page { padding: 0.75rem; }
+  .so-topbar-nav a:first-child { display: none; }
+  .so-task-shell { padding-bottom: 2rem; }
+}
+
+.social-orange-form [class*="bg-white"] {
+  background-color: var(--social-surface) !important;
+}
+
+.social-orange-form [class*="border-black"] {
+  border-color: var(--social-line-dark) !important;
+}
+
+.social-orange-form [class*="text-black"] {
+  color: var(--social-text) !important;
+}
+
+.social-orange-form input,
+.social-orange-form select,
+.social-orange-form textarea {
+  background-color: var(--social-surface-raised) !important;
+  border-color: var(--social-line-dark) !important;
+  color: var(--social-text) !important;
+}
+
+.social-orange-dashboard [class*="text-violet-"],
+.social-orange-dashboard [class*="hover:text-violet-"]:hover {
+  color: var(--social-blue) !important;
+}
+
+.social-orange-dashboard [class*="bg-violet-"] {
+  background-color: var(--social-surface-raised) !important;
+}
+
+.social-orange-dashboard [class*="border-violet-"],
+.social-orange-dashboard [class*="hover:border-violet-"]:hover {
+  border-color: var(--social-blue) !important;
+}
+
+/* Legacy page/report/admin utility colors are normalized to the shared orange system. */
+[class~="bg-white"],
+[class~="bg-white/70"],
+[class~="bg-white/65"],
+[class~="bg-white/50"],
+[class~="bg-[#f8f5ee]"],
+[class~="bg-[#e9e2d4]"],
+[class~="bg-[#11141a]"],
+[class~="bg-[#111318]"],
+[class~="bg-[#101a32]"],
+[class~="bg-[#1d1728]"],
+[class~="bg-[#241b32]"] {
+  background-color: var(--social-surface) !important;
+}
+
+[class*="border-black"],
+[class~="border-[#ff4f2e]"],
+[class~="border-[#d63e21]"] {
+  border-color: var(--social-line-dark) !important;
+}
+
+[class*="text-black"] {
+  color: var(--social-text) !important;
+}
+
+[class*="text-violet-"],
+[class*="hover:text-violet-"]:hover,
+[class*="text-sky-"],
+[class*="hover:text-sky-"]:hover,
+[class*="text-cyan-"],
+[class*="hover:text-cyan-"]:hover,
+[class~="text-[#c0a5ff]"],
+[class~="text-[#b99cff]"] {
+  color: var(--social-blue) !important;
+}
+
+[class*="bg-violet-"],
+[class*="bg-sky-"],
+[class*="bg-cyan-"],
+[class~="bg-[#2a1f3c]"],
+[class~="bg-[#1a1424]"] {
+  background-color: var(--social-surface-raised) !important;
+}
+
+[class*="border-violet-"],
+[class*="hover:border-violet-"]:hover,
+[class*="border-sky-"],
+[class*="hover:border-sky-"]:hover,
+[class*="border-cyan-"],
+[class*="hover:border-cyan-"]:hover {
+  border-color: var(--social-blue) !important;
+}
+
+[class*="hover:bg-[#cdbbff]"]:hover {
+  background-color: oklch(0.82 0.17 70) !important;
+}
+
+button[class*="bg-orange"],
+a[class*="bg-orange"],
+button[class*="bg-[var(--social-blue)]"],
+a[class*="bg-[var(--social-blue)]"] {
+  color: var(--social-ink) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

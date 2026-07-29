@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title>SocialOreo</title>
+  <rect width="128" height="128" rx="30" fill="#ff8700"/>
+  <circle cx="61" cy="66" r="30" fill="none" stroke="#0a0a0c" stroke-width="15"/>
+  <circle cx="87" cy="39" r="10" fill="#0a0a0c"/>
+</svg>
