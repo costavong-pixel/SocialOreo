@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getSquareProduct } from "./products";
 
 const config = {
+  applicationId: "app",
   accessToken: "token",
   locationId: "location",
   currency: "CAD",

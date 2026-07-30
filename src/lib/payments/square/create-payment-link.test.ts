@@ -4,6 +4,7 @@ import { createSquarePaymentLink, SquareCheckoutError } from "./create-payment-l
 import { getSquareProduct } from "./products";
 
 const config = {
+  applicationId: "app",
   accessToken: "token",
   locationId: "location",
   currency: "CAD",

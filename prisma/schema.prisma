@@ -161,6 +161,11 @@ model SquareCheckout {
   squareCustomerId  String?
   squarePaymentLinkId String?       @unique
   checkoutUrl       String?
+  squareApplicationId String?
+  squareEnvironment   String?
+  squareLocationId    String?
+  squarePlanVariationId String?
+  expiresAt           DateTime?
   idempotencyKey    String?       @unique
   completedAt       DateTime?
   createdAt         DateTime      @default(now())

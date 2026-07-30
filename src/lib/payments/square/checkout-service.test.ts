@@ -1,15 +1,54 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockTransaction = vi.fn();
+const mockPrisma = { $transaction: (...args: unknown[]) => mockTransaction(...args), squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() } };
 
 vi.mock("@/lib/db/prisma", () => ({
-  prisma: { $transaction: (...args: unknown[]) => mockTransaction(...args) },
+  prisma: mockPrisma,
 }));
 
-import { recordSquareSubscription, settleSquareCheckout } from "./checkout-service";
+import { recordSquareSubscription, settleSquareCheckout, startSquareCheckout } from "./checkout-service";
+import type { SquareConfig } from "./config";
+
+const checkoutConfig: SquareConfig = {
+  applicationId: "app-a",
+  accessToken: "token",
+  locationId: "location-a",
+  currency: "CAD",
+  webhookSignatureKey: "signature",
+  webhookNotificationUrl: "https://example.test/webhook",
+  appBaseUrl: "https://example.test",
+  lifetimeCatalogVariationId: "lifetime",
+  monthlyPlanVariationId: "plan-a",
+  monthlyPriceCents: 1900,
+  singleAuditCatalogVariationId: "single",
+  creatorPackCatalogVariationId: "pack",
+};
 
 describe("settleSquareCheckout", () => {
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("reuses only a matching, unexpired configuration context", async () => {
+    mockPrisma.squareCheckout.findFirst.mockResolvedValue({ checkoutUrl: "https://square.link/u/current" });
+    await expect(startSquareCheckout({ userId: "user-1", productId: "monthly", config: checkoutConfig })).resolves.toEqual({ checkoutUrl: "https://square.link/u/current" });
+    expect(mockPrisma.squareCheckout.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ squareApplicationId: "app-a", squareEnvironment: "sandbox", squareLocationId: "location-a", squarePlanVariationId: "plan-a", expiresAt: expect.objectContaining({ gt: expect.any(Date) }) }) }));
+    expect(mockPrisma.squareCheckout.create).not.toHaveBeenCalled();
+  });
+
+  it("abandons a stale or mismatched link and creates a fresh context", async () => {
+    mockPrisma.squareCheckout.findFirst.mockResolvedValue(null);
+    mockPrisma.squareCheckout.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.squareCheckout.create.mockResolvedValue({ id: "checkout-2", idempotencyKey: "key-2" });
+    mockPrisma.squareCheckout.update.mockResolvedValue({});
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "link-2", order_id: "order-2", url: "https://square.link/u/new" } }), { status: 200 })));
+
+    await expect(startSquareCheckout({ userId: "user-1", productId: "monthly", config: { ...checkoutConfig, applicationId: "app-b" } })).resolves.toEqual({ checkoutUrl: "https://square.link/u/new" });
+    expect(mockPrisma.squareCheckout.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { expiresAt: expect.any(Date) } }));
+    expect(mockPrisma.squareCheckout.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ squareApplicationId: "app-b", squareEnvironment: "sandbox", squareLocationId: "location-a", squarePlanVariationId: "plan-a", expiresAt: expect.any(Date) }) }));
+  });
 
   it("credits a completed configured audit purchase once and stores the Square references", async () => {
     const checkoutFindUnique = vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null });

@@ -14,6 +14,7 @@ export class SquareCheckoutServiceError extends Error {
 }
 
 const WEBHOOK_LEASE_MS = 5 * 60 * 1000;
+const PENDING_CHECKOUT_TTL_MS = 15 * 60 * 1000;
 
 export type SquareWebhookClaim =
   | { state: "claimed"; processingToken: string }
@@ -99,20 +100,52 @@ export async function startSquareCheckout(input: {
 }): Promise<{ checkoutUrl: string }> {
   const { prisma } = await import("@/lib/db/prisma");
   const product = getSquareProduct(input.config, input.productId);
-  // A Monthly retry reuses an existing server-owned hosted link. Browser input
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PENDING_CHECKOUT_TTL_MS);
+  // A retry reuses a short-lived, server-owned link only when every Square
+  // context field matches the configuration used to create it. Browser input
   // never supplies the checkout/session identifier or Square idempotency key.
   if (product.kind === "subscription") {
     const pending = await prisma.squareCheckout.findFirst({
-      where: { userId: input.userId, product: "MONTHLY", squarePaymentId: null, checkoutUrl: { not: null } },
+      where: {
+        userId: input.userId,
+        product: "MONTHLY",
+        squarePaymentId: null,
+        completedAt: null,
+        checkoutUrl: { not: null },
+        expiresAt: { gt: now },
+        squareApplicationId: input.config.applicationId,
+        squareEnvironment: "sandbox",
+        squareLocationId: input.config.locationId,
+        squarePlanVariationId: input.config.monthlyPlanVariationId,
+      },
       orderBy: { updatedAt: "desc" },
       select: { checkoutUrl: true },
     });
     if (pending?.checkoutUrl) return { checkoutUrl: pending.checkoutUrl };
+
+    // Abandon stale or configuration-mismatched links without deleting their
+    // audit trail. A later request must create a new idempotent checkout.
+    await prisma.squareCheckout.updateMany({
+      where: {
+        userId: input.userId,
+        product: "MONTHLY",
+        squarePaymentId: null,
+        completedAt: null,
+        checkoutUrl: { not: null },
+      },
+      data: { expiresAt: now },
+    });
   }
   const checkout = await prisma.squareCheckout.create({
     data: {
       userId: input.userId,
       product: product.ledgerProduct as SquareProduct,
+      squareApplicationId: input.config.applicationId,
+      squareEnvironment: "sandbox",
+      squareLocationId: input.config.locationId,
+      squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
+      expiresAt,
       // Generated only on the server and sent only to Square as an idempotency key.
       idempotencyKey: randomUUID(),
     },
