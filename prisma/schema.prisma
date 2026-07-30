@@ -165,6 +165,9 @@ model SquareCheckout {
   squareEnvironment   String?
   squareLocationId    String?
   squarePlanVariationId String?
+  // Stable server-owned key used with the database advisory lock/unique index
+  // to serialize pending checkout creation for one Square context.
+  pendingKey        String?       @unique
   expiresAt           DateTime?
   idempotencyKey    String?       @unique
   completedAt       DateTime?
@@ -174,6 +177,7 @@ model SquareCheckout {
 
   @@index([userId, product])
   @@index([squareCustomerId, product])
+  @@index([userId, product, expiresAt], map: "SquareCheckout_pending_expiry_idx")
 }
 
 model SquareWebhookEvent {

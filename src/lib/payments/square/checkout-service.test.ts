@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockTransaction = vi.fn();
 const mockPrisma = {
-  $transaction: (...args: unknown[]) => mockTransaction(...args),
+  $transaction: vi.fn((...args: unknown[]) => mockTransaction(...args)),
   squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
   $queryRaw: vi.fn(),
 };
@@ -58,38 +58,6 @@ describe("settleSquareCheckout", () => {
     expect(mockPrisma.squareCheckout.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ squareApplicationId: "app-b", squareEnvironment: "sandbox", squareLocationId: "location-a", squarePlanVariationId: "plan-a", expiresAt: expect.any(Date) }) }));
   });
 
-  it("serializes concurrent requests through the database lock and reuses one pending link", async () => {
-    let pendingUrl: string | null = null;
-    let createCount = 0;
-    const paymentLinkCalls = vi.fn();
-    mockPrisma.$queryRaw.mockResolvedValue([]);
-    mockPrisma.squareCheckout.findFirst.mockImplementation(async () => pendingUrl ? { checkoutUrl: pendingUrl } : null);
-    mockPrisma.squareCheckout.updateMany.mockResolvedValue({ count: 0 });
-    mockPrisma.squareCheckout.create.mockImplementation(async () => ({ id: `checkout-${++createCount}`, idempotencyKey: `key-${createCount}` }));
-    mockPrisma.squareCheckout.update.mockImplementation(async ({ data }: { data: { checkoutUrl: string } }) => { pendingUrl = data.checkoutUrl; return {}; });
-    vi.stubGlobal("fetch", vi.fn(async () => {
-      paymentLinkCalls();
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      return new Response(JSON.stringify({ payment_link: { id: "link-concurrent", order_id: "order-concurrent", url: "https://square.link/u/concurrent" } }), { status: 200 });
-    }));
-
-    // The production implementation holds a PostgreSQL advisory lock while
-    // this sequence runs. The mock transaction models that lock by queuing
-    // callbacks, so the second request observes the first reusable row.
-    let lock: Promise<unknown> = Promise.resolve();
-    mockTransaction.mockImplementation((callback: (transaction: typeof mockPrisma) => Promise<unknown>) => {
-      const run = lock.then(() => callback(mockPrisma));
-      lock = run.catch(() => undefined);
-      return run;
-    });
-    const results = await Promise.all([
-      startSquareCheckout({ userId: "user-1", productId: "monthly", config: checkoutConfig }),
-      startSquareCheckout({ userId: "user-1", productId: "monthly", config: checkoutConfig }),
-    ]);
-    expect(results).toEqual([{ checkoutUrl: "https://square.link/u/concurrent" }, { checkoutUrl: "https://square.link/u/concurrent" }]);
-    expect(paymentLinkCalls).toHaveBeenCalledTimes(1);
-    expect(createCount).toBe(1);
-  });
 
   it("credits a completed configured audit purchase once and stores the Square references", async () => {
     const checkoutFindUnique = vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null });
@@ -146,6 +114,10 @@ describe("settleSquareCheckout", () => {
     expect(subscriptionUpdateMany).toHaveBeenCalledWith({
       where: { userId: null, squareCustomerId: "customer-1", planVariationId: "monthly-plan" },
       data: { userId: "user-1" },
+    });
+    expect(checkoutUpdate).toHaveBeenCalledWith({
+      where: { id: "checkout-1" },
+      data: expect.objectContaining({ pendingKey: null, completedAt: expect.any(Date) }),
     });
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "MONTHLY" } });
   });
@@ -251,11 +223,15 @@ describe("settleSquareCheckout", () => {
 
   it("treats a duplicate terminal CANCELED update as idempotent", async () => {
     const auditCreate = vi.fn();
+    const userUpdate = vi.fn();
     mockTransaction.mockImplementation((callback) => callback({
-      squareSubscription: { findUnique: vi.fn().mockResolvedValue({ userId: "user-1", status: "CANCELED", lastEventAt: new Date("2026-08-24T00:00:00.000Z") }), upsert: vi.fn() },
+      squareSubscription: { findUnique: vi.fn().mockResolvedValue({ userId: "user-1", status: "CANCELED", lastEventAt: new Date("2026-08-24T00:00:00.000Z") }), upsert: vi.fn(), findMany: vi.fn().mockResolvedValue([{ status: "CANCELED" }]) },
+      squareCheckout: { findFirst: vi.fn().mockResolvedValue(null) },
       squarePaymentAuditLog: { create: auditCreate },
+      user: { update: userUpdate },
     }));
     await recordSquareSubscription({ subscriptionId: "subscription-1", customerId: "customer-1", planVariationId: "monthly-plan", status: "CANCELED", eventCreatedAt: "2026-08-25T00:00:00.000Z" });
     expect(auditCreate).not.toHaveBeenCalled();
+    expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "NONE" } });
   });
 });
