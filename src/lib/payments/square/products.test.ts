@@ -4,6 +4,7 @@ import { getSquareProduct } from "./products";
 
 const config = {
   applicationId: "app",
+  expectedMerchantId: "merchant",
   accessToken: "token",
   locationId: "location",
   currency: "CAD",

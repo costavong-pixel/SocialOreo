@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mockTransaction = vi.fn();
-const mockPrisma = { $transaction: (...args: unknown[]) => mockTransaction(...args), squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() } };
+const mockPrisma = {
+  $transaction: (...args: unknown[]) => mockTransaction(...args),
+  squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  $queryRaw: vi.fn(),
+};
+
+mockTransaction.mockImplementation((callback: (transaction: typeof mockPrisma) => unknown) => callback(mockPrisma));
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: mockPrisma,
@@ -9,9 +15,11 @@ vi.mock("@/lib/db/prisma", () => ({
 
 import { recordSquareSubscription, settleSquareCheckout, startSquareCheckout } from "./checkout-service";
 import type { SquareConfig } from "./config";
+vi.mock("./merchant-context", () => ({ verifySquareMerchantContext: vi.fn().mockResolvedValue(true) }));
 
 const checkoutConfig: SquareConfig = {
   applicationId: "app-a",
+  expectedMerchantId: "merchant-a",
   accessToken: "token",
   locationId: "location-a",
   currency: "CAD",
@@ -46,8 +54,41 @@ describe("settleSquareCheckout", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "link-2", order_id: "order-2", url: "https://square.link/u/new" } }), { status: 200 })));
 
     await expect(startSquareCheckout({ userId: "user-1", productId: "monthly", config: { ...checkoutConfig, applicationId: "app-b" } })).resolves.toEqual({ checkoutUrl: "https://square.link/u/new" });
-    expect(mockPrisma.squareCheckout.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { expiresAt: expect.any(Date) } }));
+    expect(mockPrisma.squareCheckout.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ expiresAt: expect.any(Date), pendingKey: null }) }));
     expect(mockPrisma.squareCheckout.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ squareApplicationId: "app-b", squareEnvironment: "sandbox", squareLocationId: "location-a", squarePlanVariationId: "plan-a", expiresAt: expect.any(Date) }) }));
+  });
+
+  it("serializes concurrent requests through the database lock and reuses one pending link", async () => {
+    let pendingUrl: string | null = null;
+    let createCount = 0;
+    const paymentLinkCalls = vi.fn();
+    mockPrisma.$queryRaw.mockResolvedValue([]);
+    mockPrisma.squareCheckout.findFirst.mockImplementation(async () => pendingUrl ? { checkoutUrl: pendingUrl } : null);
+    mockPrisma.squareCheckout.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.squareCheckout.create.mockImplementation(async () => ({ id: `checkout-${++createCount}`, idempotencyKey: `key-${createCount}` }));
+    mockPrisma.squareCheckout.update.mockImplementation(async ({ data }: { data: { checkoutUrl: string } }) => { pendingUrl = data.checkoutUrl; return {}; });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      paymentLinkCalls();
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return new Response(JSON.stringify({ payment_link: { id: "link-concurrent", order_id: "order-concurrent", url: "https://square.link/u/concurrent" } }), { status: 200 });
+    }));
+
+    // The production implementation holds a PostgreSQL advisory lock while
+    // this sequence runs. The mock transaction models that lock by queuing
+    // callbacks, so the second request observes the first reusable row.
+    let lock: Promise<unknown> = Promise.resolve();
+    mockTransaction.mockImplementation((callback: (transaction: typeof mockPrisma) => Promise<unknown>) => {
+      const run = lock.then(() => callback(mockPrisma));
+      lock = run.catch(() => undefined);
+      return run;
+    });
+    const results = await Promise.all([
+      startSquareCheckout({ userId: "user-1", productId: "monthly", config: checkoutConfig }),
+      startSquareCheckout({ userId: "user-1", productId: "monthly", config: checkoutConfig }),
+    ]);
+    expect(results).toEqual([{ checkoutUrl: "https://square.link/u/concurrent" }, { checkoutUrl: "https://square.link/u/concurrent" }]);
+    expect(paymentLinkCalls).toHaveBeenCalledTimes(1);
+    expect(createCount).toBe(1);
   });
 
   it("credits a completed configured audit purchase once and stores the Square references", async () => {

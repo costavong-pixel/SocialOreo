@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createSquarePaymentLink, SquareCheckoutError } from "./create-payment-link";
 import { getSquareProduct } from "./products";
+vi.mock("./merchant-context", () => ({ verifySquareMerchantContext: vi.fn().mockResolvedValue(true) }));
 
 const config = {
   applicationId: "app",
+  expectedMerchantId: "merchant",
   accessToken: "token",
   locationId: "location",
   currency: "CAD",
