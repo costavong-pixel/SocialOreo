@@ -1,4 +1,7 @@
 export type SquareConfig = {
+  applicationId: string;
+  /** Sandbox merchant/test-account identity returned by the Locations API. */
+  expectedMerchantId: string;
   accessToken: string;
   locationId: string;
   currency: string;
@@ -46,6 +49,8 @@ function currencyCode(value: string | null): string | null {
 export function getSquareConfig(): SquareConfig | null {
   if (process.env.SQUARE_ENV !== "sandbox") return null;
 
+  const applicationId = value("SQUARE_APPLICATION_ID");
+  const expectedMerchantId = value("SQUARE_EXPECTED_MERCHANT_ID");
   const accessToken = value("SQUARE_ACCESS_TOKEN");
   const locationId = value("SQUARE_LOCATION_ID");
   const currency = currencyCode(value("SQUARE_CURRENCY"));
@@ -59,6 +64,8 @@ export function getSquareConfig(): SquareConfig | null {
   const creatorPackCatalogVariationId = value("SQUARE_CATALOG_VARIATION_CREATOR_PACK");
 
   if (
+    !applicationId ||
+    !expectedMerchantId ||
     !accessToken ||
     !locationId ||
     !currency ||
@@ -76,6 +83,8 @@ export function getSquareConfig(): SquareConfig | null {
   }
 
   return {
+    applicationId,
+    expectedMerchantId,
     accessToken,
     locationId,
     currency,
@@ -97,7 +106,10 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
     if (!value(name)) invalidOrMissing.push(name);
   };
 
+  if (process.env.SQUARE_ENV !== "sandbox") invalidOrMissing.push("SQUARE_ENV");
   required("SQUARE_ACCESS_TOKEN");
+  required("SQUARE_APPLICATION_ID");
+  required("SQUARE_EXPECTED_MERCHANT_ID");
   required("SQUARE_LOCATION_ID");
   required("SQUARE_WEBHOOK_SIGNATURE_KEY");
   required("SQUARE_CATALOG_VARIATION_LIFETIME");

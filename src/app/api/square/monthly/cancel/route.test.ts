@@ -24,7 +24,7 @@ describe("POST /api/square/monthly/cancel", () => {
   it("schedules the authenticated user's real subscription at period end while it remains ACTIVE", async () => {
     mockRequireSquareSandboxTester.mockResolvedValue({ id: "auth0-owner", email: "owner@example.com" });
     mockSyncUser.mockResolvedValue({ id: "user-1" });
-    mockGetSquareConfig.mockReturnValue({ monthlyPlanVariationId: "monthly-plan-1" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
     mockActiveSubscription.mockResolvedValue({ subscriptionId: "subscription-1", customerId: "customer-1", planVariationId: "monthly-plan-1" });
     mockCancelSubscription.mockResolvedValue({ status: "ACTIVE", canceledDate: "2026-08-24" });
 

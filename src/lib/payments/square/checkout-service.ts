@@ -14,6 +14,12 @@ export class SquareCheckoutServiceError extends Error {
 }
 
 const WEBHOOK_LEASE_MS = 5 * 60 * 1000;
+const PENDING_CHECKOUT_TTL_MS = 15 * 60 * 1000;
+let squarePrisma: (typeof import("@/lib/db/prisma"))["prisma"] | null = null;
+async function getSquarePrisma() {
+  squarePrisma ??= (await import("@/lib/db/prisma")).prisma;
+  return squarePrisma;
+}
 
 export type SquareWebhookClaim =
   | { state: "claimed"; processingToken: string }
@@ -97,48 +103,100 @@ export async function startSquareCheckout(input: {
   productId: SquareProductId;
   config: SquareConfig;
 }): Promise<{ checkoutUrl: string }> {
-  const { prisma } = await import("@/lib/db/prisma");
+  const prisma = await getSquarePrisma();
   const product = getSquareProduct(input.config, input.productId);
-  // A Monthly retry reuses an existing server-owned hosted link. Browser input
-  // never supplies the checkout/session identifier or Square idempotency key.
-  if (product.kind === "subscription") {
-    const pending = await prisma.squareCheckout.findFirst({
-      where: { userId: input.userId, product: "MONTHLY", squarePaymentId: null, checkoutUrl: { not: null } },
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PENDING_CHECKOUT_TTL_MS);
+  // Serialize the complete find/abandon/create/remote-call sequence with a
+  // PostgreSQL advisory lock. This is database-backed (never an in-memory
+  // mutex), so concurrent web processes cannot create two links for one
+  // user/product/Square context. pendingKey is also unique as a last-resort
+  // database guard.
+  const pendingKey = createHash("sha256")
+    .update([
+      input.userId,
+      product.ledgerProduct,
+      input.config.applicationId,
+      "sandbox",
+      input.config.locationId,
+      product.kind === "subscription" ? product.catalogVariationId : "",
+    ].join("\u0000"))
+    .digest("hex");
+
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${pendingKey}))`);
+    // A retry reuses a short-lived, server-owned link only when every Square
+    // context field matches that used to create it. Browser input never
+    // supplies the checkout/session identifier or Square idempotency key.
+    const pending = await transaction.squareCheckout.findFirst({
+      where: {
+        pendingKey,
+        squarePaymentId: null,
+        completedAt: null,
+        checkoutUrl: { not: null },
+        expiresAt: { gt: now },
+        userId: input.userId,
+        product: product.ledgerProduct as SquareProduct,
+        squareApplicationId: input.config.applicationId,
+        squareEnvironment: "sandbox",
+        squareLocationId: input.config.locationId,
+        squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
+      },
       orderBy: { updatedAt: "desc" },
       select: { checkoutUrl: true },
     });
     if (pending?.checkoutUrl) return { checkoutUrl: pending.checkoutUrl };
-  }
-  const checkout = await prisma.squareCheckout.create({
-    data: {
-      userId: input.userId,
-      product: product.ledgerProduct as SquareProduct,
-      // Generated only on the server and sent only to Square as an idempotency key.
-      idempotencyKey: randomUUID(),
-    },
-    select: { id: true, idempotencyKey: true },
-  });
 
-  try {
-    const link = await createSquarePaymentLink({
-      checkoutId: checkout.id,
-      idempotencyKey: checkout.idempotencyKey ?? checkout.id,
-      config: input.config,
-      product,
+    // Abandon stale or configuration-mismatched links locally. We do not
+    // claim that the Square-hosted link was deactivated.
+    await transaction.squareCheckout.updateMany({
+      where: {
+        userId: input.userId,
+        product: product.ledgerProduct as SquareProduct,
+        squarePaymentId: null,
+        completedAt: null,
+        checkoutUrl: { not: null },
+      },
+      data: { expiresAt: now, pendingKey: null },
     });
 
-    await prisma.squareCheckout.update({
-      where: { id: checkout.id },
-      data: { squareOrderId: link.orderId, squarePaymentLinkId: link.paymentLinkId, checkoutUrl: link.checkoutUrl },
+    const checkout = await transaction.squareCheckout.create({
+      data: {
+        userId: input.userId,
+        product: product.ledgerProduct as SquareProduct,
+        squareApplicationId: input.config.applicationId,
+        squareEnvironment: "sandbox",
+        squareLocationId: input.config.locationId,
+        squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
+        pendingKey,
+        expiresAt,
+        // Generated only on the server and sent only to Square as an idempotency key.
+        idempotencyKey: randomUUID(),
+      },
+      select: { id: true, idempotencyKey: true },
     });
 
-    return { checkoutUrl: link.checkoutUrl };
-  } catch (error) {
-    await prisma.squareCheckout.delete({ where: { id: checkout.id } }).catch(() => undefined);
+    try {
+      const link = await createSquarePaymentLink({
+        checkoutId: checkout.id,
+        idempotencyKey: checkout.idempotencyKey ?? checkout.id,
+        config: input.config,
+        product,
+      });
 
-    if (error instanceof Error) throw error;
-    throw new SquareCheckoutServiceError();
-  }
+      await transaction.squareCheckout.update({
+        where: { id: checkout.id },
+        data: { squareOrderId: link.orderId, squarePaymentLinkId: link.paymentLinkId, checkoutUrl: link.checkoutUrl },
+      });
+
+      return { checkoutUrl: link.checkoutUrl };
+    } catch (error) {
+      await transaction.squareCheckout.delete({ where: { id: checkout.id } }).catch(() => undefined);
+
+      if (error instanceof Error) throw error;
+      throw new SquareCheckoutServiceError();
+    }
+  }, { maxWait: 5_000, timeout: 20_000 });
 }
 
 type SettlementInput = {
@@ -193,6 +251,7 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
         data: {
           squarePaymentId: input.paymentId,
           squareCustomerId: input.customerId,
+          pendingKey: null,
           completedAt: new Date(),
         },
       });
@@ -264,6 +323,7 @@ export async function recordSquareSubscription(input: {
     if (existing?.status === "CANCELED") {
       // Square's terminal CANCELED state is irreversible for this subscription.
       // Duplicate or delayed ACTIVE events must not restore paid access.
+      if (existing.userId && input.status === "CANCELED") await recomputeAccessPlan(transaction, existing.userId);
       return { userId: existing.userId };
     }
     if (existing && incomingEventAt && existing.lastEventAt && incomingEventAt.getTime() <= existing.lastEventAt.getTime()) return { userId: existing.userId };

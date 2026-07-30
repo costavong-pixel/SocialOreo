@@ -18,7 +18,7 @@ describe("POST /api/square/monthly/checkout", () => {
   afterEach(() => vi.clearAllMocks());
 
   it("creates a hosted checkout only for the authenticated allowlisted tester", async () => {
-    const config = { monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
+    const config = { applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
     mockRequireTester.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
     mockConfig.mockReturnValue(config);
     mockSyncUser.mockResolvedValue({ id: "user-1" });
