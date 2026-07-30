@@ -83,11 +83,26 @@ describe("settleSquareCheckout", () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       return new Response(JSON.stringify({ payment_link: { id: "link-parallel", order_id: "order-parallel", url: "https://square.link/u/parallel" } }), { status: 200 });
     }));
-    let queue: Promise<unknown> = Promise.resolve();
-    mockTransaction.mockImplementation((callback: unknown) => {
-      const run = queue.then(() => (callback as (transaction: typeof mockPrisma) => Promise<unknown>)(mockPrisma));
-      queue = run.catch(() => undefined);
-      return run;
+    // Both requests start transactions concurrently; the second waits at the
+    // database advisory-lock boundary while the first calls Square.
+    let lockTail = Promise.resolve();
+    let transactionStarts = 0;
+    let activeTransactions = 0;
+    let maxActiveTransactions = 0;
+    mockPrisma.$transaction.mockImplementation(async (callback: unknown) => {
+      transactionStarts += 1;
+      activeTransactions += 1;
+      maxActiveTransactions = Math.max(maxActiveTransactions, activeTransactions);
+      const previous = lockTail;
+      let release!: () => void;
+      lockTail = new Promise<void>((resolve) => { release = resolve; });
+      await previous;
+      try {
+        return await (callback as (transaction: typeof mockPrisma) => Promise<unknown>)(mockPrisma);
+      } finally {
+        activeTransactions -= 1;
+        release();
+      }
     });
 
     await expect(Promise.all([
@@ -97,6 +112,8 @@ describe("settleSquareCheckout", () => {
       { checkoutUrl: "https://square.link/u/parallel" },
       { checkoutUrl: "https://square.link/u/parallel" },
     ]);
+    expect(transactionStarts).toBe(2);
+    expect(maxActiveTransactions).toBe(2);
     expect(paymentLinkCalls).toHaveBeenCalledTimes(1);
     expect(createCount).toBe(1);
   });
