@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { Prisma, type SquareProduct } from "@prisma/client";
-import { prisma as dbPrisma } from "@/lib/db/prisma";
 
 import type { SquareConfig } from "./config";
 import { createSquarePaymentLink } from "./create-payment-link";
@@ -16,6 +15,11 @@ export class SquareCheckoutServiceError extends Error {
 
 const WEBHOOK_LEASE_MS = 5 * 60 * 1000;
 const PENDING_CHECKOUT_TTL_MS = 15 * 60 * 1000;
+let squarePrisma: (typeof import("@/lib/db/prisma"))["prisma"] | null = null;
+async function getSquarePrisma() {
+  squarePrisma ??= (await import("@/lib/db/prisma")).prisma;
+  return squarePrisma;
+}
 
 export type SquareWebhookClaim =
   | { state: "claimed"; processingToken: string }
@@ -99,7 +103,7 @@ export async function startSquareCheckout(input: {
   productId: SquareProductId;
   config: SquareConfig;
 }): Promise<{ checkoutUrl: string }> {
-  const prisma = dbPrisma;
+  const prisma = await getSquarePrisma();
   const product = getSquareProduct(input.config, input.productId);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PENDING_CHECKOUT_TTL_MS);

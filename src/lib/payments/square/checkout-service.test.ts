@@ -72,6 +72,12 @@ describe("settleSquareCheckout", () => {
     mockPrisma.squareCheckout.updateMany.mockResolvedValue({ count: 0 });
     mockPrisma.squareCheckout.create.mockImplementation(async () => ({ id: `parallel-${++createCount}`, idempotencyKey: `key-${createCount}` }));
     mockPrisma.squareCheckout.update.mockImplementation(async ({ data }: { data: { checkoutUrl: string } }) => { pendingUrl = data.checkoutUrl; return {}; });
+    // Prime the dynamically imported mocked Prisma module before launching
+    // concurrent calls; production resolves this module once at startup.
+    pendingUrl = "https://square.link/u/prime";
+    await startSquareCheckout({ userId: "user-1", productId: "monthly", config: checkoutConfig });
+    pendingUrl = null;
+    vi.clearAllMocks();
     vi.stubGlobal("fetch", vi.fn(async () => {
       paymentLinkCalls();
       await new Promise((resolve) => setTimeout(resolve, 5));
