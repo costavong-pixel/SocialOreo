@@ -22,6 +22,7 @@ const signatureKey = "signature-key";
 function configureSandbox() {
   process.env.SQUARE_ENV = "sandbox";
   process.env.SQUARE_APPLICATION_ID = "sandbox-app-id";
+  process.env.SQUARE_EXPECTED_MERCHANT_ID = "sandbox-merchant-id";
   process.env.SQUARE_ACCESS_TOKEN = "sandbox-token";
   process.env.SQUARE_LOCATION_ID = "location-1";
   process.env.SQUARE_CURRENCY = "CAD";
