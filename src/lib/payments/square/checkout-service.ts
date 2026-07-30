@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { Prisma, type SquareProduct } from "@prisma/client";
+import { prisma as dbPrisma } from "@/lib/db/prisma";
 
 import type { SquareConfig } from "./config";
 import { createSquarePaymentLink } from "./create-payment-link";
@@ -98,7 +99,7 @@ export async function startSquareCheckout(input: {
   productId: SquareProductId;
   config: SquareConfig;
 }): Promise<{ checkoutUrl: string }> {
-  const { prisma } = await import("@/lib/db/prisma");
+  const prisma = dbPrisma;
   const product = getSquareProduct(input.config, input.productId);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PENDING_CHECKOUT_TTL_MS);
@@ -191,7 +192,7 @@ export async function startSquareCheckout(input: {
       if (error instanceof Error) throw error;
       throw new SquareCheckoutServiceError();
     }
-  }, { isolationLevel: "Serializable" });
+  }, { maxWait: 5_000, timeout: 20_000 });
 }
 
 type SettlementInput = {
