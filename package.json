@@ -15,31 +15,32 @@
     "@auth0/nextjs-auth0": "^4.25.0",
     "@prisma/client": "^6.19.3",
     "@react-pdf/renderer": "^4.5.1",
-    "next": "latest",
+    "next": "16.2.12",
     "openai": "latest",
     "react": "latest",
     "react-dom": "latest",
     "zod": "latest"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "latest",
+    "@tailwindcss/postcss": "4.3.3",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "autoprefixer": "latest",
+    "autoprefixer": "10.5.4",
     "eslint": "latest",
-    "eslint-config-next": "latest",
+    "eslint-config-next": "16.2.12",
     "jsdom": "latest",
-    "postcss": "8.5.16",
+    "postcss": "8.5.18",
     "prisma": "^6.19.3",
-    "tailwindcss": "latest",
+    "tailwindcss": "4.3.3",
     "tsx": "^4.23.0",
     "typescript": "latest",
     "vitest": "latest"
   },
   "overrides": {
-    "postcss": "8.5.16"
+    "postcss": "8.5.18",
+    "sharp": "0.35.0"
   }
 }
