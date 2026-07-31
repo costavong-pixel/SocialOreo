@@ -29,6 +29,7 @@
 - Local full suite: timed out after 300 seconds without a test failure result; protected CI is required for the authoritative full-suite result.
 - Local build: timed out after 240 seconds without a build failure result; protected CI is required for the authoritative build result.
 - Local PostgreSQL/Docker restore verification: unavailable because neither Docker nor PostgreSQL client tools are installed. No review deployment was performed because deployment requires the next owner-approved checkpoint.
+- Protected CI run `30668507953` on head `360a1f05f9e80769c43cf452ea4133458c5d7003`: passed. Prisma migration deploy, lint, typecheck, full test suite, and build all passed.
 
 ## Stop boundary
 
