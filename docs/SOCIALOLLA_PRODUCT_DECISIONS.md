@@ -58,7 +58,7 @@ isolation, evidence, rollback, and migration safeguards remain mandatory.
 - The launch meaning is scheduled repeat publishing, not a platform-native
   reshare/repost action.
 
-### First comment and comment automation
+### First comment and scheduled comment threads
 
 - A post may include an optional first comment.
 - The first comment may vary by destination/platform.
@@ -89,6 +89,22 @@ isolation, evidence, rollback, and migration safeguards remain mandatory.
   paid with universal credits, or temporarily covered by promotional credits.
 - The admin dashboard controls credit cost per comment action, free-comment quota,
   promotional quantity, promotion start/end dates, and excess-usage behavior.
+- When the selected platform/API permits threaded replies, users may create a
+  scheduled multi-comment thread beneath the post.
+- The first scheduled comment attaches to the published post. Each later comment
+  replies beneath the first comment or the prior thread item according to the
+  selected thread structure and provider capability.
+- Every thread item has its own text, schedule offset or exact time, destination,
+  parent reference, idempotency key, status, retry record, provider reference,
+  evidence, credit treatment, and terminal failure reason.
+- A failed later thread item does not delete, republish, or duplicate the main post
+  or earlier successful comments.
+- By default, later dependent comments pause when their required parent comment
+  has not published successfully; the user may retry the parent or cancel the
+  remaining thread.
+- The admin dashboard controls the maximum comments per thread, minimum and
+  maximum delay between comments, included/free quantity, credit cost per item or
+  per thread, promotion rules, and individual-user overrides.
 - Platform/API capability remains the hard limit: admin settings may restrict a
   supported capability but may not claim or enable a provider action that the
   platform does not support.
@@ -155,6 +171,10 @@ are separately enabled and priced.
   reason, and provider-cost estimate.
 - Automatic retries for one confirmed action reuse the original hold/idempotency
   scope and cannot charge the user again.
+- A scheduled comment thread must show its pricing basis before confirmation:
+  per-comment, per-thread, included allowance, free promotion, or mixed pricing.
+- When charging per comment, only independently delivered comment items are
+  finalized; failed undelivered items are refunded automatically.
 
 Examples:
 
@@ -167,6 +187,8 @@ Examples:
   original comment cost once, not three times.
 - One paid first comment reaches terminal failure: return the held credits to the
   original monthly, purchased, or promotional source.
+- Five scheduled comment items are confirmed and four publish: charge four items
+  under per-comment pricing and refund the failed item.
 
 ## 7. Admin Pricing & Features control plane
 
@@ -185,7 +207,9 @@ The admin dashboard must control:
 - credit reset and expiration rules;
 - image-generation models and costs;
 - Basic/advanced analysis and Watch features;
-- first-comment/comment-action enablement, quotas, retry policy, and credit cost;
+- first-comment and scheduled-comment-thread enablement;
+- maximum comments per thread, timing limits, dependency behavior, quotas, retry
+  policy, and credit pricing;
 - free and promotional comment allowances with effective dates;
 - X.com as excluded, add-on, credit-based, or bring-your-own;
 - credit packs, custom purchase, discounts, and promotions;
@@ -221,8 +245,7 @@ Pricing/feature changes require:
 - Exact monthly included-credit amount.
 - Launch credit-pack sizes and prices.
 - Exact fair-use thresholds for “unlimited” posts and connected channels.
-- Whether launch comment automation is limited to one first comment or supports a
-  scheduled multi-comment thread where the platform/API permits it.
+- Default maximum scheduled comments per thread and default delay rules.
 - Final list of supported launch channels beyond Instagram and TikTok.
 - X.com connector model.
 - Exact advanced Watch products and credit costs.
