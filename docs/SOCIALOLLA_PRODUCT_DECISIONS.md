@@ -58,7 +58,7 @@ isolation, evidence, rollback, and migration safeguards remain mandatory.
 - The launch meaning is scheduled repeat publishing, not a platform-native
   reshare/repost action.
 
-### First comment
+### First comment and comment automation
 
 - A post may include an optional first comment.
 - The first comment may vary by destination/platform.
@@ -78,6 +78,20 @@ isolation, evidence, rollback, and migration safeguards remain mandatory.
   `post published / first comment failed`, and full success.
 - Users must be able to retry or cancel a pending first comment without changing
   the published main post.
+- The default automatic retry limit is three attempts.
+- The admin dashboard controls retry count, retry delays, backoff policy, terminal
+  timeout, and whether manual retry remains available.
+- System/provider retry attempts do not create additional credit charges for the
+  same confirmed comment action.
+- The admin dashboard controls the number of comment actions included by plan,
+  billing cycle, promotion, or individual-user override.
+- Comment actions may be configured as free, included within a plan allowance,
+  paid with universal credits, or temporarily covered by promotional credits.
+- The admin dashboard controls credit cost per comment action, free-comment quota,
+  promotional quantity, promotion start/end dates, and excess-usage behavior.
+- Platform/API capability remains the hard limit: admin settings may restrict a
+  supported capability but may not claim or enable a provider action that the
+  platform does not support.
 
 ## 4. Basic Profile Analysis
 
@@ -115,7 +129,7 @@ are separately enabled and priced.
   during the current cycle.
 - Purchased credits may be bought at any time.
 - Purchased credits are universal across image generation, Basic Profile
-  Analysis, Watch, and future credit-based features.
+  Analysis, Watch, comment automation, and future credit-based features.
 - Purchased credit batches remain valid for 12 months from purchase.
 - Purchased credits are non-refundable for cash.
 - Purchased credits are non-transferable and remain with the purchasing account.
@@ -139,6 +153,8 @@ are separately enabled and priced.
 - Every credit operation uses an idempotent job ID to prevent duplicate charges.
 - The ledger records credits held, charged, refunded, original source, failure
   reason, and provider-cost estimate.
+- Automatic retries for one confirmed action reuse the original hold/idempotency
+  scope and cannot charge the user again.
 
 Examples:
 
@@ -147,6 +163,10 @@ Examples:
   one.
 - One combined comparison fails to include a required profile: refund the whole
   comparison unless the user explicitly accepts a revised lower-cost scope.
+- One paid first comment fails twice and succeeds on the third attempt: charge the
+  original comment cost once, not three times.
+- One paid first comment reaches terminal failure: return the held credits to the
+  original monthly, purchased, or promotional source.
 
 ## 7. Admin Pricing & Features control plane
 
@@ -165,6 +185,8 @@ The admin dashboard must control:
 - credit reset and expiration rules;
 - image-generation models and costs;
 - Basic/advanced analysis and Watch features;
+- first-comment/comment-action enablement, quotas, retry policy, and credit cost;
+- free and promotional comment allowances with effective dates;
 - X.com as excluded, add-on, credit-based, or bring-your-own;
 - credit packs, custom purchase, discounts, and promotions;
 - provider selection and outage controls;
@@ -199,6 +221,8 @@ Pricing/feature changes require:
 - Exact monthly included-credit amount.
 - Launch credit-pack sizes and prices.
 - Exact fair-use thresholds for “unlimited” posts and connected channels.
+- Whether launch comment automation is limited to one first comment or supports a
+  scheduled multi-comment thread where the platform/API permits it.
 - Final list of supported launch channels beyond Instagram and TikTok.
 - X.com connector model.
 - Exact advanced Watch products and credit costs.
