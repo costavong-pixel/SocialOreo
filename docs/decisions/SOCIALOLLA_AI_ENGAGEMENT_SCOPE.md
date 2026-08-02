@@ -32,6 +32,18 @@ The default operating mode is **user approval required before sending**:
 - the system must fail closed and return to approval-required mode when required permissions, budgets, provider capabilities, or safety configuration are missing;
 - automatic-send mode must remain independently feature-flagged and auditable.
 
+## Reply output policy
+
+Each AI engagement generation action produces **one recommended reply**.
+
+- SocialOlla does not generate several reply choices in one paid action by default.
+- The recommended reply must be editable before approval or sending.
+- The generated reply should use the configured account tone, language, knowledge source, conversation context, blocked-topic rules, and escalation policy.
+- If the user wants a different recommendation, regeneration is a new generation action and may use another allowance unit or credit charge.
+- Admin controls may provide free regenerations, promotional regenerations, plan-included regenerations, or a separate regeneration price.
+- A system retry under the same idempotency key is not a regeneration and cannot create another charge.
+- One generated reply must map to one exact source message or comment, account, conversation, recipient, rule version, and response version.
+
 ## Credit charging point
 
 AI engagement credits are charged when SocialOlla successfully produces a usable reply, not when the reply is approved or sent.
