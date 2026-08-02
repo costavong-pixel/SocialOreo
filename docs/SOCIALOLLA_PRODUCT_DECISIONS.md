@@ -66,8 +66,18 @@ isolation, evidence, rollback, and migration safeguards remain mandatory.
   before scheduling.
 - Unsupported first-comment intent must be blocked or clearly removed with user
   confirmation; it may not be silently ignored.
-- Exact retry/refund behavior for a failed first comment remains to be defined
-  during the delivery-policy questions.
+- Main-post delivery and first-comment delivery are separate operations linked to
+  the same destination occurrence.
+- A successfully published main post remains published when its optional first
+  comment fails.
+- SocialOlla retries only the failed first-comment operation; it must not republish
+  or duplicate the main post.
+- The first comment uses its own idempotency key, status, retry count, provider
+  reference, timestamps, evidence, and terminal failure reason.
+- The destination result must distinguish `post published / first comment pending`,
+  `post published / first comment failed`, and full success.
+- Users must be able to retry or cancel a pending first comment without changing
+  the published main post.
 
 ## 4. Basic Profile Analysis
 
@@ -189,7 +199,6 @@ Pricing/feature changes require:
 - Exact monthly included-credit amount.
 - Launch credit-pack sizes and prices.
 - Exact fair-use thresholds for “unlimited” posts and connected channels.
-- First-comment failure/retry policy.
 - Final list of supported launch channels beyond Instagram and TikTok.
 - X.com connector model.
 - Exact advanced Watch products and credit costs.
