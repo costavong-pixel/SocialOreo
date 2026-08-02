@@ -38,11 +38,37 @@ Each AI engagement generation action produces **one recommended reply**.
 
 - SocialOlla does not generate several reply choices in one paid action by default.
 - The recommended reply must be editable before approval or sending.
-- The generated reply should use the configured account tone, language, knowledge source, conversation context, blocked-topic rules, and escalation policy.
+- The generated reply should use the configured account tone, language, approved knowledge, conversation context, blocked-topic rules, and escalation policy.
 - If the user wants a different recommendation, regeneration is a new generation action and may use another allowance unit or credit charge.
 - Admin controls may provide free regenerations, promotional regenerations, plan-included regenerations, or a separate regeneration price.
 - A system retry under the same idempotency key is not a regeneration and cannot create another charge.
 - One generated reply must map to one exact source message or comment, account, conversation, recipient, rule version, and response version.
+
+## Reply knowledge policy
+
+Every recommended AI reply must combine the relevant information available from both the live conversation and the user's approved knowledge.
+
+Required context sources include, when relevant and available:
+
+- the current incoming comment or direct message;
+- recent messages in the same conversation or thread;
+- the connected account identity, selected tone, language, and reply rules;
+- approved business or personal profile information;
+- approved products, services, prices, opening hours, locations, delivery areas, FAQs, promotions, contact details, refund rules, cancellation rules, and other saved policies;
+- platform capability and messaging restrictions;
+- blocked topics, escalation instructions, and human-handoff rules.
+
+Rules:
+
+- Conversation context and approved knowledge are complementary inputs, not alternative modes.
+- SocialOlla must retrieve only knowledge authorized for the exact user, workspace, and connected account.
+- The AI must prefer approved current information over unsupported assumptions or generic model knowledge.
+- Knowledge items should support source, owner, status, version, effective date, and last-updated metadata where applicable.
+- Draft, expired, disabled, unapproved, or cross-account knowledge must not be used.
+- When relevant approved information is unavailable, conflicting, expired, or uncertain, the AI must not invent an answer.
+- In uncertain cases, the recommended reply should acknowledge the need to confirm and flag the conversation for human review or escalation.
+- The generated reply record must preserve which approved knowledge references and conversation scope were used, without exposing secrets or unnecessary private data.
+- Knowledge updates must not silently alter an already generated or approved reply; regeneration is required to apply newer knowledge.
 
 ## Credit charging point
 
