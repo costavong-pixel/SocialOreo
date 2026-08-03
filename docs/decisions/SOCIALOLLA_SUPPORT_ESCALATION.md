@@ -73,6 +73,22 @@ Immediately after successful ticket creation:
 - The customer should receive later material status changes through the floating assistant and configured email-alert policy.
 - Showing or emailing the ticket number does not grant any additional account permission or authorize a protected action.
 
+## Email reply threading
+
+Customers may reply directly to a support-ticket email and continue the same ticket conversation.
+
+- Each outgoing ticket email uses a ticket-specific reply-to address or signed routing token that maps inbound mail to the exact ticket.
+- Standard email threading headers and the ticket number in the subject should be preserved where possible so email clients display one conversation.
+- An accepted customer reply is appended to the same ticket as a new customer message with sender, received time, message id, and attachment references where allowed.
+- The customer does not need to start a new ticket for each reply.
+- Admin replies from the ticket should return through the same email thread and also appear in the authorized SocialOlla ticket view.
+- Auto-replies, delivery failures, duplicates, mail loops, spam, and malformed routing tokens must not create repeated ticket messages.
+- Inbound messages must be scanned, size-limited, and sanitized before storage; executable files and unsupported attachments may be blocked.
+- Only authorized sender addresses or separately verified participants may add customer-visible messages to the ticket. Unknown senders must be quarantined or require review.
+- Email replies must never execute protected actions such as refunds, publishing, credit spending, account reconnection, or plan changes without the normal authenticated confirmation flow.
+- Closing a ticket does not silently discard a later valid reply. The system may reopen the existing ticket or create a linked follow-up according to an admin-configured rule.
+- Email-provider selection and inbound-email implementation remain operational choices, but same-ticket reply continuity is a required product behavior.
+
 ## Admin controls
 
 The admin dashboard controls:
@@ -86,6 +102,7 @@ The admin dashboard controls:
 - escalation timers and reassignment rules;
 - notification templates;
 - SMS provider, budget, usage limits, and fallback behavior;
+- inbound support-email domains, routing rules, attachment limits, allowed sender rules, spam handling, and closed-ticket reply behavior;
 - individual-user or account overrides;
 - ticket retention, audit history, and export controls.
 
