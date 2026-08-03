@@ -60,6 +60,19 @@ After ticket creation, SocialOlla notifies the configured support/admin recipien
 - Ticket status updates may be surfaced through the floating assistant and configured email alerts.
 - Closing or resolving a ticket requires recorded evidence or an authorized human decision.
 
+## Customer ticket confirmation
+
+Immediately after successful ticket creation:
+
+- The floating assistant shows the customer the ticket number, creation time, issue summary, current status, and expected next step.
+- SocialOlla sends a confirmation email to the customer's configured operational-notification recipient.
+- The confirmation email includes the ticket number, issue summary, current status, creation time, affected product area, and a secure link back to the authorized ticket view or related SocialOlla page where supported.
+- The email must not expose provider secrets, raw internal logs, hidden prompts, private chain-of-thought, or information from another account or workspace.
+- Ticket creation and customer confirmation must use idempotency keys so a retry cannot create duplicate tickets or send duplicate confirmations.
+- If the confirmation email fails, the ticket remains valid and visible in SocialOlla; the assistant informs the customer that email delivery failed and allows a retry.
+- The customer should receive later material status changes through the floating assistant and configured email-alert policy.
+- Showing or emailing the ticket number does not grant any additional account permission or authorize a protected action.
+
 ## Admin controls
 
 The admin dashboard controls:
