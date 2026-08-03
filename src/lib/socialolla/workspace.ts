@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db/prisma";
-import { workspaceSchema } from "@/lib/socialolla/contracts";
 
 const EXTERNAL_PREFIX = "wsp_";
 
@@ -20,24 +19,23 @@ export function newWorkspaceExternalId(): string {
  * One-personal-workspace wrapper, created lazily on first access (no backfill).
  * Fail-closed: the owner is always derived from the authenticated session and
  * never client-supplied. The workspace is 1:1 bound to a single User row.
+ *
+ * Returns both the canonical contract (externalId) and the internal database
+ * primary key so DB operations can use the correct FK.
  */
 export async function getOrCreatePersonalWorkspace(ownerUserId: string, label?: string) {
   const existing = await prisma.workspace.findUnique({
     where: { ownerUserId },
-    include: {
-      destinations: { orderBy: { createdAt: "asc" } },
-      entitlementSnapshots: { orderBy: { validFrom: "desc" }, take: 1 },
-      creditBatches: { orderBy: { createdAt: "asc" } },
-    },
   });
   if (existing) {
-    return workspaceSchema.parse({
+    return {
       id: existing.externalId,
+      dbId: existing.id,
       ownerAuthUserId: existing.ownerUserId,
       label: existing.label,
       defaultLocale: existing.defaultLocale,
       createdAt: existing.createdAt.toISOString(),
-    });
+    };
   }
 
   const created = await prisma.workspace.create({
@@ -49,11 +47,12 @@ export async function getOrCreatePersonalWorkspace(ownerUserId: string, label?: 
       provider: "PERSONAL",
     },
   });
-  return workspaceSchema.parse({
+  return {
     id: created.externalId,
+    dbId: created.id,
     ownerAuthUserId: created.ownerUserId,
     label: created.label,
     defaultLocale: created.defaultLocale,
     createdAt: created.createdAt.toISOString(),
-  });
+  };
 }

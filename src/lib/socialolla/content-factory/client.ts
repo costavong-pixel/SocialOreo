@@ -46,13 +46,6 @@ class StubContentFactoryClient {
   private readonly store = new Map<string, InternalApiRequestRow>();
 
   async createRequest(input: CreatePostRequestInput): Promise<PostRequestContract> {
-    const existing = [...this.store.values()].find(
-      (row) =>
-        row.workspace_external_id === input.workspaceExternalId &&
-        row.candidates_json &&
-        row.external_id,
-    );
-    void existing;
     const row = this.store.get(input.idempotencyKey);
     if (row) {
       return this.toContract(row);

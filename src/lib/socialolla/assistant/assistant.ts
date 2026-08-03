@@ -1,3 +1,4 @@
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 /**
@@ -45,7 +46,7 @@ export interface ExecuteIntent {
 const CONFIRMATION_PREFIX = "so-ok-";
 
 export function newConfirmationToken(): string {
-  return `${CONFIRMATION_PREFIX}${Math.random().toString(36).slice(2, 10)}`;
+  return `${CONFIRMATION_PREFIX}${randomBytes(12).toString("base64url")}`;
 }
 
 export function classifyIntent(intent: string, domain: AssistantDomain): AssistantAction {
@@ -80,7 +81,9 @@ export function runAssistantStep(intent: string, domain: AssistantDomain): Assis
 /** Protected actions must be re-confirmed with the exact issued token. */
 export function confirmExecute(input: ExecuteIntent): { ok: boolean; reason?: string } {
   if (input.action !== "Execute") return { ok: false, reason: "Not an Execute action" };
-  if (input.providedToken !== input.confirmationToken) {
+  const provided = Buffer.from(input.providedToken);
+  const expected = Buffer.from(input.confirmationToken);
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
     return { ok: false, reason: "Confirmation token mismatch" };
   }
   if (input.preview.trim().length === 0) {
@@ -91,7 +94,7 @@ export function confirmExecute(input: ExecuteIntent): { ok: boolean; reason?: st
 
 const SECRET_PATTERN = /(Bearer\s+[A-Za-z0-9._-]{8,}|api[_-]?key[=:]\s*\S+|sk-[A-Za-z0-9]{16,}|INTERNAL_API_SECRET\s*=\s*\S+)/gi;
 const COT_MARKERS = /(\[chain of thought\]|thinking:|\n\s*(step \d+:)|reasoning:)/gi;
-const AUTH_ID_PATTERN = /auth0\|[A-Za-z0-9_-]+/g;
+const CROSS_ACCOUNT_ID_PATTERN = /\b[a-z][a-z0-9_-]*\|[A-Za-z0-9_@.=-]{4,}\b/g;
 
 /**
  * Transcript/ticket sanitizer: strips secrets, hidden chain-of-thought
@@ -102,7 +105,7 @@ export function sanitizeTranscript(text: string): string {
   return text
     .replace(SECRET_PATTERN, "[redacted]")
     .replace(COT_MARKERS, "")
-    .replace(AUTH_ID_PATTERN, "[redacted]")
+    .replace(CROSS_ACCOUNT_ID_PATTERN, "[redacted]")
     .replace(/(\{[\s\S]*?"raw_payload"[\s\S]*?\})/gi, "[redacted payload]")
     .trim();
 }

@@ -44,7 +44,7 @@ export function createPostService(client?: ContentFactoryClient) {
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    const batch = await ensureMonthlyBatch(workspace.id, entitlement?.includedMonthlyCredits ?? 0);
+    const batch = await ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
     return {
       estimatedCredits: creditsPerRequest,
       batchAvailable: batch !== null && batch.remaining >= creditsPerRequest,
@@ -64,16 +64,21 @@ export function createPostService(client?: ContentFactoryClient) {
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    const batch = await ensureMonthlyBatch(workspace.id, entitlement?.includedMonthlyCredits ?? 0);
+    const batch = await ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
     if (!batch || batch.remaining < creditsPerRequest) {
       throw new Error("Insufficient credits");
     }
 
-    // Stable intent key -> idempotent across retries, no duplicate charge/job.
+    // Stable intent key scoped by workspace AND destination: a repeated intent
+    // against a different destination must never reuse a previous request or
+    // a previous credit hold.
     const intent = input.contentIntent?.trim() || `post:${input.destinationExternalId}:${input.language}`;
-    const idempotencyKey = `so:${workspace.id}:${intent.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 96)}`;
+    const idempotencyKey = `so:${workspace.id}:${input.destinationExternalId}:${intent.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80)}`;
     const reference = `req:${input.destinationExternalId}`;
 
+    // Hold is idempotent per intent. A hold is released only by an explicit
+    // cancellation; transient failures keep the hold so a retry cannot lose
+    // or duplicate the charge.
     const hold = await holdCredits({
       batchExternalId: batch.id,
       amount: creditsPerRequest,
@@ -82,31 +87,49 @@ export function createPostService(client?: ContentFactoryClient) {
     });
     if (!hold.held) throw new Error("Failed to hold credits");
 
-    try {
-      const request = await cf.createRequest({
-        workspaceExternalId: workspace.id,
-        destinationRef: destination.externalId,
-        profileRef: input.profileExternalId,
-        language: input.language,
-        requestedCount: input.requestedCount,
-        idempotencyKey,
-      });
-      await finalizeCredits({
-        batchExternalId: batch.id,
-        amount: creditsPerRequest,
-        reference,
-        idempotencyKey: `${idempotencyKey}:finalize`,
-      });
-      return request;
-    } catch (error) {
-      await refundCredits({
-        batchExternalId: batch.id,
-        amount: creditsPerRequest,
-        reference,
-        idempotencyKey: `${idempotencyKey}:refund`,
-      });
-      throw error;
-    }
+    const request = await cf.createRequest({
+      workspaceExternalId: workspace.id,
+      destinationRef: destination.externalId,
+      profileRef: input.profileExternalId,
+      language: input.language,
+      requestedCount: input.requestedCount,
+      idempotencyKey,
+    });
+    await finalizeCredits({
+      batchExternalId: batch.id,
+      amount: creditsPerRequest,
+      reference,
+      idempotencyKey: `${idempotencyKey}:finalize`,
+    });
+    return request;
+  }
+
+  /**
+   * Explicit cancellation of a held post intent: idempotently refunds the
+   * credit hold. Publishing and paid actions remain separately confirmed.
+   */
+  async function releasePostHold(input: {
+    authUserId: string;
+    destinationExternalId: string;
+    contentIntent?: string;
+  }): Promise<{ refunded: boolean }> {
+    const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
+    const entitlement = await prisma.entitlementSnapshot.findFirst({
+      where: { workspace: { ownerUserId: input.authUserId } },
+      orderBy: { validFrom: "desc" },
+    });
+    const batch = await ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
+    if (!batch) return { refunded: false };
+    const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
+    const intent = input.contentIntent?.trim() || `post:${input.destinationExternalId}`;
+    const idempotencyKey = `so:${workspace.id}:${input.destinationExternalId}:${intent.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80)}`;
+    const refund = await refundCredits({
+      batchExternalId: batch.id,
+      amount: creditsPerRequest,
+      reference: `req:${input.destinationExternalId}`,
+      idempotencyKey: `${idempotencyKey}:refund`,
+    });
+    return { refunded: refund.refunded };
   }
 
   async function getRequest(requestId: string, authUserId: string): Promise<PostRequestContract | null> {
@@ -114,7 +137,7 @@ export function createPostService(client?: ContentFactoryClient) {
     return cf.getRequest(requestId, workspace.id);
   }
 
-  return { preview, execute, getRequest };
+  return { preview, execute, releasePostHold, getRequest };
 }
 
 export type { PostStatus };

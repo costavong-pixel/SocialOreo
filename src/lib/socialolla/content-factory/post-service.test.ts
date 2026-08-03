@@ -154,29 +154,58 @@ describe("Slice C — SocialOreo Post integration", () => {
     expect(first.id).toBe(second.id);
   });
 
-  it("refunds the hold when the Content Factory call fails", async () => {
+  it("keeps the hold on transient failure and releases it only via explicit cancellation", async () => {
     const { createPostService } = await import("./post-service");
-    const service = createPostService();
-    // Force the client to fail by making the stub throw.
-    vi.spyOn(service, "execute").mockRestore();
     const failingClient = {
       createRequest: vi.fn().mockRejectedValue(new Error("upstream down")),
       getRequest: vi.fn(),
       health: vi.fn(),
     };
-    const failingService = createPostService(failingClient as never);
+    const service = createPostService(failingClient as never);
     await expect(
-      failingService.execute({
+      service.execute({
         authUserId: "user-1",
         destinationExternalId: "dst_abcdefghijklmnop",
         language: "en",
         requestedCount: 10,
         confirmed: true,
+        contentIntent: "opening promo",
       }),
     ).rejects.toThrow("upstream down");
+    // No auto-refund on transient failure (avoids lost/duplicated charge).
     const kinds = mocks.prisma.creditTransaction.create.mock.calls.map((call) => call[0].data.kind);
     expect(kinds).toContain("HOLD");
-    expect(kinds).toContain("REFUND");
+    expect(kinds).not.toContain("REFUND");
+    // Explicit release refunds idempotently.
+    mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);
+    const release = await service.releasePostHold({
+      authUserId: "user-1",
+      destinationExternalId: "dst_abcdefghijklmnop",
+      contentIntent: "opening promo",
+    });
+    expect(release.refunded).toBe(true);
+  });
+
+  it("scopes the idempotency key by destination so a shared intent never crosses destinations", async () => {
+    const { createPostService } = await import("./post-service");
+    const service = createPostService();
+    const first = await service.execute({
+      authUserId: "user-1",
+      destinationExternalId: "dst_abcdefghijklmnop",
+      language: "en",
+      requestedCount: 10,
+      confirmed: true,
+      contentIntent: "opening promo",
+    });
+    const second = await service.execute({
+      authUserId: "user-1",
+      destinationExternalId: "dst_zzzzzzzzzzzzzzzz",
+      language: "en",
+      requestedCount: 10,
+      confirmed: true,
+      contentIntent: "opening promo",
+    });
+    expect(first.id).not.toBe(second.id);
   });
 
   it("maps a staged request back through the client stub deterministically", async () => {

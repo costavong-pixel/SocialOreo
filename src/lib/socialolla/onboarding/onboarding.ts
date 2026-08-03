@@ -77,9 +77,6 @@ export const dayPlanItemSchema = z.object({
 });
 
 export type DayPlanItem = z.infer<typeof dayPlanItemSchema>;
-
-const PROVIDED_CLAIM_TOKENS = new Set(["price", "prices", "hour", "hours", "open", "closed", "address", "location", "policy", "credentials", "award", "certified", "achievement"]);
-
 /**
  * Step 1 + 2: parse ordinary-language purpose into a proposed profile.
  * Extracts values only when the user text plausibly contains them; every field
@@ -184,14 +181,11 @@ export function createSevenDayPlan(input: { destinationRef: string; language: st
   });
 }
 
-/** The assistant must never invent price/hour/address/policy/credential claims. */
+/**
+ * Guard: every recorded promotional claim must be substantiated in the raw
+ * user-provided text. The assistant never synthesizes a claim.
+ */
 export function assertNoInventedClaims(draft: ProfileDraft): boolean {
-  const lower = `${draft.businessName ?? ""} ${draft.raw}`.toLowerCase();
-  for (const token of PROVIDED_CLAIM_TOKENS) {
-    if (lower.includes(token) && draft.promotionalClaims.length === 0) {
-      // A token the user typed is only surfaced as a claim if the user said it.
-      return true;
-    }
-  }
-  return draft.promotionalClaims.every((claim) => draft.raw.toLowerCase().includes(claim.toLowerCase()));
+  const lower = draft.raw.toLowerCase();
+  return draft.promotionalClaims.every((claim) => lower.includes(claim.toLowerCase()));
 }

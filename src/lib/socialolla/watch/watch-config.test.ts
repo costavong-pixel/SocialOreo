@@ -58,6 +58,15 @@ describe("Slice D — Watch integration", () => {
     expect(limit).toBe(2);
   });
 
+  it("documents: with entitlements enabled the snapshot is the canonical cap (still hard-capped)", () => {
+    // Intentional: when configurable entitlements are enabled the snapshot is
+    // the canonical authority; the hard boundary (3) still applies.
+    expect(resolveWatchCompetitorLimit(2, "NONE")).toBe(2);
+    expect(resolveWatchCompetitorLimit(4, "NONE")).toBe(WATCH_MAX_COMPETITORS);
+    // With entitlements disabled the plan-based limit is preserved exactly.
+    expect(resolveWatchCompetitorLimit(null, "NONE")).toBe(0);
+  });
+
   it("does not enable a real worker or provider", () => {
     // The slice must only adapt the cap contract; scheduling stays unwired.
     expect(process.env.SOCIALOLLA_WATCH_WORKER_ENABLED).toBeUndefined();

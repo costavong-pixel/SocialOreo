@@ -91,6 +91,8 @@ describe("Slice G — unified assistant contract", () => {
     expect(safe).not.toMatch(/auth0\|/);
     expect(safe).not.toMatch(/reasoning:|step 1:/);
     expect(safe).not.toContain("raw_payload");
+    // Broader cross-account identifiers are redacted too.
+    expect(sanitizeTranscript("google-oauth2|user-abc-123")).not.toMatch(/google-oauth2/);
   });
 
   it("issues unique confirmation tokens", () => {

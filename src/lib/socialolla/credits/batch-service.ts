@@ -13,15 +13,19 @@ function randomExternalId(prefix: string): string {
 export const newCreditBatchExternalId = () => randomExternalId("cbt_");
 export const newAuditEventExternalId = () => randomExternalId("evt_");
 
-export async function ensureMonthlyBatch(workspaceId: string, includedCredits: number) {
+export async function ensureMonthlyBatch(input: {
+  internalWorkspaceId: string;
+  externalWorkspaceId: string;
+  includedCredits: number;
+}) {
   const existing = await prisma.creditBatch.findFirst({
-    where: { workspaceId, kind: "MONTHLY" },
+    where: { workspaceId: input.internalWorkspaceId, kind: "MONTHLY" },
     orderBy: { createdAt: "desc" },
   });
   if (existing) {
     return creditBatchSchema.parse({
       id: existing.externalId,
-      workspaceId,
+      workspaceId: input.externalWorkspaceId,
       kind: existing.kind,
       amount: existing.amount,
       remaining: existing.remaining,
@@ -29,19 +33,19 @@ export async function ensureMonthlyBatch(workspaceId: string, includedCredits: n
       createdAt: existing.createdAt.toISOString(),
     });
   }
-  if (includedCredits <= 0) return null;
+  if (input.includedCredits <= 0) return null;
   const created = await prisma.creditBatch.create({
     data: {
       externalId: newCreditBatchExternalId(),
-      workspaceId,
+      workspaceId: input.internalWorkspaceId,
       kind: "MONTHLY",
-      amount: includedCredits,
-      remaining: includedCredits,
+      amount: input.includedCredits,
+      remaining: input.includedCredits,
     },
   });
   return creditBatchSchema.parse({
     id: created.externalId,
-    workspaceId,
+    workspaceId: input.externalWorkspaceId,
     kind: created.kind,
     amount: created.amount,
     remaining: created.remaining,
@@ -72,7 +76,7 @@ export async function holdCredits(params: {
   if (!batch) throw new Error("Credit batch not found");
   if (batch.remaining < input.amount) throw new Error("Insufficient credits");
 
-  const [, transaction] = await prisma.$transaction([
+  const [updated, transaction] = await prisma.$transaction([
     prisma.creditBatch.updateMany({
       where: { externalId: input.batchId, remaining: { gte: input.amount } },
       data: { remaining: { decrement: input.amount } },
@@ -87,6 +91,9 @@ export async function holdCredits(params: {
       },
     }),
   ]);
+  if (updated.count === 0) {
+    throw new Error("Insufficient credits");
+  }
   return { held: true, replayed: false, transactionId: transaction.id };
 }
 
