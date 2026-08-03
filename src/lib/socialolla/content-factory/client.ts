@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import {
   postStatusSchema,
   type PostRequestContract,
@@ -127,7 +127,7 @@ function signRequest(
   nonce: string,
   secret: string,
 ): string {
-  const bodyHash = createHmac("sha256", secret).update(body).digest("hex");
+  const bodyHash = createHash("sha256").update(body).digest("hex");
   const canonical = [method, path, timestamp, nonce, idempotencyKey ?? "", bodyHash].join("\n");
   return createHmac("sha256", secret).update(canonical).digest("hex");
 }
