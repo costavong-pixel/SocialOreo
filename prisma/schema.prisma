@@ -578,12 +578,13 @@ model Profile {
 }
 
 model PlanVersion {
-  id         String     @id @default(cuid())
-  externalId String     @unique
-  version    Int
-  name       String
-  status     PlanStatus @default(ACTIVE)
-  createdAt  DateTime   @default(now())
+  id                   String               @id @default(cuid())
+  externalId           String               @unique
+  version              Int
+  name                 String
+  status               PlanStatus           @default(ACTIVE)
+  createdAt            DateTime             @default(now())
+  entitlementSnapshots EntitlementSnapshot[]
 }
 
 model EntitlementSnapshot {
