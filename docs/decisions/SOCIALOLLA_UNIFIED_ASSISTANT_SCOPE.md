@@ -21,6 +21,19 @@ The assistant may begin as the support experience, but it is not limited to cust
 - Users must be able to minimize, reopen, and clear the visible panel without accidentally deleting stored records or approved work.
 - The assistant must preserve the active account, workspace, destination, and page scope while preventing cross-account or cross-workspace leakage.
 
+## Cross-page conversation continuity
+
+- The current assistant conversation remains available when the user navigates between authorized SocialOlla pages.
+- Minimizing the panel, opening another SocialOlla page, or returning to the prior page must not reset the conversation.
+- The assistant preserves the conversation thread, pending drafts, proposed actions, referenced records, and required confirmations while navigation occurs.
+- The assistant updates its current-page context after navigation without discarding the earlier conversation context.
+- Page context and conversation history are separate: changing pages may change what the assistant can currently see or propose, but it must not rewrite prior messages or approvals.
+- A confirmation applies only to the exact action, version, destination, credit cost, and scope shown when the user approved it. Navigating elsewhere cannot broaden that approval.
+- If a pending action becomes invalid because the user changes account, workspace, destination, plan, permission, or underlying record, the assistant must stop and request a new preview and confirmation.
+- Conversation continuity is scoped to the authenticated user and authorized workspace. It must never leak across users, workspaces, connected accounts, browser sessions belonging to another user, or admin impersonation boundaries.
+- The user must be able to start a new conversation without deleting completed posts, approved knowledge, Watch reports, credit records, or other product data.
+- Clearing the visible chat panel and permanently deleting stored conversation history must be treated as different actions and clearly labelled.
+
 ## User-facing responsibilities
 
 Within the user's authorized SocialOlla account and workspace, the same assistant can help with:
