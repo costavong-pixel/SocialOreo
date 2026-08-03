@@ -10,6 +10,17 @@ SocialOlla uses one primary assistant/chat interface across the product.
 
 The assistant may begin as the support experience, but it is not limited to customer support. It becomes the main guided interface for helping the user operate SocialOlla.
 
+## User-facing placement
+
+- The assistant appears as a floating chat button across authorized SocialOlla pages.
+- Opening the button displays an expandable chat panel over the current page.
+- A separate full-screen assistant workspace is not required for the initial product direction.
+- Normal dashboards, forms, editors, calendars, Watch pages, billing pages, and admin pages remain available.
+- The assistant should understand the user's current page and authorized context so it can explain the page, prepare work, guide the user, or propose permitted actions.
+- The floating control must not cover important mobile navigation, form controls, save buttons, or accessibility content.
+- Users must be able to minimize, reopen, and clear the visible panel without accidentally deleting stored records or approved work.
+- The assistant must preserve the active account, workspace, destination, and page scope while preventing cross-account or cross-workspace leakage.
+
 ## User-facing responsibilities
 
 Within the user's authorized SocialOlla account and workspace, the same assistant can help with:
@@ -88,4 +99,4 @@ Every tool call must enforce exact user, workspace, account, destination, plan, 
 
 The assistant is the operating layer for SocialOlla, not a separate support widget.
 
-Users may still access normal dashboard pages and forms, but the assistant should be able to guide them to the correct page, prepare the work, or execute authorized actions from chat.
+Users may still access normal dashboard pages and forms, but the floating assistant should be able to guide them to the correct page, prepare the work, or execute authorized actions from the current page.
