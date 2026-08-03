@@ -68,6 +68,34 @@ Notification behavior:
 - Notification generation and delivery must remain scoped to the exact user, workspace, account, destination, and permission boundary.
 - The assistant must never claim that a post, comment, DM, refund, reconnection, or Watch action succeeded without recorded evidence.
 
+## Email alerts while the user is away
+
+SocialOlla must also email important alerts when the user is not signed in or is otherwise unlikely to see the in-product assistant notice in time.
+
+Email-worthy events include:
+
+- failed or partially failed scheduled publishing;
+- disconnected or expired social-account authorization that blocks scheduled work;
+- automation paused because credits, budget, permissions, safety rules, or rate limits were exhausted;
+- material billing, payment, refund, or entitlement problems;
+- security or account-access events requiring attention;
+- time-sensitive AI replies or inbound conversations waiting for approval when delay may matter;
+- other critical events designated by the admin notification policy.
+
+Email-alert rules:
+
+- Email is a secondary delivery channel for the same verified event, not a separate source of truth.
+- Each message must identify the affected SocialOlla account, connected account or destination, event, time, impact, and recommended next step in plain language.
+- The email must link the user back to the exact authorized SocialOlla record or action page where possible.
+- Email alerts must not contain provider secrets, authentication tokens, private content unnecessary to understand the alert, or sensitive cross-account information.
+- Duplicate alert emails must be suppressed or grouped through an event idempotency key and notification state.
+- A resolved event should not continue generating the same alert.
+- Low-priority notices and promotions must not be mixed into critical operational alert emails.
+- Users may configure eligible non-critical email categories, frequency, quiet hours, and digest preferences.
+- Critical security, billing, account-disconnection, and material delivery-failure emails may remain mandatory when user action is required to avoid harm or service loss.
+- Sending an alert email does not authorize SocialOlla to retry publishing, spend credits, reconnect accounts, approve replies, or change settings without any separately required confirmation.
+- Email delivery status and sanitized failure reasons must be recorded without unnecessarily storing message content in operational logs.
+
 ## User-facing responsibilities
 
 Within the user's authorized SocialOlla account and workspace, the same assistant can help with:
