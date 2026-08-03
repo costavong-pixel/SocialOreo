@@ -1,7 +1,10 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/db/prisma";
 import { fetchSocialAudit } from "@/lib/providers/social/provider-router";
 import type { NormalizedSocialAuditResult, SocialPlatform, SocialProvider } from "@/lib/providers/social/types";
 import { buildPublicMetrics } from "@/lib/reports/public-metrics";
+import { normalizeWatchCadence, sanitizedWatchError, watchCaptureKey, watchProviderCostEstimate } from "./watch-policy";
 
 type SnapshotMetrics = {
   followerCount?: number;
@@ -86,26 +89,35 @@ export async function recordAuditPublicSnapshot(input: AuditSnapshotInput) {
       platform: input.platform,
       provider: input.provider,
       reelLimit: input.reelLimit,
+      providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, input.reelLimit)),
     },
     update: {
       platform: input.platform,
       provider: input.provider,
       reelLimit: input.reelLimit,
+      providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, input.reelLimit)),
     },
   });
   const metrics = snapshotMetrics(input.auditData);
+  const sourceUrls = input.auditData.videos.map((video) => video.url).filter(Boolean);
   await prisma.publicProfileSnapshot.upsert({
     where: { sourceAuditJobId: input.auditJobId },
     create: {
       monitorId: monitor.id,
       sourceAuditJobId: input.auditJobId,
+      captureKey: `audit:${input.auditJobId}`,
       capturedAt: input.capturedAt,
       provider: input.auditData.profile.provider,
+      providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, input.reelLimit)),
+      sourceUrls,
       ...metrics,
     },
     update: {
+      captureKey: `audit:${input.auditJobId}`,
       capturedAt: input.capturedAt,
       provider: input.auditData.profile.provider,
+      providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, input.reelLimit)),
+      sourceUrls,
       ...metrics,
     },
   });
@@ -209,31 +221,73 @@ export async function processDuePublicProfileSnapshots(now = new Date()) {
   });
 
   for (const monitor of monitors) {
+    const cadenceHours = normalizeWatchCadence(monitor.cadenceHours) ?? 168;
+    const captureKey = watchCaptureKey(monitor.id, now, cadenceHours);
     try {
+      const existingCapture = await prisma.publicProfileSnapshot.findUnique({
+        where: { captureKey },
+        select: { id: true },
+      });
+      if (existingCapture) {
+        continue;
+      }
+
+      const currentMonitor = await prisma.publicProfileMonitor.findFirst({
+        where: { id: monitor.id, enabled: true },
+        select: { id: true },
+      });
+      if (!currentMonitor) continue;
+
       const auditData = await fetchSocialAudit(monitor.platform as SocialPlatform, {
         url: monitor.profileUrl,
         limit: monitor.reelLimit,
       });
       const metrics = snapshotMetrics(auditData);
+      const sourceUrls = auditData.videos.map((video) => video.url).filter(Boolean);
+      const providerCostEstimate = watchProviderCostEstimate(monitor.platform, monitor.reelLimit);
+
+      const stillEnabled = await prisma.publicProfileMonitor.findFirst({
+        where: { id: monitor.id, enabled: true },
+        select: { id: true },
+      });
+      if (!stillEnabled) continue;
+
       await prisma.$transaction([
-        prisma.publicProfileSnapshot.create({
-          data: { monitorId: monitor.id, capturedAt: now, provider: auditData.profile.provider, ...metrics },
+        prisma.publicProfileSnapshot.upsert({
+          where: { captureKey },
+          create: {
+            monitorId: monitor.id,
+            captureKey,
+            capturedAt: now,
+            provider: auditData.profile.provider,
+            providerCostEstimate: new Prisma.Decimal(providerCostEstimate),
+            sourceUrls,
+            ...metrics,
+          },
+          update: {
+            capturedAt: now,
+            provider: auditData.profile.provider,
+            providerCostEstimate: new Prisma.Decimal(providerCostEstimate),
+            sourceUrls,
+            ...metrics,
+          },
         }),
         prisma.publicProfileMonitor.update({
           where: { id: monitor.id },
           data: {
+            providerCostEstimate: new Prisma.Decimal(providerCostEstimate),
             provider: auditData.profile.provider,
             lastCapturedAt: now,
-            nextCaptureAt: nextCaptureAt(now, monitor.cadenceHours),
+            nextCaptureAt: nextCaptureAt(now, cadenceHours),
             lastError: null,
           },
         }),
       ]);
     } catch (error) {
-      const lastError = error instanceof Error ? error.message : "Scheduled public snapshot failed.";
+      const lastError = sanitizedWatchError(error);
       await prisma.publicProfileMonitor.update({
         where: { id: monitor.id },
-        data: { lastError, nextCaptureAt: nextCaptureAt(now, Math.min(monitor.cadenceHours, 24)) },
+        data: { lastError, nextCaptureAt: new Date(now.getTime() + 24 * 60 * 60 * 1000) },
       });
     }
   }

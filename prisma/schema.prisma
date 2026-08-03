@@ -324,6 +324,7 @@ model PublicProfileMonitor {
   reelLimit     Int                     @default(30)
   enabled       Boolean                 @default(false)
   cadenceHours  Int                     @default(168)
+  providerCostEstimate Decimal?         @db.Decimal(10, 4)
   lastCapturedAt DateTime?
   nextCaptureAt DateTime?
   lastError     String?
@@ -341,6 +342,7 @@ model PublicProfileSnapshot {
   id                     String                @id @default(cuid())
   monitorId              String
   sourceAuditJobId       String?               @unique
+  captureKey             String?               @unique
   capturedAt             DateTime
   followerCount          Int?
   followingCount         Int?
@@ -351,6 +353,8 @@ model PublicProfileSnapshot {
   visibleInteractions    Int?
   visibleInteractionRate Float?
   provider               String
+  providerCostEstimate   Decimal?              @db.Decimal(10, 4)
+  sourceUrls             String[]              @default([])
   createdAt              DateTime              @default(now())
   monitor                PublicProfileMonitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
   sourceAuditJob         AuditJob?             @relation(fields: [sourceAuditJobId], references: [id], onDelete: SetNull)
