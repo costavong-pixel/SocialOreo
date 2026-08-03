@@ -102,6 +102,7 @@ Milestone 1 should produce a staging-ready unified SocialOlla foundation that pr
 - one destination-specific first post and seven-day plan;
 - safe provider-disabled or sandboxed Instagram/TikTok connection boundaries;
 - unified assistant orchestration contract;
+- multilingual locale, assistant, profile, Post, Watch, notification, and support contracts with Unicode, mixed-language, and right-to-left acceptance coverage;
 - focused and full regression coverage;
 - migration, dual-run, deployment, and rollback plan.
 
