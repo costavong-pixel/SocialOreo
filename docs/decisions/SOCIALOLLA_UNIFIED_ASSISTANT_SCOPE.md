@@ -96,6 +96,17 @@ Email-alert rules:
 - Sending an alert email does not authorize SocialOlla to retry publishing, spend credits, reconnect accounts, approve replies, or change settings without any separately required confirmation.
 - Email delivery status and sanitized failure reasons must be recorded without unnecessarily storing message content in operational logs.
 
+### Alert recipient settings
+
+- The user's verified SocialOlla account email is the default alert recipient.
+- The user may choose a different notification email from Settings.
+- A replacement notification address must be verified before SocialOlla starts sending operational alerts to it.
+- The Settings page must show the active notification recipient and whether it is verified.
+- Changing the notification address must require confirmation and must not change the user's sign-in email or account ownership.
+- The user may restore the verified account email as the default recipient at any time.
+- Until a replacement address is verified, alerts continue going to the current verified recipient so critical communication is not lost.
+- Notification recipient addresses must not be added to marketing lists merely because they receive operational alerts.
+
 ## User-facing responsibilities
 
 Within the user's authorized SocialOlla account and workspace, the same assistant can help with:
