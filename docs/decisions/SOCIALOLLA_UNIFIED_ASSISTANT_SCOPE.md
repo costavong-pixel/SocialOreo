@@ -34,6 +34,40 @@ The assistant may begin as the support experience, but it is not limited to cust
 - The user must be able to start a new conversation without deleting completed posts, approved knowledge, Watch reports, credit records, or other product data.
 - Clearing the visible chat panel and permanently deleting stored conversation history must be treated as different actions and clearly labelled.
 
+## Proactive communication bridge
+
+The floating assistant is SocialOlla's primary communication bridge between the product and the user.
+
+It must proactively surface meaningful events that need attention, including:
+
+- publishing or scheduling failures;
+- partial multi-destination success;
+- first-comment or scheduled-thread failures;
+- disconnected, expired, or permission-limited social accounts;
+- provider outages or platform capability changes;
+- low monthly, purchased, or promotional credit balances;
+- credits near expiration;
+- credit holds, refunds, or unusual charge outcomes;
+- AI replies waiting for approval;
+- inbound comments or direct messages requiring human review;
+- automation paused by budget, credit, permission, operating-hour, safety, or rate-limit rules;
+- Watch or profile-analysis actions that completed, failed, or need confirmation;
+- plan, feature, or entitlement changes that affect the user's account.
+
+Notification behavior:
+
+- The floating button may show an unread badge or attention state without forcing the panel open.
+- Opening the panel shows a prioritized inbox of actionable notices with plain-language status and next steps.
+- Critical failures must not be hidden beneath promotional or low-priority notices.
+- Each notice must link to the exact affected account, destination, post, comment, conversation, credit entry, Watch report, or setting where possible.
+- The assistant may explain and prepare a fix, but it must still require confirmation before publishing, spending credits, reconnecting accounts, changing plans, or sending replies when confirmation is required.
+- Duplicate events must be grouped so one failure does not create repeated spam.
+- Resolved notices should update or close automatically when reliable evidence confirms resolution.
+- Users must be able to mark notices read, mute eligible categories, or adjust non-critical notification preferences.
+- Security, billing, account-disconnection, and material delivery-failure notices cannot be silently disabled when the user must act to prevent harm or service loss.
+- Notification generation and delivery must remain scoped to the exact user, workspace, account, destination, and permission boundary.
+- The assistant must never claim that a post, comment, DM, refund, reconnection, or Watch action succeeded without recorded evidence.
+
 ## User-facing responsibilities
 
 Within the user's authorized SocialOlla account and workspace, the same assistant can help with:
