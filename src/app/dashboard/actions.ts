@@ -65,10 +65,12 @@ export async function removeCompetitorFromBoard(formData: FormData) {
   });
   if (!audit) return;
 
-  await prisma.competitorBoardEntry.deleteMany({ where: { userId: account.id, auditJobId } });
-  await prisma.publicProfileMonitor.updateMany({
-    where: { userId: account.id, profileUrl: audit.profileUrl },
-    data: { enabled: false, nextCaptureAt: null },
+  await prisma.$transaction(async (transaction) => {
+    await transaction.competitorBoardEntry.deleteMany({ where: { userId: account.id, auditJobId } });
+    await transaction.publicProfileMonitor.updateMany({
+      where: { userId: account.id, profileUrl: audit.profileUrl },
+      data: { enabled: false, nextCaptureAt: null },
+    });
   });
   revalidatePath("/dashboard");
 }

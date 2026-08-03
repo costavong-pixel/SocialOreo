@@ -41,6 +41,31 @@ Independent reviewers confirmed a hard-cap bypass: removing a competitor from th
 - Typecheck, lint, and build: passed.
 - Final PR #4 head: `3d3d3cf03333a0ac2c50b84e0cf108d310797628` on `codex/watch-hardening-a76`.
 
+## Atomic-transaction checkpoint (2026-08-03)
+
+An independent review of the initial merge-review fix found the two mutations were still issued as separate top-level Prisma calls, so a failure between them could leave a partial removal (entry deleted but monitor still enabled).
+
+- Fix: both mutations now run inside one `prisma.$transaction(async (transaction) => { ... })`, so `CompetitorBoardEntry.deleteMany` and `PublicProfileMonitor.updateMany` commit or roll back together. No schema change, so no migration was required.
+- Ownership/isolation preserved: the audit is resolved with `where: { id: auditJobId, userId: account.id }`, and both mutations are scoped by `userId: account.id`; a foreign or unresolvable audit returns before any mutation.
+- Tests added in `actions.watch.test.ts` (8/8 passing) prove: (1) owned removal deletes the entry and pauses the monitor, (2) a foreign audit changes nothing, (3) both mutations run inside one `$transaction`, (4) a transaction failure cannot leave a partial removal (top-level mutations never invoked), and (5) the three-watch cap remains protected.
+- Real-database atomicity verified on a disposable PostgreSQL 17.10 cluster: both mutations commit together, and a forced rollback inside the transaction leaves no partial state (`REAL_DB_ATOMICITY: PASS`).
+- LangGraph checkpoint orchestration: real `@langchain/langgraph` v1.4.8 + `@langchain/langgraph-checkpoint` graph with `MemorySaver` checkpointer drove and recorded the phases (8 checkpoint history entries in `/tmp/opencode/lg-orchestration/checkpoint-history.json`). No simulated capability.
+- Validation on this checkpoint:
+  - `prisma generate`: passed.
+  - `prisma validate`: passed.
+  - `prisma migrate deploy` on disposable PostgreSQL 17.10: all migrations applied; schema up to date.
+  - Focused Watch tests: 8/8 passed.
+  - All Watch tests: 5 files / 20 tests passed.
+  - Full suite: 64 files passed, 1 skipped; 201 tests passed, 1 skipped.
+  - Lint: passed.
+  - Typecheck: passed.
+  - Production build: passed.
+  - `git diff --check`: passed.
+  - Secret scan: no secret patterns in diff; `gitleaks` and `trufflehog` unavailable (fallback regex scan clean).
+  - Scope check: only `src/app/dashboard/actions.ts` and `src/app/dashboard/actions.watch.test.ts` changed.
+- Independent reviewer subagent verdict on the final actual diff: **APPROVED** — 9/9 dimensions PASS (atomicity, ownership, workspace isolation, idempotency, cancellation, migration safety, sanitized errors, test adequacy, three-cap protection).
+- Checkpoint head: `0d3e9566e6724a5508f3e7e5fefdc1523eade377` (before push) on `codex/watch-hardening-a76`.
+
 ## Stop boundary
 
 No worker is enabled, no real watchlist is enabled, and no provider call was made by the test suite. PR #4 remains a draft until protected CI supplies the full test, migration, and build result. Do not merge or deploy from this checkpoint.

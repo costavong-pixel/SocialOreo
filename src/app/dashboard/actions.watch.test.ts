@@ -88,7 +88,7 @@ describe("competitor Watch actions", () => {
     });
   });
 
-  it("removing a competitor from the board pauses its watch so the cap cannot be bypassed", async () => {
+  it("removing a competitor from the board deletes its entry and pauses its watch", async () => {
     mocks.prisma.auditJob.findFirst.mockResolvedValue({ profileUrl: "https://www.instagram.com/competitor/" });
     const { removeCompetitorFromBoard } = await import("./actions");
     const formData = new FormData();
@@ -96,6 +96,7 @@ describe("competitor Watch actions", () => {
 
     await removeCompetitorFromBoard(formData);
 
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(mocks.prisma.competitorBoardEntry.deleteMany).toHaveBeenCalledWith({
       where: { userId: "user-1", auditJobId: "audit-1" },
     });
@@ -104,6 +105,55 @@ describe("competitor Watch actions", () => {
       data: { enabled: false, nextCaptureAt: null },
     });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("performs both removal mutations inside one Prisma transaction", async () => {
+    mocks.prisma.auditJob.findFirst.mockResolvedValue({ profileUrl: "https://www.instagram.com/competitor/" });
+    const txLog: string[] = [];
+    const tx = {
+      competitorBoardEntry: { deleteMany: vi.fn(async () => { txLog.push("delete"); return { count: 1 }; }) },
+      publicProfileMonitor: { updateMany: vi.fn(async () => { txLog.push("pause"); return { count: 1 }; }) },
+    };
+    let capturedCallback: ((t: typeof tx) => Promise<unknown>) | null = null;
+    mocks.prisma.$transaction.mockImplementation(async (callback: (t: typeof tx) => Promise<unknown>) => {
+      capturedCallback = callback;
+      return callback(tx);
+    });
+
+    const { removeCompetitorFromBoard } = await import("./actions");
+    const formData = new FormData();
+    formData.set("auditJobId", "audit-1");
+
+    await removeCompetitorFromBoard(formData);
+
+    expect(mocks.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(capturedCallback).not.toBeNull();
+    expect(txLog).toEqual(["delete", "pause"]);
+    expect(tx.competitorBoardEntry.deleteMany).toHaveBeenCalledWith({ where: { userId: "user-1", auditJobId: "audit-1" } });
+    expect(tx.publicProfileMonitor.updateMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", profileUrl: "https://www.instagram.com/competitor/" },
+      data: { enabled: false, nextCaptureAt: null },
+    });
+    expect(mocks.prisma.competitorBoardEntry.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.publicProfileMonitor.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not leave a partial removal when the transaction fails", async () => {
+    mocks.prisma.auditJob.findFirst.mockResolvedValue({ profileUrl: "https://www.instagram.com/competitor/" });
+    const tx = {
+      competitorBoardEntry: { deleteMany: vi.fn(async () => { throw new Error("boom"); }) },
+      publicProfileMonitor: { updateMany: vi.fn() },
+    };
+    mocks.prisma.$transaction.mockImplementation(async (callback: (t: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const { removeCompetitorFromBoard } = await import("./actions");
+    const formData = new FormData();
+    formData.set("auditJobId", "audit-1");
+
+    await expect(removeCompetitorFromBoard(formData)).rejects.toThrow("boom");
+
+    expect(mocks.prisma.competitorBoardEntry.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.publicProfileMonitor.updateMany).not.toHaveBeenCalled();
   });
 
   it("does not pause a watch when the audit cannot be resolved to the workspace", async () => {
