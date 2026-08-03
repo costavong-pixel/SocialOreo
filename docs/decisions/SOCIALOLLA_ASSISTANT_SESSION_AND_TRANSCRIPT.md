@@ -60,6 +60,13 @@ The transcript must not include:
 - Email delivery is included without credits unless a future separately priced premium transcript service is introduced and confirmed before use.
 - A downloadable transcript is not required for the initial product direction, but may be added later.
 
-## Remaining email-address decision
+## Recipient address policy
 
-The product still needs to decide whether transcript delivery is restricted to the verified account email or may also be sent to another verified address entered by the user.
+- The user may send the transcript to any syntactically valid email address they enter; delivery is not restricted to the SocialOlla account email.
+- SocialOlla must display the exact recipient address and require final confirmation before sending.
+- When the recipient differs from the account email, SocialOlla must clearly warn that the transcript may contain private account or conversation information.
+- The user may edit the address before confirmation.
+- Invalid or malformed addresses must be rejected before the send attempt.
+- Sending to another address does not grant that recipient access to the SocialOlla account, workspace, records, or future conversations.
+- The transcript email must not contain reusable login links, authentication tokens, provider credentials, or hidden account data.
+- Recipient addresses used for one transcript must not automatically become permanent account contacts or marketing recipients.
