@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
 import { getSessionUser } from "@/lib/auth/current-user";
@@ -8,6 +9,7 @@ import { competitorLimitForPlan } from "@/lib/competitors/entitlements";
 import { prisma } from "@/lib/db/prisma";
 import { checkRateLimit } from "@/lib/rate-limit/rate-limit";
 import { enablePublicSnapshotMonitor, pausePublicSnapshotMonitor } from "@/lib/snapshots/public-profile-snapshots";
+import { normalizeWatchCadence, WATCH_MAX_COMPETITORS, watchProviderCostEstimate } from "@/lib/snapshots/watch-policy";
 import { runInstagramTrendScan, runTikTokTrendScan, runYouTubeTrendScan } from "@/lib/trends/trend-scans";
 import { normalizeTrendWatchlistInput } from "@/lib/trends/watchlist";
 
@@ -57,7 +59,19 @@ export async function removeCompetitorFromBoard(formData: FormData) {
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
   if (!account) return;
 
-  await prisma.competitorBoardEntry.deleteMany({ where: { userId: account.id, auditJobId } });
+  const audit = await prisma.auditJob.findFirst({
+    where: { id: auditJobId, userId: account.id },
+    select: { profileUrl: true },
+  });
+  if (!audit) return;
+
+  await prisma.$transaction(async (transaction) => {
+    await transaction.competitorBoardEntry.deleteMany({ where: { userId: account.id, auditJobId } });
+    await transaction.publicProfileMonitor.updateMany({
+      where: { userId: account.id, profileUrl: audit.profileUrl },
+      data: { enabled: false, nextCaptureAt: null },
+    });
+  });
   revalidatePath("/dashboard");
 }
 
@@ -80,6 +94,89 @@ export async function pausePublicSnapshotHistory(formData: FormData) {
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
   if (!account) return;
   await pausePublicSnapshotMonitor({ userId: account.id, monitorId });
+  revalidatePath("/dashboard");
+}
+
+export async function startCompetitorWatch(formData: FormData) {
+  const auditJobId = String(formData.get("auditJobId") ?? "");
+  const cadenceHours = normalizeWatchCadence(formData.get("cadenceHours"));
+  const sessionUser = await getSessionUser();
+  if (!sessionUser || !auditJobId || !cadenceHours) return;
+
+  const account = await prisma.user.findUnique({
+    where: { authUserId: sessionUser.id },
+    select: { id: true, accessPlan: true },
+  });
+  if (!account) return;
+
+  const competitorLimit = Math.min(WATCH_MAX_COMPETITORS, competitorLimitForPlan(account.accessPlan));
+  if (competitorLimit === 0) return;
+
+  const boardEntry = await prisma.competitorBoardEntry.findFirst({
+    where: { userId: account.id, auditJobId, auditJob: { status: "COMPLETED" } },
+    select: {
+      auditJob: { select: { profileUrl: true, platform: true, provider: true, reelLimit: true } },
+    },
+  });
+  if (!boardEntry) return;
+
+  await prisma.$transaction(async (transaction) => {
+    const saved = await transaction.competitorBoardEntry.findMany({
+      where: { userId: account.id },
+      select: { auditJob: { select: { profileUrl: true } } },
+    });
+    const profileUrls = saved.map((entry) => entry.auditJob.profileUrl);
+    const watchedCount = profileUrls.length
+      ? await transaction.publicProfileMonitor.count({ where: { userId: account.id, enabled: true, profileUrl: { in: profileUrls } } })
+      : 0;
+    const current = await transaction.publicProfileMonitor.findUnique({
+      where: { userId_profileUrl: { userId: account.id, profileUrl: boardEntry.auditJob.profileUrl } },
+      select: { id: true, enabled: true },
+    });
+    if (!current?.enabled && watchedCount >= competitorLimit) return;
+
+    const providerCostEstimate = watchProviderCostEstimate(boardEntry.auditJob.platform, boardEntry.auditJob.reelLimit);
+    await transaction.publicProfileMonitor.upsert({
+      where: { userId_profileUrl: { userId: account.id, profileUrl: boardEntry.auditJob.profileUrl } },
+      create: {
+        userId: account.id,
+        profileUrl: boardEntry.auditJob.profileUrl,
+        platform: boardEntry.auditJob.platform,
+        provider: boardEntry.auditJob.provider,
+        reelLimit: boardEntry.auditJob.reelLimit,
+        enabled: true,
+        cadenceHours,
+        providerCostEstimate: new Prisma.Decimal(providerCostEstimate),
+        nextCaptureAt: new Date(),
+      },
+      update: {
+        platform: boardEntry.auditJob.platform,
+        provider: boardEntry.auditJob.provider,
+        reelLimit: boardEntry.auditJob.reelLimit,
+        enabled: true,
+        cadenceHours,
+        providerCostEstimate: new Prisma.Decimal(providerCostEstimate),
+        nextCaptureAt: new Date(),
+        lastError: null,
+      },
+    });
+  }, { isolationLevel: "Serializable" });
+
+  revalidatePath("/dashboard");
+}
+
+export async function pauseCompetitorWatch(formData: FormData) {
+  const monitorId = String(formData.get("monitorId") ?? "");
+  const sessionUser = await getSessionUser();
+  if (!sessionUser || !monitorId) return;
+
+  const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
+  if (!account) return;
+
+  await prisma.publicProfileMonitor.updateMany({
+    where: { id: monitorId, userId: account.id },
+    data: { enabled: false, nextCaptureAt: null },
+  });
   revalidatePath("/dashboard");
 }
 

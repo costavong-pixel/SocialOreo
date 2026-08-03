@@ -13,7 +13,8 @@ import { buildCrossPlatformOpportunities } from "@/lib/trends/opportunities";
 import { TIKTOK_TREND_ESTIMATED_COST_USD, isTikTokTrendPilotEnabled } from "@/lib/trends/tiktok-trend-provider";
 import { isYouTubeTrendPilotEnabled, youtubeTrendPilotLabel } from "@/lib/trends/youtube-trend-provider";
 import { getInstagramInsightsConfig } from "@/lib/instagram-insights/config";
-import { addCompetitorToBoard, addTrendWatchlist, pausePublicSnapshotHistory, removeCompetitorFromBoard, removeTrendWatchlist, startInstagramTrendScan, startPublicSnapshotHistory, startTikTokTrendScan, startYouTubeTrendScan } from "./actions";
+import { addCompetitorToBoard, addTrendWatchlist, pauseCompetitorWatch, pausePublicSnapshotHistory, removeCompetitorFromBoard, removeTrendWatchlist, startCompetitorWatch, startInstagramTrendScan, startPublicSnapshotHistory, startTikTokTrendScan, startYouTubeTrendScan } from "./actions";
+import { watchCadenceLabel, watchProviderCostEstimate } from "@/lib/snapshots/watch-policy";
 
 type ContentPack = {
   strengths?: string[];
@@ -121,6 +122,9 @@ export default async function DashboardPage() {
         select: {
           id: true,
           profileUrl: true,
+          platform: true,
+          provider: true,
+          reelLimit: true,
           auditReport: { select: { overallScore: true } },
           socialProfiles: { select: { username: true, profileImageUrl: true } },
           socialVideos: { select: { viewCount: true, likeCount: true, commentCount: true, shareCount: true, saveCount: true } },
@@ -135,8 +139,11 @@ export default async function DashboardPage() {
     where: { userId_profileUrl: { userId: account.id, profileUrl: latest.profileUrl } },
     select: {
       id: true,
+      platform: true,
+      reelLimit: true,
       enabled: true,
       cadenceHours: true,
+      providerCostEstimate: true,
       lastCapturedAt: true,
       nextCaptureAt: true,
       lastError: true,
@@ -151,6 +158,7 @@ export default async function DashboardPage() {
           totalViews: true,
           medianViews: true,
           visibleInteractionRate: true,
+          sourceUrls: true,
         },
       },
     },
@@ -180,6 +188,11 @@ export default async function DashboardPage() {
       query: true,
       scans: { orderBy: { requestedAt: "desc" }, take: 1, select: { status: true, completedAt: true, resultCount: true } },
     },
+  }) : [];
+
+  const boardWatchMonitors = account && boardEntries.length ? await prisma.publicProfileMonitor.findMany({
+    where: { userId: account.id, profileUrl: { in: boardEntries.map((entry) => entry.auditJob.profileUrl) } },
+    select: { id: true, profileUrl: true, enabled: true, cadenceHours: true, providerCostEstimate: true, lastCapturedAt: true, nextCaptureAt: true, lastError: true },
   }) : [];
   const recentTrendScans = account ? await prisma.trendScan.findMany({
     where: { status: TrendScanStatus.COMPLETED, watchlist: { userId: account.id } },
@@ -404,7 +417,7 @@ export default async function DashboardPage() {
               </section>
 
               <section className="mt-5 grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-                <CompetitorBoard board={board} competitorLimit={competitorLimit} currentAuditId={latest.id} available={availableCompetitors.map((audit) => ({ id: audit.id, username: audit.socialProfiles[0]?.username ?? audit.profileUrl }))} />
+              <CompetitorBoard board={board} competitorLimit={competitorLimit} currentAuditId={latest.id} available={availableCompetitors.map((audit) => ({ id: audit.id, username: audit.socialProfiles[0]?.username ?? audit.profileUrl }))} watchMonitors={boardWatchMonitors} />
                 <StrategyChecklist auditId={latest.id} />
               </section>
 
@@ -605,8 +618,11 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
 
 type HistoryMonitor = {
   id: string;
+  platform: string;
+  reelLimit: number;
   enabled: boolean;
   cadenceHours: number;
+  providerCostEstimate: unknown;
   lastCapturedAt: Date | null;
   nextCaptureAt: Date | null;
   lastError: string | null;
@@ -618,6 +634,7 @@ type HistoryMonitor = {
     totalViews: number | null;
     medianViews: number | null;
     visibleInteractionRate: number | null;
+    sourceUrls: string[];
   }>;
 };
 
@@ -636,9 +653,10 @@ function ObservedHistory({ auditId, monitor }: { auditId: string; monitor: Histo
   const max = Math.max(1, ...values);
 
   return <section className="mt-5 rounded-xl border border-white/10 bg-[#11141a] p-5">
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Observed history</p><h2 className="mt-1 text-lg font-black">Public sample over time</h2><p className="mt-1 text-sm leading-5 text-white/50">Stored public snapshots make future sample-to-sample comparisons possible. They are not Instagram Insights.</p></div><span className={`w-fit rounded-md border px-2 py-1 text-xs font-black ${monitor?.enabled ? "border-emerald-300/25 bg-emerald-400/[0.07] text-emerald-200" : "border-white/10 text-white/50"}`}>{monitor?.enabled ? "Weekly tracking on" : "Tracking paused"}</span></div>
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Observed history</p><h2 className="mt-1 text-lg font-black">Public sample over time</h2><p className="mt-1 text-sm leading-5 text-white/50">Stored public snapshots make future sample-to-sample comparisons possible. They are not Instagram Insights.</p></div><span className={`w-fit rounded-md border px-2 py-1 text-xs font-black ${monitor?.enabled ? "border-emerald-300/25 bg-emerald-400/[0.07] text-emerald-200" : "border-white/10 text-white/50"}`}>{monitor?.enabled ? `${watchCadenceLabel(monitor.cadenceHours)} tracking on` : "Tracking paused"}</span></div>
     {snapshots.length >= 2 ? <><div className="mt-5 grid gap-3 sm:grid-cols-3"><Metric label="Snapshots" value={snapshots.length} note={`First: ${shortDate(first?.capturedAt)}`} /><Metric label="Latest sample" value={compact(latest?.totalViews)} note={`${latest?.reelsCollected ?? 0} public reels · ${shortDate(latest?.capturedAt)}`} /><Metric label="Sample change" value={change === undefined ? "--" : `${change > 0 ? "+" : ""}${compact(change)}`} note="Across stored public samples" /></div><div className="mt-5 flex h-20 items-end gap-1.5" aria-label="Observed public sample views over time">{snapshots.map((snapshot) => <div className="group flex min-w-0 flex-1 flex-col justify-end" key={snapshot.id} title={`${shortDate(snapshot.capturedAt)}: ${compact(snapshot.totalViews)} public views across ${snapshot.reelsCollected} reels`}><div className="min-h-1 rounded-t bg-orange-400/80" style={{ height: `${Math.max(5, ((snapshot.totalViews ?? 0) / max) * 100)}%` }} /><span className="mt-2 truncate text-center text-[9px] text-white/35">{new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(snapshot.capturedAt)}</span></div>)}</div><p className="mt-4 text-xs leading-5 text-white/40">Each point is the visible reel sample returned at capture time. New posts, a changed sample, or removed public reels can change the total; it is not account-wide month-over-month reach.</p></> : <p className="mt-5 rounded-lg border border-dashed border-white/15 p-4 text-sm leading-6 text-white/55">{snapshots.length ? `Baseline saved on ${shortDate(snapshots[0]?.capturedAt)}. A second observed snapshot is needed before SocialOreo shows a change.` : "No baseline is stored yet. Start tracking to backfill completed public audits for this profile, then capture new weekly public samples."}</p>}
-    <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4"><p className="text-xs leading-5 text-white/45">{monitor?.enabled ? `Next provider refresh: ${shortDate(monitor.nextCaptureAt)}. It uses the existing public Instagram provider and may incur its configured provider cost.` : "Tracking stays off until you explicitly enable it; completed audits remain available as baselines."}</p>{monitor?.enabled ? <form action={pausePublicSnapshotHistory}><input name="monitorId" type="hidden" value={monitor.id} /><button className="rounded-md border border-white/15 px-2.5 py-2 text-xs font-bold text-white/70 hover:border-rose-300/50 hover:text-rose-200" type="submit">Pause tracking</button></form> : <form action={startPublicSnapshotHistory}><input name="auditJobId" type="hidden" value={auditId} /><button className="rounded-md border border-orange-300/35 bg-orange-400/[0.07] px-2.5 py-2 text-xs font-bold text-orange-200 hover:border-orange-300 hover:text-white" type="submit">Start weekly tracking</button></form>}</div>
+    <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-white/10 pt-4"><p className="text-xs leading-5 text-white/45">{monitor?.enabled ? `Next provider refresh: ${shortDate(monitor.nextCaptureAt)} · estimated $${Number(monitor.providerCostEstimate ?? watchProviderCostEstimate(monitor.platform, monitor.reelLimit)).toFixed(2)} per capture.` : "Tracking stays off until you explicitly enable it; completed audits remain available as baselines."}</p>{monitor?.enabled ? <form action={pausePublicSnapshotHistory}><input name="monitorId" type="hidden" value={monitor.id} /><button className="rounded-md border border-white/15 px-2.5 py-2 text-xs font-bold text-white/70 hover:border-rose-300/50 hover:text-rose-200" type="submit">Pause tracking</button></form> : <form action={startPublicSnapshotHistory}><input name="auditJobId" type="hidden" value={auditId} /><button className="rounded-md border border-orange-300/35 bg-orange-400/[0.07] px-2.5 py-2 text-xs font-bold text-orange-200 hover:border-orange-300 hover:text-white" type="submit">Start weekly tracking</button></form>}</div>
+    {latest?.sourceUrls.length ? <div className="mt-3 border-t border-white/10 pt-3"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/40">Latest captured sources · {shortDate(latest.capturedAt)}</p><div className="mt-2 flex flex-wrap gap-2">{latest.sourceUrls.slice(0, 6).map((url) => <a className="max-w-full truncate rounded border border-white/10 px-2 py-1 text-xs font-semibold text-orange-200 hover:border-orange-300/50" href={url} key={url} rel="noreferrer" target="_blank">Open source ↗</a>)}</div></div> : null}
     {monitor?.lastError ? <p className="mt-3 text-xs leading-5 text-amber-100/75">Latest scheduled refresh could not complete. SocialOreo will retry; the stored public baseline remains unchanged.</p> : null}
   </section>;
 }
@@ -709,14 +727,37 @@ type BoardEntry = {
   auditJob: {
     id: string;
     profileUrl: string;
+    platform: string;
+    provider: string;
+    reelLimit: number;
     auditReport: { overallScore: number } | null;
     socialProfiles: Array<{ username: string | null; profileImageUrl: string | null }>;
     socialVideos: Array<{ viewCount: number | null; likeCount: number | null; commentCount: number | null; shareCount: number | null; saveCount: number | null }>;
   };
 };
 
-function CompetitorBoard({ board, competitorLimit, currentAuditId, available }: { board: BoardEntry[]; competitorLimit: number; currentAuditId: string; available: Array<{ id: string; username: string }> }) {
+type BoardWatchMonitor = {
+  id: string;
+  profileUrl: string;
+  enabled: boolean;
+  cadenceHours: number;
+  providerCostEstimate: unknown;
+  lastCapturedAt: Date | null;
+  nextCaptureAt: Date | null;
+  lastError: string | null;
+};
+
+function CompetitorWatchControl({ audit, monitor }: { audit: BoardEntry["auditJob"]; monitor: BoardWatchMonitor | undefined }) {
+  const cost = monitor?.providerCostEstimate === null || monitor?.providerCostEstimate === undefined
+    ? watchProviderCostEstimate(audit.platform, audit.reelLimit)
+    : Number(monitor.providerCostEstimate);
+  if (monitor?.enabled) return <div className="flex min-w-[170px] flex-wrap items-center justify-end gap-2"><span className="text-[11px] leading-4 text-emerald-200">{watchCadenceLabel(monitor.cadenceHours)} · next {shortDate(monitor.nextCaptureAt)}<br />est. ${cost.toFixed(2)} / capture</span><form action={pauseCompetitorWatch}><input name="monitorId" type="hidden" value={monitor.id} /><button className="text-xs font-bold text-white/40 hover:text-rose-200" type="submit">Pause</button></form></div>;
+  return <form action={startCompetitorWatch} className="flex min-w-[170px] items-center justify-end gap-2"><input name="auditJobId" type="hidden" value={audit.id} /><select aria-label={`Watch cadence for ${audit.profileUrl}`} className="rounded border border-white/15 bg-black/20 px-1.5 py-1 text-[11px] text-white/70" defaultValue={monitor?.cadenceHours ?? 168} name="cadenceHours"><option value="168">Weekly</option><option value="336">Fortnightly</option></select><button className="text-xs font-bold text-orange-200 hover:text-white" type="submit">Start watch<br /><span className="text-[10px] text-white/40">est. ${cost.toFixed(2)} / capture</span></button></form>;
+}
+
+function CompetitorBoard({ board, competitorLimit, currentAuditId, available, watchMonitors }: { board: BoardEntry[]; competitorLimit: number; currentAuditId: string; available: Array<{ id: string; username: string }>; watchMonitors: BoardWatchMonitor[] }) {
   if (competitorLimit === 0) return <article className="rounded-xl border border-orange-300/20 bg-orange-400/[0.06] p-5"><p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-300">Competitor Board</p><h2 className="mt-1 text-lg font-black">Available with Lifetime or Monthly</h2><p className="mt-2 text-sm leading-6 text-orange-50/70">Your free trial includes one seven-post audit and the complete report. Lifetime includes one competitor; Monthly includes up to three.</p><Link className="mt-4 inline-flex rounded-md bg-orange-400 px-4 py-2.5 text-xs font-black text-black hover:bg-orange-300" href="/pricing">View plans</Link></article>;
+  const watchByProfileUrl = new Map(watchMonitors.map((monitor) => [monitor.profileUrl, monitor]));
   const summaries = board.map((entry) => {
     const audit = entry.auditJob;
     const videosWithViews = audit.socialVideos.filter((video) => typeof video.viewCount === "number" && video.viewCount >= 0);
@@ -737,7 +778,7 @@ function CompetitorBoard({ board, competitorLimit, currentAuditId, available }: 
     };
   });
 
-  if (summaries.length) return <article className="rounded-xl border border-white/10 bg-[#11141a] p-5"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Competitor board</p><h2 className="mt-1 text-lg font-black">Saved profiles to study</h2><p className="mt-1 text-sm leading-5 text-white/50">Compare public samples side by side, then open the exact reel evidence before borrowing an idea.</p></div><span className="rounded-md border border-orange-300/20 bg-orange-400/[0.06] px-2 py-1 text-xs font-black text-orange-200">{board.length}/{competitorLimit} saved</span></div><div className="mt-5 overflow-x-auto"><table className="min-w-[760px] w-full text-left text-xs"><thead className="border-b border-white/10 uppercase tracking-[0.12em] text-white/40"><tr><th className="pb-3 pr-3">Profile</th><th className="pb-3 pr-3">Score</th><th className="pb-3 pr-3">Sample</th><th className="pb-3 pr-3">Public views</th><th className="pb-3 pr-3">Median views</th><th className="pb-3 pr-3">Visible interaction / view</th><th className="pb-3 text-right">Action</th></tr></thead><tbody>{summaries.map((summary) => <tr className="border-b border-white/[0.07] last:border-0" key={summary.entry.auditJobId}><td className="max-w-[155px] truncate py-3 pr-3 font-black text-white/85">{summary.label}</td><td className="py-3 pr-3 font-black text-white">{summary.audit.auditReport?.overallScore ?? "--"}/100</td><td className="py-3 pr-3 text-white/65">{summary.reelCount} reels</td><td className="py-3 pr-3 font-black text-white">{compact(summary.totalViews)}</td><td className="py-3 pr-3 font-semibold text-white/75">{compact(summary.medianViews)}</td><td className="py-3 pr-3 font-semibold text-white/75">{percent(summary.interactionRate)}</td><td className="py-3 text-right"><div className="flex justify-end gap-3"><Link className="font-bold text-orange-300 hover:text-orange-200" href={`/audits/${currentAuditId}/compare?competitor=${summary.audit.id}`}>Compare</Link><form action={removeCompetitorFromBoard}><input name="auditJobId" type="hidden" value={summary.audit.id} /><button className="font-bold text-white/40 hover:text-rose-200" type="submit">Remove</button></form></div></td></tr>)}</tbody></table></div><p className="mt-3 text-xs leading-5 text-white/40">Each row is its saved public audit sample. Different sample sizes and capture dates are visible context, not a creator percentile or private Insights comparison.</p>{available.length && board.length < competitorLimit ? <div className="mt-4 border-t border-white/10 pt-4"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/40">Completed audits available to save</p><div className="mt-3 flex flex-wrap gap-2">{available.slice(0, 6).map((audit) => <form action={addCompetitorToBoard} key={audit.id}><input name="auditJobId" type="hidden" value={audit.id} /><button className="rounded-md border border-white/15 px-2.5 py-2 text-xs font-bold text-white/70 hover:border-orange-300/50 hover:text-orange-200" type="submit">+ {audit.username}</button></form>)}</div></div> : null}</article>;
+  if (summaries.length) return <article className="rounded-xl border border-white/10 bg-[#11141a] p-5"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Competitor board</p><h2 className="mt-1 text-lg font-black">Saved profiles to study</h2><p className="mt-1 text-sm leading-5 text-white/50">Compare public samples side by side, then explicitly opt into bounded Watch refreshes for up to three saved competitors.</p></div><span className="rounded-md border border-orange-300/20 bg-orange-400/[0.06] px-2 py-1 text-xs font-black text-orange-200">{board.length}/{competitorLimit} saved</span></div><div className="mt-5 overflow-x-auto"><table className="min-w-[920px] w-full text-left text-xs"><thead className="border-b border-white/10 uppercase tracking-[0.12em] text-white/40"><tr><th className="pb-3 pr-3">Profile</th><th className="pb-3 pr-3">Score</th><th className="pb-3 pr-3">Sample</th><th className="pb-3 pr-3">Public views</th><th className="pb-3 pr-3">Median views</th><th className="pb-3 pr-3">Visible interaction / view</th><th className="pb-3 text-right">Watch / action</th></tr></thead><tbody>{summaries.map((summary) => <tr className="border-b border-white/[0.07] last:border-0" key={summary.entry.auditJobId}><td className="max-w-[155px] truncate py-3 pr-3 font-black text-white/85">{summary.label}</td><td className="py-3 pr-3 font-black text-white">{summary.audit.auditReport?.overallScore ?? "--"}/100</td><td className="py-3 pr-3 text-white/65">{summary.reelCount} reels</td><td className="py-3 pr-3 font-black text-white">{compact(summary.totalViews)}</td><td className="py-3 pr-3 font-semibold text-white/75">{compact(summary.medianViews)}</td><td className="py-3 pr-3 font-semibold text-white/75">{percent(summary.interactionRate)}</td><td className="py-3 text-right"><div className="flex flex-col items-end gap-2"><CompetitorWatchControl audit={summary.audit} monitor={watchByProfileUrl.get(summary.audit.profileUrl)} /><div className="flex justify-end gap-3"><Link className="font-bold text-orange-300 hover:text-orange-200" href={`/audits/${currentAuditId}/compare?competitor=${summary.audit.id}`}>Compare</Link><form action={removeCompetitorFromBoard}><input name="auditJobId" type="hidden" value={summary.audit.id} /><button className="font-bold text-white/40 hover:text-rose-200" type="submit">Remove</button></form></div></div></td></tr>)}</tbody></table></div><p className="mt-3 text-xs leading-5 text-white/40">Watch is opt-in per saved competitor, permits weekly or fortnightly refreshes only, and records estimated provider cost plus captured public source links and timestamps.</p>{available.length && board.length < competitorLimit ? <div className="mt-4 border-t border-white/10 pt-4"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/40">Completed audits available to save</p><div className="mt-3 flex flex-wrap gap-2">{available.slice(0, 6).map((audit) => <form action={addCompetitorToBoard} key={audit.id}><input name="auditJobId" type="hidden" value={audit.id} /><button className="rounded-md border border-white/15 px-2.5 py-2 text-xs font-bold text-white/70 hover:border-orange-300/50 hover:text-orange-200" type="submit">+ {audit.username}</button></form>)}</div></div> : null}</article>;
 
   return <article className="rounded-xl border border-white/10 bg-[#11141a] p-5"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-white/40">Competitor board</p><h2 className="mt-1 text-lg font-black">Saved profiles to study</h2><p className="mt-1 text-sm leading-5 text-white/50">Store up to {competitorLimit} completed competitor {competitorLimit === 1 ? "audit" : "audits"} here, then open a detailed comparison when you need it.</p></div><span className="rounded-md border border-orange-300/20 bg-orange-400/[0.06] px-2 py-1 text-xs font-black text-orange-200">{board.length}/{competitorLimit} saved</span></div>{board.length ? <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{board.slice(0, competitorLimit).map((entry) => { const audit = entry.auditJob; const label = audit.socialProfiles[0]?.username ? `@${audit.socialProfiles[0].username}` : audit.profileUrl; const totalViews = audit.socialVideos.reduce((sum, video) => sum + (video.viewCount ?? 0), 0); return <div className="rounded-lg border border-white/8 bg-white/[0.025] p-3" key={entry.auditJobId}><div className="flex items-start justify-between gap-2"><p className="truncate font-black text-white/85">{label}</p><form action={removeCompetitorFromBoard}><input name="auditJobId" type="hidden" value={audit.id} /><button className="text-xs font-bold text-white/40 hover:text-rose-200" type="submit">Remove</button></form></div><div className="mt-3 grid grid-cols-2 gap-2 text-xs"><div><p className="text-white/40">Score</p><p className="mt-1 font-black text-white">{audit.auditReport?.overallScore ?? "--"}/100</p></div><div><p className="text-white/40">Public views</p><p className="mt-1 font-black text-white">{compact(totalViews)}</p></div></div><Link className="mt-4 inline-flex text-xs font-bold text-orange-300 hover:text-orange-200" href={`/audits/${currentAuditId}/compare?competitor=${audit.id}`}>Compare ↗</Link></div>; })}</div> : <p className="mt-5 rounded-lg border border-dashed border-white/15 p-4 text-sm leading-6 text-white/50">Save completed competitor audits to compare multiple public performance snapshots from one dashboard.</p>}{available.length && board.length < competitorLimit ? <div className="mt-4 border-t border-white/10 pt-4"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/40">Completed audits available to save</p><div className="mt-3 flex flex-wrap gap-2">{available.slice(0, 6).map((audit) => <form action={addCompetitorToBoard} key={audit.id}><input name="auditJobId" type="hidden" value={audit.id} /><button className="rounded-md border border-white/15 px-2.5 py-2 text-xs font-bold text-white/70 hover:border-orange-300/50 hover:text-orange-200" type="submit">+ {audit.username}</button></form>)}</div></div> : null}</article>;
 }
