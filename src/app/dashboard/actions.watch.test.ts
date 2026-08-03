@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const prisma = {
     user: { findUnique: vi.fn() },
-    competitorBoardEntry: { findFirst: vi.fn(), findMany: vi.fn() },
+    auditJob: { findFirst: vi.fn() },
+    competitorBoardEntry: { findFirst: vi.fn(), findMany: vi.fn(), deleteMany: vi.fn() },
     publicProfileMonitor: { count: vi.fn(), findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
   };
@@ -85,5 +86,35 @@ describe("competitor Watch actions", () => {
       where: { id: "monitor-1", userId: "user-1" },
       data: { enabled: false, nextCaptureAt: null },
     });
+  });
+
+  it("removing a competitor from the board pauses its watch so the cap cannot be bypassed", async () => {
+    mocks.prisma.auditJob.findFirst.mockResolvedValue({ profileUrl: "https://www.instagram.com/competitor/" });
+    const { removeCompetitorFromBoard } = await import("./actions");
+    const formData = new FormData();
+    formData.set("auditJobId", "audit-1");
+
+    await removeCompetitorFromBoard(formData);
+
+    expect(mocks.prisma.competitorBoardEntry.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", auditJobId: "audit-1" },
+    });
+    expect(mocks.prisma.publicProfileMonitor.updateMany).toHaveBeenCalledWith({
+      where: { userId: "user-1", profileUrl: "https://www.instagram.com/competitor/" },
+      data: { enabled: false, nextCaptureAt: null },
+    });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("does not pause a watch when the audit cannot be resolved to the workspace", async () => {
+    mocks.prisma.auditJob.findFirst.mockResolvedValue(null);
+    const { removeCompetitorFromBoard } = await import("./actions");
+    const formData = new FormData();
+    formData.set("auditJobId", "foreign-audit");
+
+    await removeCompetitorFromBoard(formData);
+
+    expect(mocks.prisma.competitorBoardEntry.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.publicProfileMonitor.updateMany).not.toHaveBeenCalled();
   });
 });

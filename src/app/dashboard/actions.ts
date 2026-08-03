@@ -59,7 +59,17 @@ export async function removeCompetitorFromBoard(formData: FormData) {
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
   if (!account) return;
 
+  const audit = await prisma.auditJob.findFirst({
+    where: { id: auditJobId, userId: account.id },
+    select: { profileUrl: true },
+  });
+  if (!audit) return;
+
   await prisma.competitorBoardEntry.deleteMany({ where: { userId: account.id, auditJobId } });
+  await prisma.publicProfileMonitor.updateMany({
+    where: { userId: account.id, profileUrl: audit.profileUrl },
+    data: { enabled: false, nextCaptureAt: null },
+  });
   revalidatePath("/dashboard");
 }
 
