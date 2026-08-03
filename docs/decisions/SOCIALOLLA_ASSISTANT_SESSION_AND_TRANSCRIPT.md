@@ -53,12 +53,16 @@ The transcript must not include:
 - Before sending, SocialOlla must show the destination email address and require confirmation.
 - The user's verified account email should be prefilled when available.
 - The email must identify the SocialOlla account, transcript session date/time, and active workspace without exposing secrets or unnecessary internal identifiers.
-- The transcript may be placed in the email body or attached in a standard readable format, according to the configured email provider and message-size limits.
+- The transcript is placed directly in the email body for the initial release.
+- No transcript attachment is required for the initial release.
+- The email body should use readable headings, timestamps, speaker labels, and links to user-visible SocialOlla records created during the session.
+- Long transcripts may be divided into clearly labelled sections, but the complete user-visible transcript should remain in the email body unless email-provider size limits make delivery impossible.
+- If the transcript exceeds provider message-size limits, SocialOlla must explain the limitation rather than silently omitting content; a future secure download-link fallback may be added separately.
 - Transcript emails must use a unique delivery idempotency key so retries cannot send accidental duplicates.
 - Delivery status, timestamp, recipient address, and sanitized failure reason must be recorded without logging the full transcript unnecessarily.
 - If email delivery fails, the user should be told clearly and allowed to retry during the active session.
 - Email delivery is included without credits unless a future separately priced premium transcript service is introduced and confirmed before use.
-- A downloadable transcript is not required for the initial product direction, but may be added later.
+- A downloadable transcript or PDF attachment is not required for the initial product direction, but may be added later.
 
 ## Recipient address policy
 
