@@ -216,4 +216,63 @@ describe("Slice C — SocialOreo Post integration", () => {
     expect(created.id).toMatch(/^wsp_/);
     expect(mocks.prisma.workspace.create).toHaveBeenCalled();
   });
+
+  it("HTTP client retries transient 5xx and honors the timeout", async () => {
+    const { HttpContentFactoryClient } = await import("./client");
+    const calls: Array<{ status: number; delay: number }> = [
+      { status: 502, delay: 0 },
+      { status: 200, delay: 0 },
+    ];
+    const fetchMock = vi.fn().mockImplementation(async (_url: string, init?: { signal?: AbortSignal }) => {
+      if (init?.signal) {
+        await Promise.race([
+          Promise.resolve(),
+          new Promise((_, reject) => {
+            init.signal!.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+        ]);
+      }
+      const next = calls.shift()!;
+      if (next.delay) await new Promise((r) => setTimeout(r, next.delay));
+      return { ok: next.status === 200, status: next.status, json: async () => ({ external_id: "req_test000000000000000", workspace_external_id: "wsp_abcdefghijklmnop", destination_ref: "dst_abcdefghijklmnop", profile_ref: null, language: "en", requested_count: 10, status: "review", candidates_json: [], review_json: null, evidence_json: [], created_at: "2026-08-03T00:00:00Z", updated_at: "2026-08-03T00:00:00Z" }) };
+    });
+    const originalFetch = globalThis.fetch;
+    (globalThis as any).fetch = fetchMock;
+    try {
+      const client = new HttpContentFactoryClient("http://cf", "secret");
+      const result = await client.createRequest({
+        workspaceExternalId: "wsp_abcdefghijklmnop",
+        destinationRef: "dst_abcdefghijklmnop",
+        language: "en",
+        requestedCount: 10,
+        idempotencyKey: "so:wsp_abcdefghijklmnop:retry",
+      });
+      expect(result.status).toBe("review");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
+  });
+
+  it("HTTP client gives up after bounded retries on persistent 5xx", async () => {
+    const { HttpContentFactoryClient } = await import("./client");
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+    const originalFetch = globalThis.fetch;
+    (globalThis as any).fetch = fetchMock;
+    try {
+      const client = new HttpContentFactoryClient("http://cf", "secret", 1000);
+      await expect(
+        client.createRequest({
+          workspaceExternalId: "wsp_abcdefghijklmnop",
+          destinationRef: "dst_abcdefghijklmnop",
+          language: "en",
+          requestedCount: 10,
+          idempotencyKey: "so:wsp_abcdefghijklmnop:fail",
+        }),
+      ).rejects.toThrow();
+      expect(fetchMock).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+    }
+  });
 });

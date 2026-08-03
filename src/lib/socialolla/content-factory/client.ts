@@ -133,7 +133,15 @@ function signRequest(
 }
 
 export class HttpContentFactoryClient implements ContentFactoryClient {
-  constructor(private readonly baseUrl: string, private readonly secret: string) {}
+  private readonly timeoutMs: number;
+
+  constructor(
+    private readonly baseUrl: string,
+    private readonly secret: string,
+    timeoutMs = contentFactoryConfig().requestTimeoutMs,
+  ) {
+    this.timeoutMs = timeoutMs;
+  }
 
   private headers(
     method: string,
@@ -155,6 +163,44 @@ export class HttpContentFactoryClient implements ContentFactoryClient {
     return headers;
   }
 
+  private async send(
+    method: string,
+    path: string,
+    body: string,
+    idempotencyKey: string | null,
+    retries = 2,
+  ): Promise<Response> {
+    const url = `${this.baseUrl}${path}`;
+    const attempt = async (): Promise<Response> => {
+      const response = await fetch(url, {
+        method,
+        headers: this.headers(method, path, body, idempotencyKey),
+        body: body || undefined,
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+      return response;
+    };
+    let lastError: unknown;
+    for (let attemptIndex = 0; attemptIndex <= retries; attemptIndex += 1) {
+      try {
+        const response = await attempt();
+        // Retry transient 5xx (and never replay a 4xx, which is not transient).
+        if (response.status >= 500 && response.status < 600 && attemptIndex < retries) {
+          await new Promise((resolve) => setTimeout(resolve, 200 * (attemptIndex + 1)));
+          continue;
+        }
+        return response;
+      } catch (error) {
+        lastError = error;
+        if (attemptIndex < retries) {
+          await new Promise((resolve) => setTimeout(resolve, 200 * (attemptIndex + 1)));
+          continue;
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Content Factory request failed");
+  }
+
   async createRequest(input: CreatePostRequestInput): Promise<PostRequestContract> {
     const path = "/internal/v1/requests";
     const body = JSON.stringify({
@@ -165,27 +211,26 @@ export class HttpContentFactoryClient implements ContentFactoryClient {
       requested_count: input.requestedCount,
       idempotency_key: input.idempotencyKey,
     });
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: this.headers("POST", path, body, input.idempotencyKey),
-      body,
-    });
+    const response = await this.send("POST", path, body, input.idempotencyKey);
     return this.parseContract(await this.readJson(response));
   }
 
   async getRequest(id: string, workspaceExternalId: string): Promise<PostRequestContract | null> {
     const path = `/internal/v1/requests/${id}`;
-    const url = `${this.baseUrl}${path}?workspace_external_id=${encodeURIComponent(workspaceExternalId)}`;
-    const response = await fetch(url, {
-      method: "GET",
-      headers: this.headers("GET", path, "", null),
-    });
+    const response = await this.send(
+      "GET",
+      `${path}?workspace_external_id=${encodeURIComponent(workspaceExternalId)}`,
+      "",
+      null,
+      1,
+    );
     if (response.status === 404) return null;
     return this.parseContract(await this.readJson(response));
   }
 
   async health(): Promise<{ status: string; contract: string }> {
-    return { status: "ok", contract: "v1" };
+    const response = await this.send("GET", "/internal/v1/health", "", null, 1);
+    return this.readJson(response);
   }
 
   private async readJson(response: Response): Promise<never | any> {
