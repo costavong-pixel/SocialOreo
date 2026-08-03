@@ -31,6 +31,16 @@
 - Local PostgreSQL/Docker restore verification: unavailable because neither Docker nor PostgreSQL client tools are installed. No review deployment was performed because deployment requires the next owner-approved checkpoint.
 - Protected CI run `30668507953` on head `360a1f05f9e80769c43cf452ea4133458c5d7003`: passed. Prisma migration deploy, lint, typecheck, full test suite, and build all passed.
 
+## Merge-review fix (2026-08-03)
+
+Independent reviewers confirmed a hard-cap bypass: removing a competitor from the board deleted the board row but left its enabled Watch monitor running, so the enabled-monitor count in `startCompetitorWatch` no longer included it and the three-competitor cap could be exceeded (with an unpausable provider-cost source).
+
+- Fix: `removeCompetitorFromBoard` now resolves the owned audit's `profileUrl` (scoped by `userId`), deletes the board row, and pauses the matching monitor with `enabled: false, nextCaptureAt: null`.
+- Regression tests: added to `actions.watch.test.ts` (6/6 passing), covering pause-on-remove and no-op for a foreign audit.
+- Full suite: 64 files / 199 tests passed, 1 skipped.
+- Typecheck, lint, and build: passed.
+- Final PR #4 head: `3d3d3cf03333a0ac2c50b84e0cf108d310797628` on `codex/watch-hardening-a76`.
+
 ## Stop boundary
 
 No worker is enabled, no real watchlist is enabled, and no provider call was made by the test suite. PR #4 remains a draft until protected CI supplies the full test, migration, and build result. Do not merge or deploy from this checkpoint.
