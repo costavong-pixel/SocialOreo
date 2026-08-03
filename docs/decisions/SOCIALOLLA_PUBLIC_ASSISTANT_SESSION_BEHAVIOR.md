@@ -45,6 +45,21 @@ Before login, the assistant may:
 - Public-session assumptions, previews, or promises do not become authenticated entitlements or executable approvals.
 - Abuse controls, guest message limits, and rate limits may be applied, but they must not intentionally reduce answer quality or misrepresent the product.
 
+## One free live AI demo
+
+Each anonymous visitor may use one free live Post demonstration before signup.
+
+- The demonstration may generate one useful title-and-caption result from a visitor-provided topic, product, offer, idea, or description.
+- The demo should use the same approved generation quality standard as the signed-in product rather than a deliberately weakened model or prompt.
+- The result must be clearly labelled as a demo and remain editable or copyable during the active guest session.
+- The demo cannot publish, schedule, connect a social account, access private data, consume purchased credits, or create an authenticated entitlement.
+- The demo is not permanently saved unless the visitor signs up or logs in and explicitly consents to transferring it.
+- After the free generation has been used, further AI generation requires signup or login unless an admin-configured promotion grants another demo.
+- SocialOlla must explain the signup requirement before requesting account information; it must not pretend the first result failed merely to force registration.
+- Abuse prevention may use privacy-conscious session, device, network, rate-limit, or risk signals, but it must not merge unrelated visitors or expose tracking details.
+- Admin controls whether the demo is enabled, its eligible pages, generation type, model/provider, cost ceiling, usage limits, promotions, and abuse thresholds.
+- Demo usage and provider cost must be measurable so the owner can compare conversion value against acquisition cost.
+
 ## Public guest restrictions
 
 Before login, the assistant must not:
@@ -112,9 +127,10 @@ The admin dashboard controls:
 - approved product knowledge and pricing sources;
 - lead-capture and support-ticket routing;
 - guest message limits and abuse controls;
+- free-demo availability, scope, provider, cost limit, and promotions;
 - human escalation rules;
 - public-session retention and consent settings;
 - which claims or features are hidden, promotional, beta, invite-only, or unavailable;
-- audit logs for public claims, escalations, and session transitions.
+- audit logs for public claims, demos, escalations, and session transitions.
 
 No admin configuration may make the public assistant claim a capability that the current product, plan, provider, or platform cannot actually deliver.
