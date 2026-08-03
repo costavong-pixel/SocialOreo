@@ -64,7 +64,7 @@ An independent review of the initial merge-review fix found the two mutations we
   - Secret scan: no secret patterns in diff; `gitleaks` and `trufflehog` unavailable (fallback regex scan clean).
   - Scope check: only `src/app/dashboard/actions.ts` and `src/app/dashboard/actions.watch.test.ts` changed.
 - Independent reviewer subagent verdict on the final actual diff: **APPROVED** — 9/9 dimensions PASS (atomicity, ownership, workspace isolation, idempotency, cancellation, migration safety, sanitized errors, test adequacy, three-cap protection).
-- Checkpoint head: `0d3e9566e6724a5508f3e7e5fefdc1523eade377` (before push) on `codex/watch-hardening-a76`.
+- Checkpoint head: `c9ea61b7886e9e66c87b20124bf5fd511b35a9be` on `codex/watch-hardening-a76` (pushed; remote `refs/heads/codex/watch-hardening-a76` and `refs/pull/4/head` both at `c9ea61b`).
 
 ## Stop boundary
 
