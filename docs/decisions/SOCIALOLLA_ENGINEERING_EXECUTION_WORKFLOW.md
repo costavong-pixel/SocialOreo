@@ -89,9 +89,11 @@ Until the milestone reaches owner review:
 - no removal of old services or rollback paths;
 - no duplicate publishing path or second source of truth.
 
-## Current proposed Milestone 1
+## Approved Milestone 1
 
-Milestone 1 should produce a staging-ready unified SocialOlla foundation that proves:
+**Owner approval:** 2026-08-03
+
+Milestone 1 will produce a staging-ready unified SocialOlla foundation that proves:
 
 - exact post-PR #4 audits of SocialOreo and Content Factory;
 - final module reuse map and architecture decision;
