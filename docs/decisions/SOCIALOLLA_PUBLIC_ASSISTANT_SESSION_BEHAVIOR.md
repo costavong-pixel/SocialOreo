@@ -34,6 +34,17 @@ Before login, the assistant may:
 - create a pre-login support or sales ticket when appropriate;
 - offer a secure transition to signup or login for actions requiring an account.
 
+## Approved anonymous launch flow
+
+- Public visitors may begin chatting anonymously without entering an email address.
+- SocialOlla requests an email address only when the visitor asks for something that requires identity or delivery, including a support ticket, transcript, saved progress, follow-up, or account signup.
+- Providing an email for one purpose does not automatically authorize marketing, create an account, or grant access to private product data.
+- The assistant must explain why the email is needed before requesting it.
+- Anonymous conversation context may be transferred into a new or existing signed-in account only after explicit visitor consent.
+- After signup or login, the assistant must revalidate the actual plan, credits, permissions, connected accounts, feature flags, and provider capabilities before continuing.
+- Public-session assumptions, previews, or promises do not become authenticated entitlements or executable approvals.
+- Abuse controls, guest message limits, and rate limits may be applied, but they must not intentionally reduce answer quality or misrepresent the product.
+
 ## Public guest restrictions
 
 Before login, the assistant must not:
