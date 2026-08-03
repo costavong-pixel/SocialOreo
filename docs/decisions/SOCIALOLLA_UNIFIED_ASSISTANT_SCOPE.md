@@ -96,15 +96,20 @@ Email-alert rules:
 - Sending an alert email does not authorize SocialOlla to retry publishing, spend credits, reconnect accounts, approve replies, or change settings without any separately required confirmation.
 - Email delivery status and sanitized failure reasons must be recorded without unnecessarily storing message content in operational logs.
 
-### Alert recipient settings
+### Alert recipient and CC-slot settings
 
-- The user's verified SocialOlla account email is the default alert recipient.
-- The user may choose a different notification email from Settings.
-- A replacement notification address must be verified before SocialOlla starts sending operational alerts to it.
-- The Settings page must show the active notification recipient and whether it is verified.
-- Changing the notification address must require confirmation and must not change the user's sign-in email or account ownership.
-- The user may restore the verified account email as the default recipient at any time.
-- Until a replacement address is verified, alerts continue going to the current verified recipient so critical communication is not lost.
+- The user's verified SocialOlla account email is the default primary `To` recipient.
+- The user may select another verified address as the primary notification recipient without changing the sign-in email or account ownership.
+- SocialOlla supports optional CC recipient slots so important operational alerts can reach additional people at the same time.
+- Each CC address must be entered, verified, enabled, and removable independently.
+- The Settings page must clearly show the primary recipient, all active CC recipients, verification status, and the alert categories they receive.
+- Before activating a CC address, SocialOlla must explain that normal CC recipients can see the other recipient addresses on the email.
+- The user must preview and confirm recipient changes before they become active.
+- Until a replacement primary address is verified, alerts continue going to the current verified primary recipient.
+- The number of included CC slots, additional-slot price, promotions, plan inclusion, and individual overrides are controlled from the admin dashboard rather than hard-coded.
+- Additional CC slots may be sold as a low-cost add-on so a user can include a manager, partner, assistant, or other trusted person without purchasing an agency plan.
+- Removing or disabling a paid CC slot must not delete historical delivery evidence or change the user's account ownership.
+- CC recipients receive notifications only; they do not gain access to SocialOlla, connected accounts, records, approvals, or billing controls.
 - Notification recipient addresses must not be added to marketing lists merely because they receive operational alerts.
 
 ## User-facing responsibilities
