@@ -70,13 +70,26 @@ Rules:
 5. The assistant extracts structured profile fields, identifies meaningful gaps, and asks only targeted follow-up questions.
 6. The assistant proposes completions for uncertain non-factual fields such as audience, tone, goals, calls to action, and content direction.
 7. The user reviews and approves the resulting profile summary.
-8. Using the approved profile, the assistant creates the first useful title, caption, and draft post.
-9. The user may edit the draft and see a destination-aware preview.
-10. SocialOlla asks the user to connect Instagram or TikTok when the user chooses to publish, schedule, validate a destination-specific feature, or explicitly connect an account earlier.
+8. SocialOlla asks the user to connect at least one supported social account before creating the first destination-ready post.
+9. The user selects and labels the connected Instagram or TikTok account that the profile and first post belong to.
+10. With permission, SocialOlla reads available account metadata and recent public content to improve tone, context, platform fit, and duplicate-content avoidance.
+11. The assistant shows any meaningful difference between the manually approved profile and information obtained from the connected account, then asks the user to approve updates rather than changing the profile silently.
+12. Using the approved profile plus the selected connected-account context, the assistant creates the first title, caption, and draft post.
+13. The user edits and previews the actual destination-specific version before choosing Publish or Schedule.
+14. Publishing or scheduling still requires its own exact destination, timing, credit-cost, and action confirmation.
+
+## Connection-first rule
+
+- A destination-ready onboarding post must not be created as though it belongs to a real channel before that channel is connected and selected.
+- Connecting first lets SocialOlla validate the account identity, platform, permissions, supported formats, caption limits, media requirements, comment capability, and publishing availability.
+- It also lets the assistant use relevant profile context and recent public content where the platform and granted permissions allow.
+- SocialOlla must not claim that connecting an account guarantees every API capability; unsupported or unavailable operations must be shown before the first post is prepared.
+- A generic unsaved example may still be shown on the public website as the approved anonymous demo, but it is not the authenticated user's first destination-ready post.
+- Users may explicitly skip account connection only to explore generic drafting. Such a draft must be labelled unassigned, cannot publish or schedule, and must be revalidated after a destination is connected.
 
 ## Progressive completion
 
-- The user may skip nonessential profile fields and create an initial draft with a visibly incomplete profile.
+- The user may skip nonessential profile fields, but SocialOlla should request the minimum information needed to connect and identify the selected account correctly.
 - The assistant should explain which missing information could improve the result without blocking normal use unnecessarily.
 - Profile setup can continue later through the same floating assistant.
 - A profile-completeness indicator may show useful missing areas, but must not become an artificial score or mandatory marketing checklist.
@@ -95,14 +108,14 @@ Rules:
 
 The onboarding profile provides the user's core identity, goals, audience, voice, and operating context.
 
-Detailed products, services, FAQs, prices, policies, locations, hours, promotions, and documents may also become approved knowledge after review. The assistant uses both the approved profile and relevant approved knowledge when generating content or replies.
+Detailed products, services, FAQs, prices, policies, locations, hours, promotions, and documents may also become approved knowledge after review. The assistant uses the approved profile, relevant approved knowledge, and selected connected-account context when generating content or replies.
 
 ## Credit and cost treatment
 
-- Conversational onboarding, profile entry, profile review, and manual editing should be plan-included unless the admin configures otherwise for a future plan.
-- Importing or processing large documents, websites, images, or other provider-cost operations may be allowance-based or credit-based.
+- Conversational onboarding, profile entry, profile review, account connection, and manual editing should be plan-included unless a provider or future plan creates a separately disclosed cost.
+- Importing or processing large documents, websites, images, social-history data, or other provider-cost operations may be allowance-based or credit-based.
 - Any credit cost must be shown and confirmed before processing.
-- The assistant may not hide a provider-cost action inside a supposedly free profile question.
+- The assistant may not hide a provider-cost action inside a supposedly free profile question or account-connection step.
 
 ## Acceptance requirement
 
@@ -111,5 +124,7 @@ The first-post onboarding experience is not complete unless a new user can:
 - explain their purpose in ordinary language;
 - receive targeted gap-filling help;
 - review and approve a structured profile;
-- generate a relevant first draft based on that approved profile;
-- understand why any remaining information or social-account connection is needed.
+- connect and select a supported social account;
+- understand what account information and permissions SocialOlla can actually use;
+- generate a relevant destination-ready first draft from the approved profile and connected-account context;
+- preview the exact destination version before publishing or scheduling.
