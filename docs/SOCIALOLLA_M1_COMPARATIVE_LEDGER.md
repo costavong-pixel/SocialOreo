@@ -47,7 +47,7 @@
 | Post: evidence and status | Content Factory | reuse behind an adapter | delivery_evidence / h5_delivery_evidence |
 | Watch: ownership/opt-in/cancel/retry/evidence | SocialOreo | reuse unchanged | watch-policy.ts, PR #4 protections |
 | Watch: provider-cost estimates | SocialOreo | reuse after configuration | providerCostEstimate column exists |
-| Watch: scheduler/worker | SocialOreo | migrate with behavior-preserving tests | logic solid; durable scheduler unwired |
+| Watch: scheduler/worker | SocialOreo | reuse after configuration; wiring deferred | logic solid; durable scheduler unwired; no worker enable in M1 |
 | Onboarding/assistant | new | build (provider-disabled) | Slice E + Slice G |
 | Multilingual | new | build | Slice F |
 | Legacy Asset Multiplier + legacy H3 auto-run | Content Factory | retire | flag-off, superseded |
