@@ -69,7 +69,10 @@ Cleanup: cf-m2insB already absent (removed in a prior session); manifest recorde
 - prisma migrate deploy 27/27 on disposable PostgreSQL (twice)
 - Protected CI on PR #7 head c17bafa: verify SUCCESS (run 30915862768 / job 92013712947)
 - Cross-service portable contract tests 20 passed
+- Browser acceptance: 14/14 Playwright tests PASS against production build (screenshots in /tmp/opencode/browser-screenshots)
+- Final head after browser fixes: 467202f (pushed to PR #7; protected CI run 30930903404)
 
 ## Open items before OWNER_REVIEW_GATE
-- CF draft PR creation (owner token required) — branch pushed + CI triggered on push
-- Final exact-head acceptance + independent reviews + E2E
+- CF draft PR creation + PR #7 description update (owner GitHub API token required — no token on server)
+- Confirm protected CI green on the new exact head 467202f
+- Independent browser-acceptance sign-off (inspectors previously GO on code; browser evidence now added)
