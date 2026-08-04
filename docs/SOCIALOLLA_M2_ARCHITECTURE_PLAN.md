@@ -65,3 +65,22 @@
 - SocialOreo: prisma generate/validate, disposable PG migrations, workspace race/isolation, onboarding, Post, Watch credit hold/finalize/refund, Square sandbox entitlement, guest boundaries, assistant confirmation, multilingual, admin config, portable CF contract tests, full suite, lint, typecheck, build, diff, secret/dependency checks.
 - Content Factory (if changed): internal API auth/HMAC/freshness/replay/idempotency/isolation, request/review/cancel, provider-disabled behavior, full unittest/pytest, compile/static/import/startup/process cleanup, diff/secret scan.
 - Mobile/a11y: keyboard, focus, labels, error announcements, breakpoints, RTL, zoom, touch targets, reduced motion (unit-level; no browser tooling installed — recorded limitation).
+
+## 11. Incorporated review conditions (Coordinator B + architecture/security/migration specialists)
+
+All three specialist reviewers and Coordinator B approved the plan with conditions (APPROVE_WITH_CONDITIONS). Conditions are binding M2 build requirements:
+
+1. **Entitlement single authority:** `User.accessPlan`/`freeAuditAllowanceRemaining` become non-authoritative in M2; Watch resolver and dashboard read `EntitlementSnapshot`; `recomputeAccessPlan` stops being an entitlement writer (derived-only).
+2. **Legacy credit/audit paths inert at the source:** `settleSquareCheckout` grant branch and `consume-credit.ts` stop writing legacy `CreditAccount`/`CreditLedger` (mutually exclusive with the canonical grant, enforced structurally); `/api/audits` cannot write legacy credits or call live providers (provider-disabled guard at the `fetchSocialAudit` chokepoint in `provider-router.ts`).
+3. **Monthly batch atomicity:** additive `periodKey` on `CreditBatch` + unique `(workspaceId, kind, periodKey)`; `ensureMonthlyBatch` race-safe and confined to grant/settlement paths (no minting side-effects in `preview()`/`releasePostHold()`).
+4. **Single intent-key + hold-linked guards:** one `intentKey(workspace, destination, intent)` helper shared by execute and release; `refundCredits` only refunds when a matching HOLD exists; `finalizeCredits` requires a matching HOLD with matching amount.
+5. **Single shared batch selector:** monthly-first, then earliest-expiring PURCHASED, skip expired/empty, refuse expired at hold; used by Post, Watch, and admin adjust.
+6. **Watch:** credit-gated, provider-disabled fixture only; live worker unwired with no scheduler; runtime guard refuses live capture unless provider-disabled mode; negative test on the live path.
+7. **Guest/authenticated structural separation:** public assistant route fails closed to Explain/Draft only (no Execute); public demo never touches credit/hold primitives; boundary tests assert guests cannot publish/schedule/access private data/credits.
+8. **One-time checkout tester gate:** `/api/square/checkout` gated by `SQUARE_SANDBOX_TESTER_EMAILS` (or documented tester-only scope).
+9. **CF deploy-time blockers tracked (not staging):** before any public deployment, CF must bind `/internal/v1` separately or ingress-deny `/internal/*`, disable `/docs`+`/openapi.json`, make `/internal/v1/health` read-only/authenticated, redact exception class in `_sanitize_error`; CF client fixes A (response shape), B (query-string HMAC), C (requested_count) precede Post integration.
+10. **Admin adjust/refund:** explicit `ADJUSTMENT` transaction kind + reason + `AuditEvent`, distinct from hold refunds.
+11. **Workspace race fix:** `$transaction`/unique-conflict retry around `getOrCreatePersonalWorkspace` with a concurrent-first-access test.
+12. **Grandfathering + reconciliation:** idempotent mapping of legacy `accessPlan != NONE` users to `PlanVersion`+`EntitlementSnapshot`; `squarePaymentId` reconciliation spec; rollback runbook for M2-window canonical-only grants.
+13. **Build order / dependency graph:** E credit engine first → B workspace/destinations → C/D credit-gated flows sharing the E selector → E settlement + H plan config → F → G; A in parallel.
+14. **Hardening:** replace `Math.random` external-ID generation with `node:crypto`; transcript persistence stores only sanitized field-built content.
