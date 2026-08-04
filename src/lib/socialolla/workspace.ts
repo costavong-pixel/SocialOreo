@@ -18,10 +18,15 @@ export function newWorkspaceExternalId(): string {
  * Race-safe: a concurrent first access retries on the unique-owner conflict.
  *
  * Returns both the canonical contract (externalId) and the internal database
- * primary key so DB operations can use the correct FK.
+ * primary key so DB operations can use the correct FK. An optional db/client
+ * lets callers run the create inside an enclosing transaction.
  */
-export async function getOrCreatePersonalWorkspace(ownerUserId: string, label?: string) {
-  const existing = await prisma.workspace.findUnique({
+export async function getOrCreatePersonalWorkspace(
+  ownerUserId: string,
+  label?: string,
+  db: { workspace: { findUnique: typeof prisma.workspace.findUnique; create: typeof prisma.workspace.create } } = prisma,
+) {
+  const existing = await db.workspace.findUnique({
     where: { ownerUserId },
   });
   if (existing) {
@@ -30,7 +35,7 @@ export async function getOrCreatePersonalWorkspace(ownerUserId: string, label?: 
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const created = await prisma.workspace.create({
+      const created = await db.workspace.create({
         data: {
           externalId: newWorkspaceExternalId(),
           ownerUserId,
@@ -46,7 +51,7 @@ export async function getOrCreatePersonalWorkspace(ownerUserId: string, label?: 
         "code" in error &&
         (error as { code?: string }).code === "P2002";
       if (isUniqueConflict && attempt < 2) {
-        const winner = await prisma.workspace.findUnique({ where: { ownerUserId } });
+        const winner = await db.workspace.findUnique({ where: { ownerUserId } });
         if (winner) return toWorkspace(winner);
         continue;
       }

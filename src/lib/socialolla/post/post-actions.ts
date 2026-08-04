@@ -26,7 +26,8 @@ export async function createPostRequest(input: {
   const preview = await service.preview(input.authUserId, input.destinationExternalId, input.requestedCount);
   if (!preview.batchAvailable) throw new Error("Insufficient credits");
   const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
-  const intent = `${workspace.id}:${input.destinationExternalId}:${(input.contentIntent ?? "post").slice(0, 64)}`;
+  const { intentKey } = await import("@/lib/socialolla/credits/batch-service");
+  const intent = intentKey(workspace.id, input.destinationExternalId, input.contentIntent ?? "post");
   const request = await service.execute({
     authUserId: input.authUserId,
     destinationExternalId: input.destinationExternalId,
@@ -124,6 +125,15 @@ export async function approveAndSchedulePost(input: {
     prisma.postOccurrence.updateMany({
       where: { postRequestId: postRequest.id, kind: "FIRST" },
       data: { status: "SCHEDULED", scheduleAt: input.scheduleAt, timezone: input.timezone },
+    }),
+    prisma.scheduleSlot.create({
+      data: {
+        workspaceId: workspace.dbId,
+        postRequestId: postRequest.id,
+        destinationRef: postRequest.destinationRef,
+        scheduleAt: input.scheduleAt,
+        timezone: input.timezone,
+      },
     }),
   ]);
   return { status: "SCHEDULED" };

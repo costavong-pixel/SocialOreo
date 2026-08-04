@@ -40,8 +40,9 @@ export async function confirmProfile(input: {
     { ...rawDraft, businessName: input.businessName, niche: input.niche, tone: input.tone, targetAudience: input.targetAudience, primaryPlatform: input.primaryPlatform, contentTopics: input.contentTopics ?? [] },
     input.approvedFields,
   );
+  const canonicalProfileExternalId = `prf_${Buffer.from(workspace.dbId).toString("base64url").slice(0, 22)}`;
   const profile = await prisma.profile.upsert({
-    where: { externalId: `prf_${workspace.dbId}` },
+    where: { externalId: canonicalProfileExternalId },
     update: {
       handle: draft.businessName ?? "personal",
       name: draft.businessName,
@@ -50,7 +51,7 @@ export async function confirmProfile(input: {
       defaultLanguage: "en",
     },
     create: {
-      externalId: newProfileExternalId(),
+      externalId: canonicalProfileExternalId,
       workspaceId: workspace.dbId,
       handle: draft.businessName ?? "personal",
       name: draft.businessName,

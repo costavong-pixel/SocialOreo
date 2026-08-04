@@ -9,6 +9,7 @@ import {
   selectSpendableBatch,
 } from "@/lib/socialolla/credits/batch-service";
 import type { PostRequestContract, PostStatus } from "@/lib/socialolla/contracts";
+import { assertProviderDisabledMode } from "@/lib/providers/social/provider-guard";
 
 export interface PostCostPreview {
   estimatedCredits: number;
@@ -60,6 +61,10 @@ export function createPostService(client?: ContentFactoryClient) {
 
   async function execute(input: PostExecutionInput): Promise<PostRequestContract> {
     if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
+    // SECURITY-05: fail-closed at the top of execute(), before any side effect
+    // (same chokepoint guard Watch uses; the Content Factory must never be
+    // reached outside provider-disabled mode in Milestone 2).
+    assertProviderDisabledMode();
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
     const destination = await prisma.destination.findFirst({
       where: { externalId: input.destinationExternalId, workspace: { ownerUserId: input.authUserId } },

@@ -545,6 +545,7 @@ model Workspace {
   watchReports        WatchReport[]
   postRequests        PostRequest[]
   sevenDayPlans       SevenDayPlan[]
+  scheduleSlots       ScheduleSlot[]
 
   @@index([ownerUserId])
 }
@@ -755,4 +756,17 @@ model SevenDayPlan {
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
+}
+
+model ScheduleSlot {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  postRequestId String
+  destinationRef String
+  scheduleAt    DateTime
+  timezone      String    @default("UTC")
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, scheduleAt])
 }

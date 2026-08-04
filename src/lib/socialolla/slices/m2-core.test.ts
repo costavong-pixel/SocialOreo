@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     postRequest: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     postVariant: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     postOccurrence: { create: vi.fn(), updateMany: vi.fn() },
+    scheduleSlot: { create: vi.fn(), findMany: vi.fn() },
     sevenDayPlan: { create: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
     creditBatch: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },

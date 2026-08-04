@@ -44,6 +44,7 @@ const BATCH_ROW = {
 describe("Slice C — SocialOreo Post integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "true");
     mocks.prisma.workspace.findUnique.mockResolvedValue({
       id: "ws-internal-1",
       externalId: "wsp_abcdefghijklmnop",
@@ -107,6 +108,25 @@ describe("Slice C — SocialOreo Post integration", () => {
         confirmed: false,
       }),
     ).rejects.toThrow("confirmation");
+  });
+
+  it("refuses to execute when provider-disabled mode is off (fail-closed guard, before any side effect)", async () => {
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
+    const { createPostService } = await import("./post-service");
+    const service = createPostService();
+    await expect(
+      service.execute({
+        authUserId: "user-1",
+        destinationExternalId: "dst_abcdefghijklmnop",
+        language: "en",
+        requestedCount: 10,
+        confirmed: true,
+        contentIntent: "opening promo",
+      }),
+    ).rejects.toThrow("Live provider calls are disabled");
+    // No side effects happened: no hold, no request, no refund, no audit.
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
   });
 
   it("rejects a destination that is not bound to the workspace", async () => {

@@ -37,17 +37,22 @@ export function periodKeyForDate(date: Date = new Date()): string {
 
 /**
  * Ensure the current-period MONTHLY batch for a workspace, created race-safely
- * under a unique (workspaceId, kind, periodKey) constraint. Confined to
- * grant/settlement paths (never called from read/preview paths).
+ * under a unique (workspaceId, kind, periodKey) constraint. Reuses an existing
+ * period batch instead of blind-creating (no double-grant / no double-credit),
+ * and returns `created` so callers can report whether new credits were minted.
+ * An optional `db` lets settlement run the create inside the enclosing
+ * transaction. Confined to grant/settlement paths (never read/preview/release).
  */
 export async function ensureMonthlyBatch(input: {
   internalWorkspaceId: string;
   externalWorkspaceId: string;
   includedCredits: number;
   periodKey?: string;
+  db?: { creditBatch: { findFirst: typeof prisma.creditBatch.findFirst; create: typeof prisma.creditBatch.create } };
 }) {
+  const { db = prisma } = input;
   const period = input.periodKey ?? periodKeyForDate();
-  const existing = await prisma.creditBatch.findFirst({
+  const existing = await db.creditBatch.findFirst({
     where: { workspaceId: input.internalWorkspaceId, kind: "MONTHLY", periodKey: period },
   });
   if (existing) {
@@ -60,12 +65,13 @@ export async function ensureMonthlyBatch(input: {
       remaining: existing.remaining,
       expiresAt: existing.expiresAt?.toISOString() ?? null,
       createdAt: existing.createdAt.toISOString(),
+      created: false,
     };
   }
   if (input.includedCredits <= 0) return null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const created = await prisma.creditBatch.create({
+      const created = await db.creditBatch.create({
         data: {
           externalId: newCreditBatchExternalId(),
           workspaceId: input.internalWorkspaceId,
@@ -84,11 +90,12 @@ export async function ensureMonthlyBatch(input: {
         remaining: created.remaining,
         expiresAt: null,
         createdAt: created.createdAt.toISOString(),
+        created: true,
       };
     } catch (error) {
       const isUniqueConflict = error instanceof Error && "code" in error && (error as { code?: string }).code === "P2002";
       if (isUniqueConflict && attempt < 2) {
-        const winner = await prisma.creditBatch.findFirst({
+        const winner = await db.creditBatch.findFirst({
           where: { workspaceId: input.internalWorkspaceId, kind: "MONTHLY", periodKey: period },
         });
         if (winner) {
@@ -101,6 +108,7 @@ export async function ensureMonthlyBatch(input: {
             remaining: winner.remaining,
             expiresAt: winner.expiresAt?.toISOString() ?? null,
             createdAt: winner.createdAt.toISOString(),
+            created: false,
           };
         }
         continue;

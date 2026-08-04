@@ -279,7 +279,7 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
         // M2 canonical path: credits granted as PURCHASED CreditBatch via the
         // canonical entitlement service (no legacy CreditAccount writes).
         const { grantCanonicalPack } = await import("@/lib/socialolla/entitlements/entitlement-service");
-        const granted = await grantCanonicalPack({ ownerUserId: checkout.userId, squarePaymentId: input.paymentId, product: checkout.product });
+        const granted = await grantCanonicalPack({ ownerUserId: checkout.userId, squarePaymentId: input.paymentId, product: checkout.product }, transaction);
         return { status: "settled" as const, creditsGranted: granted.creditsGranted };
       }
 
@@ -297,11 +297,14 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
       if (checkout.product === "LIFETIME") {
         // M2 canonical lifetime grant: versioned entitlement + PURCHASED batch.
         const { grantLifetimeEntitlement } = await import("@/lib/socialolla/entitlements/entitlement-service");
-        const granted = await grantLifetimeEntitlement({
-          ownerUserId: checkout.userId,
-          squarePaymentId: input.paymentId,
-          priceCents: Number(process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS ?? 7900),
-        });
+        const granted = await grantLifetimeEntitlement(
+          {
+            ownerUserId: checkout.userId,
+            squarePaymentId: input.paymentId,
+            priceCents: Number(process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS ?? 7900),
+          },
+          transaction,
+        );
         return { status: "settled" as const, creditsGranted: granted.creditsGranted };
       }
 

@@ -57,7 +57,7 @@ export function createWatchService() {
     const intent = intentKey(workspace.id, `watch:${input.profileUrl}`, "basic-profile-analysis");
     const reference = `watch:${input.profileUrl}`;
 
-    let report: { id: string; externalId: string };
+    let report: { id: string; externalId: string } | undefined;
     try {
       // Hold inside the try so a report-creation failure refunds the hold.
       const hold = await holdCredits({
@@ -89,12 +89,14 @@ export function createWatchService() {
       await finalizeCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId });
       return { reportExternalId: report.externalId, status: "COMPLETED", analysis };
     } catch (error) {
-      await prisma.watchReport
-        .updateMany({
-          where: { status: "RUNNING" },
-          data: { status: "FAILED", completedAt: new Date() },
-        })
-        .catch(() => undefined);
+      if (report && report.id) {
+        await prisma.watchReport
+          .updateMany({
+            where: { id: report.id, status: "RUNNING" },
+            data: { status: "FAILED", completedAt: new Date() },
+          })
+          .catch(() => undefined);
+      }
       await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId }).catch(() => undefined);
       throw error;
     }

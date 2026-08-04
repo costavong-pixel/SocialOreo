@@ -37,6 +37,7 @@ const BATCH_ROW = {
 describe("Staging acceptance — approved conversational onboarding flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "true");
     mocks.prisma.workspace.findUnique.mockResolvedValue({
       id: "ws-internal-1",
       externalId: "wsp_abcdefghijklmnop",
