@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { prisma } from "@/lib/db/prisma";
 import { translate } from "@/lib/socialolla/i18n/translations";
@@ -11,10 +11,10 @@ export const metadata = { title: "Home — SocialOlla" };
 const LOCALE = "en-US";
 
 export default async function M2HomePage() {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await resolveDbUserFromVerifiedSession();
   if (!sessionUser) redirect("/auth/login");
 
-  const workspace = await getOrCreatePersonalWorkspace(sessionUser.id);
+  const workspace = await getOrCreatePersonalWorkspace(sessionUser.dbId);
   const destinations = await prisma.destination.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { createdAt: "asc" },

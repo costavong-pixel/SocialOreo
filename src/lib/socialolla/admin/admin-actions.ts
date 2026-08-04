@@ -16,7 +16,7 @@ export function adminPlanConfig(): Record<string, PlanDefinition> {
   return planConfig();
 }
 
-export async function adminSetLifetimePriceCents(adminAuthUserId: string, priceCents: number): Promise<PlanDefinition> {
+export async function adminSetLifetimePriceCents(adminAuthUserId: string, adminDbUserId: string, priceCents: number): Promise<PlanDefinition> {
   const adminOk = await requireAdminByAuthUserId(adminAuthUserId);
   if (!adminOk) throw new Error("Admin role required");
   if (!Number.isInteger(priceCents) || priceCents <= 0) throw new Error("Invalid price");
@@ -26,7 +26,7 @@ export async function adminSetLifetimePriceCents(adminAuthUserId: string, priceC
   process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS = String(priceCents);
   // SECURITY-08: admin price changes must be auditable. The event is scoped to
   // the admin's personal workspace so audit viewers can find it.
-  const workspace = await getOrCreatePersonalWorkspace(adminAuthUserId);
+  const workspace = await getOrCreatePersonalWorkspace(adminDbUserId);
   await prisma.auditEvent.create({
     data: {
       externalId: newAuditEventExternalId(),
@@ -39,10 +39,10 @@ export async function adminSetLifetimePriceCents(adminAuthUserId: string, priceC
   return lifetimePlan();
 }
 
-export async function adminInspectEntitlement(authUserId: string) {
+export async function adminInspectEntitlement(authUserId: string, dbUserId: string) {
   const adminOk = await requireAdminByAuthUserId(authUserId);
   if (!adminOk) throw new Error("Admin role required");
-  const workspace = await getOrCreatePersonalWorkspace(authUserId);
+  const workspace = await getOrCreatePersonalWorkspace(dbUserId);
   const snapshot = await prisma.entitlementSnapshot.findFirst({
     where: { workspaceId: workspace.dbId },
     orderBy: { validFrom: "desc" },
@@ -56,14 +56,16 @@ export async function adminInspectEntitlement(authUserId: string) {
 
 export async function adminAdjustCredits(input: {
   adminAuthUserId: string;
-  targetUserId: string;
+  adminDbUserId: string;
+  targetAuthUserId: string;
+  targetDbUserId: string;
   amount: number;
   reason: string;
 }) {
   const adminOk = await requireAdminByAuthUserId(input.adminAuthUserId);
   if (!adminOk) throw new Error("Admin role required");
   if (input.amount === 0) throw new Error("Amount must be non-zero");
-  const workspace = await getOrCreatePersonalWorkspace(input.targetUserId);
+  const workspace = await getOrCreatePersonalWorkspace(input.targetDbUserId);
   const result = await adjustCredits({
     internalWorkspaceId: workspace.dbId,
     amount: input.amount,
@@ -75,10 +77,10 @@ export async function adminAdjustCredits(input: {
   return result;
 }
 
-export async function adminAuditEvents(authUserId: string, limit = 100) {
+export async function adminAuditEvents(authUserId: string, dbUserId: string, limit = 100) {
   const adminOk = await requireAdminByAuthUserId(authUserId);
   if (!adminOk) throw new Error("Admin role required");
-  const workspace = await getOrCreatePersonalWorkspace(authUserId);
+  const workspace = await getOrCreatePersonalWorkspace(dbUserId);
   return prisma.auditEvent.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { occurredAt: "desc" },

@@ -191,9 +191,9 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     const { adminPlanConfig, adminAdjustCredits, adminInspectEntitlement } = await import("@/lib/socialolla/admin/admin-actions");
     const config = adminPlanConfig();
     expect(config.lifetime.priceCents).toBe(7900);
-    const inspected = await adminInspectEntitlement("user-1");
+    const inspected = await adminInspectEntitlement("admin-1", "user-1");
     expect(inspected.workspaceId).toBe("wsp_slice000000000000");
-    const adjusted = await adminAdjustCredits({ adminAuthUserId: "admin-1", targetUserId: "user-1", amount: 5, reason: "promo" });
+    const adjusted = await adminAdjustCredits({ adminAuthUserId: "admin-1", adminDbUserId: "db-admin-1", targetAuthUserId: "user-1", targetDbUserId: "user-1", amount: 5, reason: "promo" });
     expect(adjusted.adjusted).toBe(true);
     expect(mocks.prisma.auditEvent.create).toHaveBeenCalled();
   });

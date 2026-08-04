@@ -1,9 +1,37 @@
 # SocialOlla M2 — Completion Ledger
 
-Status: OPEN (completion loop in progress)
-Inspectors: Backend/Data/Security GO; Product/UI/Journey BLOCK → resolved after journey wiring
+Status: OPEN (browser-driven acceptance complete; awaiting OWNER_REVIEW_GATE)
+Inspectors: Backend/Data/Security GO; Product/UI/Journey GO; Test/CI/Review GO
 Peer review: GO (conditional) on 41f5509; REV-001..007 fixed in b7b0be8
 Cleanup: cf-m2insB already absent (removed in a prior session); manifest recorded in LangGraph checkpoint; quarantine folder preserved.
+
+## Browser-driven acceptance (this phase)
+- Installed @playwright/test + chromium (dev-only, not in package.json deps)
+- Added playwright.config.mjs + tests/e2e/browser-smoke.spec.js (14 tests)
+- Ran against production build (`next build` + `next start` on :3006) because the
+  Turbopack dev server does not hydrate client forms reliably (dev-only quirk;
+  the application itself is correct — verified identical flow in production).
+- 14/14 browser tests PASS with screenshots in /tmp/opencode/browser-screenshots:
+  landing, pricing ($79 canonical), free demo (editable/copyable/consent),
+  guest protected-action boundary (redirect to /auth/login), shell + onboarding,
+  connections (sandbox), posts (variant editor + schedule), watch (credit-cost
+  confirm), credits (batches/ledger + checkout), assistant (protected preview),
+  admin (price form + adjust/refund + audit), calendar (7-day plan + slots),
+  mobile nav + keyboard focus, language selector + RTL (dir=rtl for ar-SA).
+
+## Browser acceptance findings (fixed this phase)
+- BROWSER-01 [HIGH, real bug]: Workspace.ownerUserId references User.id (DB PK),
+  but m2 server actions passed the Auth0 `sub` → P2003 FK violation on every
+  authenticated workspace-touching page (home/onboarding/posts/watch/credits/
+  calendar/settings/admin). Unit tests never caught it because Prisma is mocked.
+  FIXED: requireUser() now resolves the session user via syncUserFromAuth0 and
+  returns { dbId, authUserId }; all workspace calls use dbId; admin actions take
+  both authUserId (role check) and dbUserId (workspace); the four pages resolve
+  via resolveDbUserFromVerifiedSession().
+- BROWSER-02 [MEDIUM]: free demo cookie was set inside the m2Demo Server Action,
+  which triggers a full Next.js re-navigation (`/demo?`) that discards the demo
+  result. FIXED: the one-per-visitor signed cookie is now issued in middleware
+  (src/proxy.ts, Web Crypto HMAC) on the /demo GET; m2Demo is cookie-read-only.
 
 ## P1 UI/Journey findings (closed)
 - UI-24/25/26/27, JOURNEY-01/03/04/05/06/07/08/09, UI-04/19, UI-21/22/23 — closed in 41f5509 + b7b0be8
@@ -12,6 +40,7 @@ Cleanup: cf-m2insB already absent (removed in a prior session); manifest recorde
    demo edit/copy/consent/one-per-visitor, i18n+RTL, a11y, states)
 - Peer review REV-001..007 — closed in b7b0be8 (first-post form mounted, monthly grant, demo secret,
   admin price form, honest consent copy, provider-mode prop, verified-session demo)
+
 
 ## P2 Backend findings (closed)
 - DATA-01 → closed (settlement atomicity via txn client)

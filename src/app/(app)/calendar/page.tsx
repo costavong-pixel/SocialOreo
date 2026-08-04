@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { prisma } from "@/lib/db/prisma";
 import { shellStateLabel } from "@/lib/socialolla/shell/shell";
@@ -9,10 +9,10 @@ export const metadata = { title: "Calendar — SocialOlla" };
 type DayPlanItem = { day: number; topic: string; status?: string };
 
 export default async function M2CalendarPage() {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await resolveDbUserFromVerifiedSession();
   if (!sessionUser) redirect("/auth/login");
 
-  const workspace = await getOrCreatePersonalWorkspace(sessionUser.id);
+  const workspace = await getOrCreatePersonalWorkspace(sessionUser.dbId);
   const slots = await prisma.scheduleSlot.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { scheduleAt: "asc" },

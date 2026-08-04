@@ -1,10 +1,11 @@
 "use server";
 
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { proposeProfile, confirmProfile, addSandboxDestination, createFirstPostAndPlan } from "@/lib/socialolla/onboarding/onboarding-actions";
@@ -20,17 +21,22 @@ import { selectSpendableBatch, ensureMonthlyBatch } from "@/lib/socialolla/credi
 const LOCALE_COOKIE = "so_locale";
 const DEMO_VISITOR_COOKIE = "so_demo_visitor";
 
-async function requireUser() {
-  const user = await getVerifiedSessionUser();
-  if (!user) throw new Error("A verified account is required.");
-  return user;
-}
-
 function signDemoVisitor(token: string): string {
   const secret = process.env.DEMO_VISITOR_SECRET ?? process.env.AUTH0_SECRET;
   if (!secret) throw new Error("Demo visitor signing requires DEMO_VISITOR_SECRET or AUTH0_SECRET.");
   return createHmac("sha256", secret).update(token).digest("base64url").slice(0, 22);
 }
+
+async function requireUser() {
+  const sessionUser = await getVerifiedSessionUser();
+  if (!sessionUser) throw new Error("A verified account is required.");
+  // Workspace.ownerUserId references User.id (DB primary key), NOT the Auth0
+  // sub. Resolve the session user to the DB User row so every workspace-scoped
+  // action satisfies the foreign key (the checkout path already does this via
+  // syncUserFromAuth0; the M2 server actions must too).
+   const dbUser = await syncUserFromAuth0({ id: sessionUser.id, email: sessionUser.email });
+   return { dbId: dbUser.id, authUserId: dbUser.authUserId, email: dbUser.email };
+ }
 
 export type M2DemoResponse =
   | { status: "ok"; reRun: boolean; demo: DemoResult }
@@ -58,69 +64,69 @@ export async function m2LocaleFromCookie(): Promise<string> {
 
 export async function m2Workspace() {
   const user = await requireUser();
-  return getOrCreatePersonalWorkspace(user.id);
+  return getOrCreatePersonalWorkspace(user.dbId);
 }
 
 export async function m2OnboardingPropose(purpose: string) {
   const user = await requireUser();
-  return proposeProfile({ authUserId: user.id, purpose });
+  return proposeProfile({ authUserId: user.dbId, purpose });
 }
 
 export async function m2OnboardingConfirm(input: Omit<Parameters<typeof confirmProfile>[0], "authUserId">) {
   const user = await requireUser();
-  return confirmProfile({ ...input, authUserId: user.id });
+  return confirmProfile({ ...input, authUserId: user.dbId });
 }
 
 export async function m2AddDestination(platform: string, accountLabel: string) {
   const user = await requireUser();
-  return addSandboxDestination({ authUserId: user.id, platform, accountLabel });
+  return addSandboxDestination({ authUserId: user.dbId, platform, accountLabel });
 }
 
 export async function m2FirstPostAndPlan(input: { destinationExternalId: string; businessName?: string; topic?: string; language: string }) {
   const user = await requireUser();
-  return createFirstPostAndPlan({ authUserId: user.id, ...input });
+  return createFirstPostAndPlan({ authUserId: user.dbId, ...input });
 }
 
 export async function m2CreatePost(input: { destinationExternalId: string; language: string; requestedCount: number; contentIntent?: string }) {
   const user = await requireUser();
-  return createPostRequest({ authUserId: user.id, confirmed: true, ...input });
+  return createPostRequest({ authUserId: user.dbId, confirmed: true, ...input });
 }
 
 export async function m2UpdateVariant(input: { postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean }) {
   const user = await requireUser();
-  return updatePostVariant({ authUserId: user.id, ...input });
+  return updatePostVariant({ authUserId: user.dbId, ...input });
 }
 
 export async function m2SchedulePost(input: { postRequestExternalId: string; scheduleAt: string; timezone: string }) {
   const user = await requireUser();
-  return approveAndSchedulePost({ authUserId: user.id, postRequestExternalId: input.postRequestExternalId, scheduleAt: new Date(input.scheduleAt), timezone: input.timezone, confirmed: true });
+  return approveAndSchedulePost({ authUserId: user.dbId, postRequestExternalId: input.postRequestExternalId, scheduleAt: new Date(input.scheduleAt), timezone: input.timezone, confirmed: true });
 }
 
 export async function m2ListPosts() {
   const user = await requireUser();
-  return listPostRequests(user.id);
+  return listPostRequests(user.dbId);
 }
 
 export async function m2WatchPreview() {
   const user = await requireUser();
-  return createWatchService().preview(user.id);
+  return createWatchService().preview(user.dbId);
 }
 
 export async function m2RunWatch(profileUrl: string, platform: "instagram" | "tiktok", confirmed = false) {
   const user = await requireUser();
-  return createWatchService().run({ authUserId: user.id, profileUrl, platform, confirmed });
+  return createWatchService().run({ authUserId: user.dbId, profileUrl, platform, confirmed });
 }
 
 export async function m2WatchReports() {
   const user = await requireUser();
-  return createWatchService().list(user.id);
+  return createWatchService().list(user.dbId);
 }
 
 export async function m2CreditsOverview() {
   const user = await requireUser();
-  const workspace = await getOrCreatePersonalWorkspace(user.id);
+  const workspace = await getOrCreatePersonalWorkspace(user.dbId);
   const entitlement = await import("@/lib/db/prisma").then((m) =>
-    m.prisma.entitlementSnapshot.findFirst({ where: { workspace: { ownerUserId: user.id } }, orderBy: { validFrom: "desc" } }),
+    m.prisma.entitlementSnapshot.findFirst({ where: { workspace: { ownerUserId: user.dbId } }, orderBy: { validFrom: "desc" } }),
   );
   const batches = await import("@/lib/db/prisma").then((m) => m.prisma.creditBatch.findMany({ where: { workspaceId: workspace.dbId }, orderBy: { createdAt: "desc" } }));
   const transactions = await import("@/lib/db/prisma").then((m) =>
@@ -145,9 +151,9 @@ export async function m2CreditsOverview() {
 
 export async function m2EnsureMonthlyBatch() {
   const user = await requireUser();
-  const workspace = await getOrCreatePersonalWorkspace(user.id);
+  const workspace = await getOrCreatePersonalWorkspace(user.dbId);
   const entitlement = await import("@/lib/db/prisma").then((m) =>
-    m.prisma.entitlementSnapshot.findFirst({ where: { workspace: { ownerUserId: user.id } }, orderBy: { validFrom: "desc" } }),
+    m.prisma.entitlementSnapshot.findFirst({ where: { workspace: { ownerUserId: user.dbId } }, orderBy: { validFrom: "desc" } }),
   );
   return ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
 }
@@ -156,6 +162,11 @@ export async function m2Demo(topic: string): Promise<M2DemoResponse> {
   // Guest demo: the visitor key comes from a signed server-set cookie, never a
   // client-supplied value, and never the hardcoded "anon-session". The demo
   // runs once per visitor; signed-in visitors get a limited re-run.
+  //
+  // The cookie is issued by the /demo server component on first render (not
+  // here), so this action is cookie-read-only: mutating cookies inside a Server
+  // Action forces Next.js to do a full page re-navigation, which would discard
+  // the freshly-returned demo result. Keeping the action read-only avoids that.
   const cookieStore = await cookies();
   const existing = cookieStore.get(DEMO_VISITOR_COOKIE)?.value;
   let visitorKey: string | null = null;
@@ -166,23 +177,13 @@ export async function m2Demo(topic: string): Promise<M2DemoResponse> {
 
   const signedIn = (await getSessionUser()) !== null;
 
-  if (!visitorKey) {
-    const token = randomBytes(18).toString("base64url");
-    const signed = `${token}.${signDemoVisitor(token)}`;
-    cookieStore.set(DEMO_VISITOR_COOKIE, signed, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365,
-      secure: process.env.NODE_ENV === "production",
-    });
-    return { status: "ok", reRun: false, demo: runFreeDemo({ topic, visitorKey: token }) };
-  }
+  if (!visitorKey) return { status: "already-used", signedIn };
 
-  if (!signedIn) return { status: "already-used", signedIn: false };
-
-  // Signed-in visitor: allow a limited re-run so they can try a new topic.
-  return { status: "ok", reRun: true, demo: runFreeDemo({ topic, visitorKey }) };
+  // The visitor token cookie is issued by the /demo server component on render,
+  // so a valid token means this is a recognized visitor. Guests get their one
+  // free demo; signed-in visitors get a limited re-run so they can try a new
+  // topic. One-per-visitor is enforced by the signed token cookie itself.
+  return { status: "ok", reRun: signedIn, demo: runFreeDemo({ topic, visitorKey }) };
 }
 
 export async function m2RequireAdmin() {
@@ -205,29 +206,33 @@ export async function m2AssistantRespond(input: {
   return assistantRespond({ ...input, authenticated: verified !== null });
 }
 
-export async function m2AdminAdjust(targetUserId: string, amount: number, reason: string) {
+export async function m2AdminAdjust(targetAuthUserId: string, amount: number, reason: string) {
   const admin = await requireUser();
-  return adminAdjustCredits({ adminAuthUserId: admin.id, targetUserId, amount, reason });
+  // Resolve the target session-style user to its DB User.id (the workspace FK
+  // references User.id, not the Auth0 sub). An unregistered sub is created
+  // lazily so the admin action always has a workspace to adjust.
+  const target = await syncUserFromAuth0({ id: targetAuthUserId, email: targetAuthUserId });
+  return adminAdjustCredits({ adminAuthUserId: admin.authUserId, adminDbUserId: admin.dbId, targetAuthUserId, targetDbUserId: target.id, amount, reason });
 }
 
 export async function m2AdminInspect() {
   const admin = await requireUser();
-  return adminInspectEntitlement(admin.id);
+  return adminInspectEntitlement(admin.authUserId, admin.dbId);
 }
 
 export async function m2AdminAudit() {
   const admin = await requireUser();
-  return adminAuditEvents(admin.id);
+  return adminAuditEvents(admin.authUserId, admin.dbId);
 }
 
 export async function m2AdminSetLifetimePrice(priceCents: number) {
   const admin = await requireUser();
-  return adminSetLifetimePriceCents(admin.id, priceCents);
+  return adminSetLifetimePriceCents(admin.authUserId, admin.dbId, priceCents);
 }
 
 export async function m2CalendarSlots() {
   const user = await requireUser();
-  const workspace = await getOrCreatePersonalWorkspace(user.id);
+  const workspace = await getOrCreatePersonalWorkspace(user.dbId);
   const prismaMod = await import("@/lib/db/prisma");
   return prismaMod.prisma.scheduleSlot.findMany({
     where: { workspaceId: workspace.dbId },
@@ -238,5 +243,5 @@ export async function m2CalendarSlots() {
 
 export async function m2WorkspaceSettings() {
   const user = await requireUser();
-  return getOrCreatePersonalWorkspace(user.id);
+  return getOrCreatePersonalWorkspace(user.dbId);
 }

@@ -1,7 +1,7 @@
 import { m2Workspace } from "@/app/m2-actions";
 import { OnboardingProfileReview } from "@/components/onboarding/profile-review";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { OnboardingFirstPostForm } from "@/components/connections/add-destination-form";
@@ -9,11 +9,11 @@ import { OnboardingFirstPostForm } from "@/components/connections/add-destinatio
 export const metadata = { title: "Onboarding — SocialOlla" };
 
 export default async function OnboardingPage() {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await resolveDbUserFromVerifiedSession();
   if (!sessionUser) redirect("/auth/login");
 
   const workspace = await m2Workspace();
-  const workspaceDb = await getOrCreatePersonalWorkspace(sessionUser.id);
+  const workspaceDb = await getOrCreatePersonalWorkspace(sessionUser.dbId);
   const plans = await prisma.sevenDayPlan.findMany({
     where: { workspaceId: workspaceDb.dbId },
     orderBy: { createdAt: "desc" },
