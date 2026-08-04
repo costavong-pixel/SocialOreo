@@ -63,3 +63,6 @@ next-env.d.ts
 .specify/
 .vscode/
 .idea/
+
+# LangGraph durable orchestration checkpoints (milestone state, not product code)
+.langgraph-socialolla/

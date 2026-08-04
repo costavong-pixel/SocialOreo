@@ -92,6 +92,7 @@ model User {
   squareCheckouts             SquareCheckout[]
   squareSubscriptions         SquareSubscription[]
   squarePaymentAuditLogs      SquarePaymentAuditLog[]
+  workspaces                  Workspace[]
 }
 
 model InstagramInsightsConnection {
@@ -493,4 +494,152 @@ model ProviderCallLog {
   errorMessage      String?
   createdAt         DateTime  @default(now())
   auditJob          AuditJob? @relation(fields: [auditJobId], references: [id], onDelete: SetNull)
+}
+
+// =============================================================================
+// SocialOlla Milestone 1 canonical contracts (additive-only, new tables only).
+// No existing table/column/enum is modified.
+// =============================================================================
+
+enum WorkspaceProvider {
+  PERSONAL
+}
+
+enum DestinationStatus {
+  CONNECTED
+  REAUTH_REQUIRED
+  DISCONNECTED
+}
+
+enum CreditBatchKind {
+  MONTHLY
+  PURCHASED
+}
+
+enum CreditTransactionKind {
+  HOLD
+  FINALIZE
+  REFUND
+}
+
+enum PlanStatus {
+  ACTIVE
+  RETIRED
+}
+
+model Workspace {
+  id                  String   @id @default(cuid())
+  externalId          String   @unique
+  ownerUserId         String   @unique
+  label               String
+  defaultLocale       String   @default("en-US")
+  provider            WorkspaceProvider @default(PERSONAL)
+  createdAt           DateTime @default(now())
+  ownerUser           User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  destinations        Destination[]
+  profiles            Profile[]
+  entitlementSnapshots EntitlementSnapshot[]
+  creditBatches       CreditBatch[]
+  auditEvents         AuditEvent[]
+
+  @@index([ownerUserId])
+}
+
+model Destination {
+  id              String            @id @default(cuid())
+  externalId      String            @unique
+  workspaceId     String
+  label           String
+  platform        String
+  platformUserId  String?
+  accountLabel    String?
+  status          DestinationStatus @default(DISCONNECTED)
+  providerDisabled Boolean          @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, platform])
+}
+
+model Profile {
+  id              String   @id @default(cuid())
+  externalId      String   @unique
+  workspaceId     String
+  handle          String
+  name            String?
+  platform        String
+  locale          String?
+  defaultLanguage String?
+  createdAt       DateTime @default(now())
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model PlanVersion {
+  id                   String               @id @default(cuid())
+  externalId           String               @unique
+  version              Int
+  name                 String
+  status               PlanStatus           @default(ACTIVE)
+  createdAt            DateTime             @default(now())
+  entitlementSnapshots EntitlementSnapshot[]
+}
+
+model EntitlementSnapshot {
+  id                     String       @id @default(cuid())
+  externalId             String       @unique
+  workspaceId            String
+  planVersionId          String
+  maxWatchCompetitors    Int          @default(3)
+  maxDestinations        Int          @default(1)
+  includedMonthlyCredits Int          @default(0)
+  postCreditsPerRequest  Int          @default(1)
+  validFrom              DateTime     @default(now())
+  workspace              Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  planVersion            PlanVersion  @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+
+  @@index([workspaceId])
+}
+
+model CreditBatch {
+  id           String          @id @default(cuid())
+  externalId   String          @unique
+  workspaceId  String
+  kind         CreditBatchKind
+  amount       Int
+  remaining    Int
+  expiresAt    DateTime?
+  createdAt    DateTime        @default(now())
+  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions CreditTransaction[]
+
+  @@index([workspaceId, kind])
+}
+
+model CreditTransaction {
+  id             String               @id @default(cuid())
+  batchId        String
+  kind           CreditTransactionKind
+  amount         Int
+  reference      String
+  idempotencyKey String               @unique
+  createdAt      DateTime             @default(now())
+  batch          CreditBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+}
+
+model AuditEvent {
+  id              String     @id @default(cuid())
+  externalId      String     @unique
+  workspaceId     String?
+  actorAuthUserId String?
+  eventType       String
+  payload         Json?
+  occurredAt      DateTime   @default(now())
+  workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, occurredAt])
 }

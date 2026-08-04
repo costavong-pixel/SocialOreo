@@ -1,0 +1,76 @@
+# SocialOlla Assistant Session and Transcript Policy
+
+**Decision date:** 2026-08-02  
+**Status:** Confirmed product direction  
+**Applies to:** SocialOlla roadmap coordination PR #5
+
+## Session continuity
+
+- The floating assistant preserves the active conversation while the authenticated user moves between authorized SocialOlla pages in the same active session.
+- Assistant conversation history is not intended to resume after logout.
+- Assistant conversation history is not synchronized to another device.
+- Signing in again starts a new assistant conversation unless a future plan explicitly changes this policy.
+- Ending an assistant session must not delete posts, schedules, approved knowledge, Watch reports, credit records, publishing evidence, or other product records created through the conversation.
+- Pending actions that were not confirmed or completed must not execute after logout.
+
+## Transcript offer
+
+- SocialOlla asks the user whether they want a copy of the visible conversation transcript before logout or when they choose to end or clear the assistant session.
+- A transcript-export option must also remain available from the chat panel menu during the active session, so the user does not depend only on the logout prompt.
+- Declining the transcript must not block logout or ending the session.
+- Transcript creation is user-initiated and must clearly state what will be included.
+
+## Transcript contents
+
+The copy may include only user-visible session information, such as:
+
+- user messages;
+- assistant replies;
+- visible action previews and confirmations;
+- visible credit-cost notices and outcomes;
+- visible links or identifiers for posts, schedules, Watch reports, or other records created during the session;
+- session date and time information.
+
+The transcript must not include:
+
+- hidden prompts or internal reasoning;
+- API keys, tokens, passwords, or provider secrets;
+- raw server logs or internal stack traces;
+- private data from another user, workspace, connected account, or admin scope;
+- hidden provider payloads or internal security metadata.
+
+## Privacy and reliability
+
+- The transcript must be scoped to the exact authenticated user and active workspace.
+- Generating a transcript must not change product data or repeat any action.
+- Transcript generation must not consume credits unless a future explicitly priced premium export format is introduced and shown before confirmation.
+- If transcript generation fails, logout or session closure must still remain available.
+- The system should record that an export was requested and whether it succeeded, without storing unnecessary transcript content in operational logs.
+
+## Email delivery
+
+- Email is the default and initial transcript delivery method.
+- Before sending, SocialOlla must show the destination email address and require confirmation.
+- The user's verified account email should be prefilled when available.
+- The email must identify the SocialOlla account, transcript session date/time, and active workspace without exposing secrets or unnecessary internal identifiers.
+- The transcript is placed directly in the email body for the initial release.
+- No transcript attachment is required for the initial release.
+- The email body should use readable headings, timestamps, speaker labels, and links to user-visible SocialOlla records created during the session.
+- Long transcripts may be divided into clearly labelled sections, but the complete user-visible transcript should remain in the email body unless email-provider size limits make delivery impossible.
+- If the transcript exceeds provider message-size limits, SocialOlla must explain the limitation rather than silently omitting content; a future secure download-link fallback may be added separately.
+- Transcript emails must use a unique delivery idempotency key so retries cannot send accidental duplicates.
+- Delivery status, timestamp, recipient address, and sanitized failure reason must be recorded without logging the full transcript unnecessarily.
+- If email delivery fails, the user should be told clearly and allowed to retry during the active session.
+- Email delivery is included without credits unless a future separately priced premium transcript service is introduced and confirmed before use.
+- A downloadable transcript or PDF attachment is not required for the initial product direction, but may be added later.
+
+## Recipient address policy
+
+- The user may send the transcript to any syntactically valid email address they enter; delivery is not restricted to the SocialOlla account email.
+- SocialOlla must display the exact recipient address and require final confirmation before sending.
+- When the recipient differs from the account email, SocialOlla must clearly warn that the transcript may contain private account or conversation information.
+- The user may edit the address before confirmation.
+- Invalid or malformed addresses must be rejected before the send attempt.
+- Sending to another address does not grant that recipient access to the SocialOlla account, workspace, records, or future conversations.
+- The transcript email must not contain reusable login links, authentication tokens, provider credentials, or hidden account data.
+- Recipient addresses used for one transcript must not automatically become permanent account contacts or marketing recipients.
