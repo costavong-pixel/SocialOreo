@@ -56,7 +56,7 @@ function sha256(text: string): string {
 
 function stagedCandidates(externalId: string, count: number, language: string): unknown[] {
   const seed = sha256(externalId);
-  return Array.from({ length: Math.min(count, 10) }).map((_, index) => ({
+  return Array.from({ length: Math.min(count, 100) }).map((_, index) => ({
     candidate_key: `staged-${index}-${seed.slice((index * 2) % 16, (index * 2) % 16 + 6)}`,
     draft: `Draft ${index + 1} for destination in ${language} (provider-disabled staging)`,
     status: "review",
@@ -132,7 +132,7 @@ export class ContentFactoryContractFixture {
     if (!Number.isFinite(ts)) return false;
     if (Math.abs(Date.now() / 1000 - ts) > FRESHNESS_SECONDS) return false;
     if (this.nonces.has(nonce)) return false; // replay rejection
-    const canonical = [req.method, req.url?.split("?")[0], timestamp, nonce, idempotencyKey ?? "", sha256(body.toString("utf8"))].join("\n");
+    const canonical = [req.method, req.url?.split("?")[0], (req.url?.split("?")[1] ?? "").split("&").filter(Boolean).sort().join("&"), timestamp, nonce, idempotencyKey ?? "", sha256(body.toString("utf8"))].join("\n");
     const expected = createHmac("sha256", this.apiSecret).update(canonical).digest("hex");
     if (!constantTimeEqual(signature, expected)) return false;
     this.nonces.add(nonce);
