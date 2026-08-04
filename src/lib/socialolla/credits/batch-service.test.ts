@@ -156,8 +156,8 @@ describe("Slice E — canonical credit engine", () => {
     expect(tx.kind).toBe("ADJUSTMENT");
     const event = mocks.prisma.auditEvent.create.mock.calls.find((call) => call[0].data.eventType === "credit.adjustment");
     expect(event).toBeDefined();
-    expect(event[0].data.payload.reason).toBe("promo grant");
-    expect(event[0].data.actorAuthUserId).toBe("admin-1");
+    expect(event?.[0].data.payload.reason).toBe("promo grant");
+    expect(event?.[0].data.actorAuthUserId).toBe("admin-1");
   });
 
   it("refuses to hold expired-only credits", async () => {
