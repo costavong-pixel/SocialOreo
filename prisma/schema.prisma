@@ -520,6 +520,7 @@ enum CreditTransactionKind {
   HOLD
   FINALIZE
   REFUND
+  ADJUSTMENT
 }
 
 enum PlanStatus {
@@ -611,11 +612,13 @@ model CreditBatch {
   amount       Int
   remaining    Int
   expiresAt    DateTime?
+  periodKey    String?
   createdAt    DateTime        @default(now())
   workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions CreditTransaction[]
 
   @@index([workspaceId, kind])
+  @@unique([workspaceId, kind, periodKey])
 }
 
 model CreditTransaction {

@@ -12,17 +12,22 @@ const mocks = vi.hoisted(() => {
     creditBatch: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
       create: vi.fn(),
     },
     creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
+    auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   };
   return { prisma };
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
+
+const now = new Date();
+const periodKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
 const BATCH_ROW = {
   id: "cb-internal-1",
@@ -32,6 +37,7 @@ const BATCH_ROW = {
   amount: 20,
   remaining: 20,
   expiresAt: null,
+  periodKey,
   createdAt: new Date("2026-08-03T00:00:00Z"),
 };
 
@@ -50,13 +56,13 @@ describe("Slice C — SocialOreo Post integration", () => {
       entitlementSnapshots: [],
       creditBatches: [BATCH_ROW],
     });
-    mocks.prisma.destination.findFirst.mockResolvedValue({
+    mocks.prisma.destination.findFirst.mockImplementation((args: { where: { externalId: string } }) => ({
       id: "dst-internal-1",
-      externalId: "dst_abcdefghijklmnop",
+      externalId: args.where.externalId,
       workspaceId: "ws-internal-1",
       label: "Work Instagram",
       platform: "instagram",
-    });
+    }));
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({
       externalId: "ent_abcdefghijklmnop",
       postCreditsPerRequest: 1,
@@ -64,9 +70,20 @@ describe("Slice C — SocialOreo Post integration", () => {
     });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH_ROW);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue(BATCH_ROW);
-    mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);
-    mocks.prisma.creditTransaction.create.mockResolvedValue({ id: "tx-1" });
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH_ROW]);
+    const createdKeys = new Set<string>();
+    mocks.prisma.creditTransaction.create.mockImplementation((args: { data: { idempotencyKey: string; kind: string; amount: number } }) => {
+      createdKeys.add(args.data.idempotencyKey);
+      return { id: "tx-1", batchId: "cb-internal-1", amount: args.data.amount };
+    });
+    mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
+      if (createdKeys.has(args.where.idempotencyKey)) {
+        return { id: "tx-1", batchId: "cb-internal-1", amount: 1 };
+      }
+      return null;
+    });
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
       if (Array.isArray(arg)) {
         return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
@@ -122,7 +139,7 @@ describe("Slice C — SocialOreo Post integration", () => {
     mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
       if (args.where.idempotencyKey.endsWith(":hold")) {
         holdCount += 1;
-        return holdCount > 1 ? { id: "tx-hold" } : null;
+        return holdCount > 1 ? { id: "tx-hold", amount: 1 } : null;
       }
       if (args.where.idempotencyKey.endsWith(":finalize")) {
         return { id: "tx-finalize" };
@@ -154,7 +171,7 @@ describe("Slice C — SocialOreo Post integration", () => {
     expect(first.id).toBe(second.id);
   });
 
-  it("keeps the hold on transient failure and releases it only via explicit cancellation", async () => {
+  it("auto-refunds the hold when the Content Factory attempt fails", async () => {
     const { createPostService } = await import("./post-service");
     const failingClient = {
       createRequest: vi.fn().mockRejectedValue(new Error("upstream down")),
@@ -172,18 +189,11 @@ describe("Slice C — SocialOreo Post integration", () => {
         contentIntent: "opening promo",
       }),
     ).rejects.toThrow("upstream down");
-    // No auto-refund on transient failure (avoids lost/duplicated charge).
+    // Attempt failed -> the hold is auto-refunded (idempotent, only when a
+    // matching HOLD exists).
     const kinds = mocks.prisma.creditTransaction.create.mock.calls.map((call) => call[0].data.kind);
     expect(kinds).toContain("HOLD");
-    expect(kinds).not.toContain("REFUND");
-    // Explicit release refunds idempotently.
-    mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);
-    const release = await service.releasePostHold({
-      authUserId: "user-1",
-      destinationExternalId: "dst_abcdefghijklmnop",
-      contentIntent: "opening promo",
-    });
-    expect(release.refunded).toBe(true);
+    expect(kinds).toContain("REFUND");
   });
 
   it("scopes the idempotency key by destination so a shared intent never crosses destinations", async () => {

@@ -112,7 +112,7 @@ export const creditBatchSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
-export const creditTransactionKindSchema = z.enum(["HOLD", "FINALIZE", "REFUND"]);
+export const creditTransactionKindSchema = z.enum(["HOLD", "FINALIZE", "REFUND", "ADJUSTMENT"]);
 
 export const creditTransactionSchema = z.object({
   kind: creditTransactionKindSchema,

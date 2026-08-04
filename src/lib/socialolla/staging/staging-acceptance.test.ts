@@ -9,14 +9,18 @@ const mocks = vi.hoisted(() => {
     workspace: { findUnique: vi.fn(), create: vi.fn() },
     destination: { findFirst: vi.fn(), create: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
-    creditBatch: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
+    creditBatch: { findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
     creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
+    auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
   };
   return { prisma };
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
+
+const now = new Date();
+const periodKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
 const BATCH_ROW = {
   id: "cb-internal-1",
@@ -26,6 +30,7 @@ const BATCH_ROW = {
   amount: 20,
   remaining: 20,
   expiresAt: null,
+  periodKey,
   createdAt: new Date("2026-08-03T00:00:00Z"),
 };
 
@@ -51,8 +56,17 @@ describe("Staging acceptance — approved conversational onboarding flow", () =>
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, includedMonthlyCredits: 20 });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH_ROW);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue(BATCH_ROW);
-    mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);
-    mocks.prisma.creditTransaction.create.mockResolvedValue({ id: "tx-1" });
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH_ROW]);
+    mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
+    const createdKeys = new Set<string>();
+    mocks.prisma.creditTransaction.create.mockImplementation((args: { data: { idempotencyKey: string; amount: number } }) => {
+      createdKeys.add(args.data.idempotencyKey);
+      return { id: "tx-1", batchId: "cb-internal-1", amount: args.data.amount };
+    });
+    mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
+      if (createdKeys.has(args.where.idempotencyKey)) return { id: "tx-1", batchId: "cb-internal-1", amount: 1 };
+      return null;
+    });
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];

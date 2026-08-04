@@ -1,7 +1,14 @@
 import { createContentFactoryClient, type ContentFactoryClient } from "./client";
 import { prisma } from "@/lib/db/prisma";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
-import { finalizeCredits, holdCredits, refundCredits, ensureMonthlyBatch } from "@/lib/socialolla/credits/batch-service";
+import {
+  ensureMonthlyBatch,
+  finalizeCredits,
+  holdCredits,
+  intentKey,
+  refundCredits,
+  selectSpendableBatch,
+} from "@/lib/socialolla/credits/batch-service";
 import type { PostRequestContract, PostStatus } from "@/lib/socialolla/contracts";
 
 export interface PostCostPreview {
@@ -44,11 +51,11 @@ export function createPostService(client?: ContentFactoryClient) {
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    const batch = await ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
+    const spendable = await selectSpendableBatch(workspace.dbId, creditsPerRequest);
     return {
       estimatedCredits: creditsPerRequest,
-      batchAvailable: batch !== null && batch.remaining >= creditsPerRequest,
-      remainingAfter: batch ? batch.remaining - creditsPerRequest : null,
+      batchAvailable: spendable !== null,
+      remainingAfter: spendable ? spendable.remaining - creditsPerRequest : null,
     };
   }
 
@@ -64,49 +71,50 @@ export function createPostService(client?: ContentFactoryClient) {
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    const batch = await ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
-    if (!batch || batch.remaining < creditsPerRequest) {
-      throw new Error("Insufficient credits");
-    }
+    await ensureMonthlyBatch({
+      internalWorkspaceId: workspace.dbId,
+      externalWorkspaceId: workspace.id,
+      includedCredits: entitlement?.includedMonthlyCredits ?? 0,
+    });
 
-    // Stable intent key scoped by workspace AND destination: a repeated intent
-    // against a different destination must never reuse a previous request or
-    // a previous credit hold.
-    const intent = input.contentIntent?.trim() || `post:${input.destinationExternalId}:${input.language}`;
-    const idempotencyKey = `so:${workspace.id}:${input.destinationExternalId}:${intent.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80)}`;
-    const reference = `req:${input.destinationExternalId}`;
+    // Single canonical intent key used by execute, finalize and release.
+    const intent = intentKey(workspace.id, destination.externalId, input.contentIntent?.trim() || `post:${input.language}`);
+    const reference = `req:${destination.externalId}`;
 
-    // Hold is idempotent per intent. A hold is released only by an explicit
-    // cancellation; transient failures keep the hold so a retry cannot lose
-    // or duplicate the charge.
+    // Hold is idempotent per intent. Transient attempt failures auto-refund;
+    // a finalize failure after a successful create is NOT auto-refunded.
     const hold = await holdCredits({
-      batchExternalId: batch.id,
+      internalWorkspaceId: workspace.dbId,
       amount: creditsPerRequest,
       reference,
-      idempotencyKey: `${idempotencyKey}:hold`,
+      idempotencyKey: `${intent}:hold`,
     });
     if (!hold.held) throw new Error("Failed to hold credits");
 
-    const request = await cf.createRequest({
-      workspaceExternalId: workspace.id,
-      destinationRef: destination.externalId,
-      profileRef: input.profileExternalId,
-      language: input.language,
-      requestedCount: input.requestedCount,
-      idempotencyKey,
-    });
-    await finalizeCredits({
-      batchExternalId: batch.id,
-      amount: creditsPerRequest,
-      reference,
-      idempotencyKey: `${idempotencyKey}:finalize`,
-    });
+    let request: PostRequestContract;
+    try {
+      request = await cf.createRequest({
+        workspaceExternalId: workspace.id,
+        destinationRef: destination.externalId,
+        profileRef: input.profileExternalId,
+        language: input.language,
+        requestedCount: input.requestedCount,
+        idempotencyKey: intent,
+      });
+    } catch (error) {
+      // Attempt failed -> refund the hold (idempotent; only refunds when a
+      // matching HOLD exists).
+      await refundCredits({ amount: creditsPerRequest, reference, intent });
+      throw error;
+    }
+
+    await finalizeCredits({ amount: creditsPerRequest, reference, intent });
     return request;
   }
 
   /**
    * Explicit cancellation of a held post intent: idempotently refunds the
-   * credit hold. Publishing and paid actions remain separately confirmed.
+   * credit hold (derives the SAME intent key as execute — BLOCKER-2 fix).
    */
   async function releasePostHold(input: {
     authUserId: string;
@@ -114,21 +122,17 @@ export function createPostService(client?: ContentFactoryClient) {
     contentIntent?: string;
   }): Promise<{ refunded: boolean }> {
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
+    const destination = await prisma.destination.findFirst({
+      where: { externalId: input.destinationExternalId, workspace: { ownerUserId: input.authUserId } },
+    });
+    if (!destination) return { refunded: false };
     const entitlement = await prisma.entitlementSnapshot.findFirst({
       where: { workspace: { ownerUserId: input.authUserId } },
       orderBy: { validFrom: "desc" },
     });
-    const batch = await ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
-    if (!batch) return { refunded: false };
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    const intent = input.contentIntent?.trim() || `post:${input.destinationExternalId}`;
-    const idempotencyKey = `so:${workspace.id}:${input.destinationExternalId}:${intent.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80)}`;
-    const refund = await refundCredits({
-      batchExternalId: batch.id,
-      amount: creditsPerRequest,
-      reference: `req:${input.destinationExternalId}`,
-      idempotencyKey: `${idempotencyKey}:refund`,
-    });
+    const intent = intentKey(workspace.id, destination.externalId, input.contentIntent?.trim() || `post:${"en"}`);
+    const refund = await refundCredits({ amount: creditsPerRequest, reference: `req:${destination.externalId}`, intent });
     return { refunded: refund.refunded };
   }
 
