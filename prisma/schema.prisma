@@ -520,6 +520,7 @@ enum CreditTransactionKind {
   HOLD
   FINALIZE
   REFUND
+  ADJUSTMENT
 }
 
 enum PlanStatus {
@@ -541,6 +542,10 @@ model Workspace {
   entitlementSnapshots EntitlementSnapshot[]
   creditBatches       CreditBatch[]
   auditEvents         AuditEvent[]
+  watchReports        WatchReport[]
+  postRequests        PostRequest[]
+  sevenDayPlans       SevenDayPlan[]
+  scheduleSlots       ScheduleSlot[]
 
   @@index([ownerUserId])
 }
@@ -596,6 +601,7 @@ model EntitlementSnapshot {
   maxDestinations        Int          @default(1)
   includedMonthlyCredits Int          @default(0)
   postCreditsPerRequest  Int          @default(1)
+  watchCreditsPerRequest Int          @default(1)
   validFrom              DateTime     @default(now())
   workspace              Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   planVersion            PlanVersion  @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
@@ -611,11 +617,13 @@ model CreditBatch {
   amount       Int
   remaining    Int
   expiresAt    DateTime?
+  periodKey    String?
   createdAt    DateTime        @default(now())
   workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions CreditTransaction[]
 
   @@index([workspaceId, kind])
+  @@unique([workspaceId, kind, periodKey])
 }
 
 model CreditTransaction {
@@ -642,4 +650,123 @@ model AuditEvent {
   workspace       Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, occurredAt])
+}
+
+enum WatchReportStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum PostRequestStatus {
+  PENDING
+  REVIEW
+  APPROVED
+  SCHEDULED
+  CANCELLED
+  FAILED
+}
+
+enum PostOccurrenceKind {
+  FIRST
+  SCHEDULED_REPOST
+}
+
+enum PostOccurrenceStatus {
+  IDEA
+  LIGHT_DRAFT
+  APPROVED
+  SCHEDULED
+  DELIVERED
+  CANCELLED
+}
+
+model WatchReport {
+  id                String            @id @default(cuid())
+  externalId        String            @unique
+  workspaceId       String
+  profileUrl        String
+  platform          String
+  status            WatchReportStatus @default(RUNNING)
+  reportJson        Json?
+  provider         String            @default("provider-disabled")
+  creditCost        Int               @default(0)
+  createdAt         DateTime          @default(now())
+  completedAt       DateTime?
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model PostRequest {
+  id              String             @id @default(cuid())
+  externalId      String             @unique
+  workspaceId     String
+  destinationRef  String
+  profileRef      String?
+  language        String             @default("en")
+  status          PostRequestStatus  @default(REVIEW)
+  intentKey       String             @unique
+  cfRequestRef    String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variants        PostVariant[]
+  occurrences     PostOccurrence[]
+
+  @@index([workspaceId, status])
+}
+
+model PostVariant {
+  id            String     @id @default(cuid())
+  postRequestId String
+  platform      String
+  title         String
+  caption       String?
+  hashtags      String[]
+  cta           String?
+  characterLimit Int       @default(2200)
+  variantLocale String     @default("en-US")
+  isFinal       Boolean    @default(false)
+  postRequest   PostRequest @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+
+  @@index([postRequestId])
+}
+
+model PostOccurrence {
+  id            String               @id @default(cuid())
+  postRequestId String
+  kind          PostOccurrenceKind   @default(FIRST)
+  status        PostOccurrenceStatus @default(IDEA)
+  scheduleAt    DateTime?
+  timezone      String               @default("UTC")
+  destinationRef String
+  evidenceJson  Json?
+  postRequest   PostRequest          @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+
+  @@index([postRequestId, status])
+}
+
+model SevenDayPlan {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  destinationRef String
+  planJson      Json
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model ScheduleSlot {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  postRequestId String
+  destinationRef String
+  scheduleAt    DateTime
+  timezone      String    @default("UTC")
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, scheduleAt])
 }

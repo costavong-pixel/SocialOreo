@@ -51,7 +51,7 @@ class StubContentFactoryClient {
       return this.toContract(row);
     }
     const externalId = `req_${randomUUID().replace(/-/g, "").slice(0, 22)}`;
-    const candidates: StagedCandidate[] = Array.from({ length: Math.min(input.requestedCount, 10) }).map(
+    const candidates: StagedCandidate[] = Array.from({ length: Math.min(input.requestedCount, 100) }).map(
       (_, index) => ({
         candidate_key: `staged-${index}-${externalId.slice(0, 6)}`,
         draft: `Draft ${index + 1} for destination in ${input.language} (provider-disabled staging)`,
@@ -121,7 +121,13 @@ function signRequest(
   secret: string,
 ): string {
   const bodyHash = createHash("sha256").update(body).digest("hex");
-  const canonical = [method, path, timestamp, nonce, idempotencyKey ?? "", bodyHash].join("\n");
+  // CF-B: the Content Factory canonical request-target includes the normalized
+  // query string (sorted pairs) between the path and the timestamp. POST
+  // create carries no query, but the server still includes an empty query
+  // line, so we must insert it here to keep signatures in lockstep.
+  const [pathOnly, rawQuery = ""] = path.split("?");
+  const query = rawQuery.split("&").filter(Boolean).sort().join("&");
+  const canonical = [method, pathOnly, query, timestamp, nonce, idempotencyKey ?? "", bodyHash].join("\n");
   return createHmac("sha256", secret).update(canonical).digest("hex");
 }
 

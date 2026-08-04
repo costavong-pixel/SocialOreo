@@ -6,6 +6,11 @@ const { mockTransaction, mockPrisma } = vi.hoisted(() => {
     $transaction: vi.fn((...args: unknown[]) => mockTransaction(...args)),
     squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     $queryRaw: vi.fn(),
+    workspace: { findUnique: vi.fn(), create: vi.fn() },
+    creditBatch: { findFirst: vi.fn(), create: vi.fn() },
+    auditEvent: { create: vi.fn() },
+    planVersion: { upsert: vi.fn() },
+    entitlementSnapshot: { create: vi.fn() },
   };
   return { mockTransaction, mockPrisma };
 });
@@ -120,6 +125,7 @@ describe("settleSquareCheckout", () => {
 
 
   it("credits a completed configured audit purchase once and stores the Square references", async () => {
+    vi.stubEnv("SOCIALOLLA_LEGACY_CREDITS", "true");
     const checkoutFindUnique = vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null });
     const checkoutUpdate = vi.fn().mockResolvedValue({});
     const accountUpsert = vi.fn().mockResolvedValue({});
@@ -145,6 +151,25 @@ describe("settleSquareCheckout", () => {
     });
   });
 
+  it("grants a pack through the canonical credit batch by default (no legacy writes)", async () => {
+    vi.stubEnv("SOCIALOLLA_LEGACY_CREDITS", "false");
+    const tx = {
+      squareCheckout: { findUnique: vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null }), update: vi.fn().mockResolvedValue({}) },
+      creditAccount: { upsert: vi.fn() },
+      creditLedger: { create: vi.fn() },
+      workspace: { findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_test00000000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }), create: vi.fn() },
+      creditBatch: { create: vi.fn().mockResolvedValue({ externalId: "cbt_x000000000000000" }) },
+      auditEvent: { create: vi.fn().mockResolvedValue({ id: "evt-1" }) },
+      planVersion: { upsert: vi.fn() },
+      entitlementSnapshot: { create: vi.fn() },
+    };
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
+    expect(tx.creditBatch.create).toHaveBeenCalled();
+    expect(tx.auditEvent.create).toHaveBeenCalled();
+  });
+
   it("does not grant a payment that was already settled", async () => {
     const accountUpsert = vi.fn();
     mockTransaction.mockImplementation((callback) => callback({
@@ -160,6 +185,11 @@ describe("settleSquareCheckout", () => {
     const checkoutUpdate = vi.fn().mockResolvedValue({});
     const subscriptionUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
     const userUpdate = vi.fn().mockResolvedValue({});
+    const planVersionUpsert = vi.fn().mockResolvedValue({ id: "plv-1", externalId: "plv_monthly_v1" });
+    const entitlementCreate = vi.fn().mockResolvedValue({ id: "ent-1", externalId: "ent_1" });
+    const batchFindFirst = vi.fn().mockResolvedValue(null);
+    const batchCreate = vi.fn().mockResolvedValue({ id: "batch-1", externalId: "cbt_1", amount: 20, remaining: 20, kind: "MONTHLY", expiresAt: null, periodKey: "2026-08", createdAt: new Date() });
+    const auditCreate = vi.fn().mockResolvedValue({});
     mockTransaction.mockImplementation((callback) => callback({
       squareCheckout: {
         findUnique: vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "MONTHLY", squarePaymentId: null }),
@@ -168,9 +198,17 @@ describe("settleSquareCheckout", () => {
       },
       squareSubscription: { updateMany: subscriptionUpdateMany, findMany: vi.fn().mockResolvedValue([{ status: "ACTIVE" }]) },
       user: { update: userUpdate },
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_monthly0000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }),
+        create: vi.fn(),
+      },
+      planVersion: { upsert: planVersionUpsert },
+      entitlementSnapshot: { create: entitlementCreate },
+      creditBatch: { findFirst: batchFindFirst, create: batchCreate },
+      auditEvent: { create: auditCreate },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" })).resolves.toEqual({ status: "settled", creditsGranted: 0 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
     expect(subscriptionUpdateMany).toHaveBeenCalledWith({
       where: { userId: null, squareCustomerId: "customer-1", planVariationId: "monthly-plan" },
       data: { userId: "user-1" },
@@ -180,6 +218,9 @@ describe("settleSquareCheckout", () => {
       data: expect.objectContaining({ pendingKey: null, completedAt: expect.any(Date) }),
     });
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "MONTHLY" } });
+    expect(entitlementCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ planVersionId: "plv-1" }) }));
+    expect(batchCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: "MONTHLY", amount: 20 }) }));
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "entitlement.grant" }) }));
   });
 
   it("does not grant Monthly from a payment when Square has not confirmed an active subscription", async () => {
@@ -293,5 +334,81 @@ describe("settleSquareCheckout", () => {
     await recordSquareSubscription({ subscriptionId: "subscription-1", customerId: "customer-1", planVariationId: "monthly-plan", status: "CANCELED", eventCreatedAt: "2026-08-25T00:00:00.000Z" });
     expect(auditCreate).not.toHaveBeenCalled();
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "NONE" } });
+  });
+
+  function lifetimeTx() {
+    const checkouts: Array<{ id: string; orderId: string; userId: string; product: string; squarePaymentId: string | null; completedAt: Date | null }> = [
+      { id: "chk-1", orderId: "order-1", userId: "user-1", product: "LIFETIME", squarePaymentId: null, completedAt: null },
+      { id: "chk-2", orderId: "order-2", userId: "user-1", product: "LIFETIME", squarePaymentId: null, completedAt: null },
+    ];
+    const batchStore: Record<string, unknown> = {};
+    let entitlementSeq = 0;
+    return {
+      squareCheckout: {
+        findUnique: vi.fn(async ({ where }: { where: { squareOrderId: string } }) => checkouts.find((c) => c.orderId === where.squareOrderId) ?? null),
+        update: vi.fn(async ({ where, data }: { where: { id: string }; data: { squarePaymentId: string; completedAt: Date } }) => {
+          const checkout = checkouts.find((c) => c.id === where.id);
+          if (checkout) {
+            checkout.squarePaymentId = data.squarePaymentId;
+            checkout.completedAt = data.completedAt;
+          }
+          return checkout;
+        }),
+      },
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_lifetime00000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }),
+        create: vi.fn(),
+      },
+      planVersion: { upsert: vi.fn().mockResolvedValue({ id: "pv-1", externalId: "plv_lifetime_v1", version: 1, name: "SocialOlla Lifetime", status: "ACTIVE" }) },
+      entitlementSnapshot: {
+        create: vi.fn(async () => {
+          entitlementSeq += 1;
+          return { id: `ent-${entitlementSeq}`, externalId: `ent_x${entitlementSeq}` };
+        }),
+      },
+      creditBatch: {
+        findFirst: vi.fn(async ({ where }: { where: { workspaceId: string; periodKey: string } }) => batchStore[`${where.workspaceId}:${where.periodKey}`] ?? null),
+        create: vi.fn(async ({ data }: { data: { externalId: string; workspaceId: string; kind: string; amount: number; remaining: number; periodKey: string } }) => {
+          const row = { id: "cb-1", externalId: data.externalId, workspaceId: data.workspaceId, kind: data.kind, amount: data.amount, remaining: data.remaining, expiresAt: null, periodKey: data.periodKey, createdAt: new Date() };
+          batchStore[`${data.workspaceId}:${data.periodKey}`] = row;
+          return row;
+        }),
+      },
+      auditEvent: { create: vi.fn().mockResolvedValue({ id: "evt-1" }) },
+    };
+  }
+
+  it("Lifetime: two same-period payments each settle once and share one MONTHLY batch (BACKEND-01)", async () => {
+    const tx = lifetimeTx();
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" });
+    const second = await settleSquareCheckout({ orderId: "order-2", paymentId: "payment-2", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" });
+
+    expect(first).toEqual({ status: "settled", creditsGranted: 20 });
+    expect(second).toEqual({ status: "settled", creditsGranted: 0 });
+    // Exactly-once per squarePaymentId: both payments are durably marked settled.
+    expect(tx.squareCheckout.update).toHaveBeenCalledTimes(2);
+    expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(2);
+    // One MONTHLY batch for the period — no double credit, no P2002 abort.
+    expect(tx.creditBatch.create).toHaveBeenCalledTimes(1);
+    const auditPayloads = tx.auditEvent.create.mock.calls.map((call) => call[0].data.payload);
+    expect(auditPayloads.map((p) => p.squarePaymentId)).toEqual(["payment-1", "payment-2"]);
+    expect(auditPayloads[0].batch).toBe(auditPayloads[1].batch);
+    expect(auditPayloads[1].batchReused).toBe(true);
+  });
+
+  it("Lifetime: a redelivered payment settles exactly once by squarePaymentId", async () => {
+    const tx = lifetimeTx();
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" });
+    const second = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" });
+
+    expect(first).toEqual({ status: "settled", creditsGranted: 20 });
+    expect(second).toEqual({ status: "duplicate", creditsGranted: 0 });
+    // The entitlement grant happened exactly once for this payment.
+    expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(1);
+    expect(tx.creditBatch.create).toHaveBeenCalledTimes(1);
   });
 });

@@ -6,6 +6,7 @@ import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getSquareConfig } from "@/lib/payments/square/config";
 import { startSquareCheckout } from "@/lib/payments/square/checkout-service";
 import { oneTimeSquareProductIds } from "@/lib/payments/square/products";
+import { requireSquareSandboxTester } from "@/lib/payments/square/tester-gate";
 
 // Monthly is intentionally absent: it uses the app-owned Web Payments SDK flow.
 const checkoutSchema = z.object({ product: z.enum(oneTimeSquareProductIds) });
@@ -14,6 +15,13 @@ export async function POST(request: Request) {
   const authUser = await getVerifiedSessionUser();
   if (!authUser) {
     return NextResponse.json({ error: "A verified primary email address is required." }, { status: 403 });
+  }
+
+  // M2 condition 8: one-time checkout is gated to sandbox testers (like the
+  // monthly routes) so the payment-adjacent surface is not open to every user.
+  const tester = await requireSquareSandboxTester();
+  if (!tester) {
+    return NextResponse.json({ error: "Sandbox checkout is limited to testers." }, { status: 403 });
   }
 
   const config = getSquareConfig();
