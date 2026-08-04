@@ -257,23 +257,30 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
       });
 
       if (checkout.product === "SINGLE_AUDIT" || checkout.product === "CREATOR_PACK") {
-        const credits = checkout.product === "SINGLE_AUDIT" ? 1 : 10;
-        await transaction.creditAccount.upsert({
-          where: { userId: checkout.userId },
-          update: { balance: { increment: credits } },
-          create: { userId: checkout.userId, balance: credits },
-        });
-        await transaction.creditLedger.create({
-          data: {
-            userId: checkout.userId,
-            delta: credits,
-            reason: `square_purchase:${checkout.product.toLowerCase()}`,
-            squarePaymentId: input.paymentId,
-            squareCustomerId: input.customerId,
-          },
-        });
-
-        return { status: "settled" as const, creditsGranted: credits };
+        if (process.env.SOCIALOLLA_LEGACY_CREDITS === "true") {
+          // Legacy path preserved only under the explicit legacy flag (rollback).
+          const credits = checkout.product === "SINGLE_AUDIT" ? 1 : 10;
+          await transaction.creditAccount.upsert({
+            where: { userId: checkout.userId },
+            update: { balance: { increment: credits } },
+            create: { userId: checkout.userId, balance: credits },
+          });
+          await transaction.creditLedger.create({
+            data: {
+              userId: checkout.userId,
+              delta: credits,
+              reason: `square_purchase:${checkout.product.toLowerCase()}`,
+              squarePaymentId: input.paymentId,
+              squareCustomerId: input.customerId,
+            },
+          });
+          return { status: "settled" as const, creditsGranted: credits };
+        }
+        // M2 canonical path: credits granted as PURCHASED CreditBatch via the
+        // canonical entitlement service (no legacy CreditAccount writes).
+        const { grantCanonicalPack } = await import("@/lib/socialolla/entitlements/entitlement-service");
+        const granted = await grantCanonicalPack({ ownerUserId: checkout.userId, squarePaymentId: input.paymentId, product: checkout.product });
+        return { status: "settled" as const, creditsGranted: granted.creditsGranted };
       }
 
       if (checkout.product === "MONTHLY" && input.customerId) {
@@ -285,6 +292,17 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
           },
           data: { userId: checkout.userId },
         });
+      }
+
+      if (checkout.product === "LIFETIME") {
+        // M2 canonical lifetime grant: versioned entitlement + PURCHASED batch.
+        const { grantLifetimeEntitlement } = await import("@/lib/socialolla/entitlements/entitlement-service");
+        const granted = await grantLifetimeEntitlement({
+          ownerUserId: checkout.userId,
+          squarePaymentId: input.paymentId,
+          priceCents: Number(process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS ?? 7900),
+        });
+        return { status: "settled" as const, creditsGranted: granted.creditsGranted };
       }
 
       await recomputeAccessPlan(transaction, checkout.userId);

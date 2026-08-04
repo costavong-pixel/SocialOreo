@@ -6,6 +6,11 @@ const { mockTransaction, mockPrisma } = vi.hoisted(() => {
     $transaction: vi.fn((...args: unknown[]) => mockTransaction(...args)),
     squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
     $queryRaw: vi.fn(),
+    workspace: { findUnique: vi.fn(), create: vi.fn() },
+    creditBatch: { create: vi.fn() },
+    auditEvent: { create: vi.fn() },
+    planVersion: { upsert: vi.fn() },
+    entitlementSnapshot: { create: vi.fn() },
   };
   return { mockTransaction, mockPrisma };
 });
@@ -120,6 +125,7 @@ describe("settleSquareCheckout", () => {
 
 
   it("credits a completed configured audit purchase once and stores the Square references", async () => {
+    vi.stubEnv("SOCIALOLLA_LEGACY_CREDITS", "true");
     const checkoutFindUnique = vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null });
     const checkoutUpdate = vi.fn().mockResolvedValue({});
     const accountUpsert = vi.fn().mockResolvedValue({});
@@ -143,6 +149,22 @@ describe("settleSquareCheckout", () => {
         squareCustomerId: "customer-1",
       }),
     });
+  });
+
+  it("grants a pack through the canonical credit batch by default (no legacy writes)", async () => {
+    vi.stubEnv("SOCIALOLLA_LEGACY_CREDITS", "false");
+    mockTransaction.mockImplementation((callback) => callback({
+      squareCheckout: { findUnique: vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null }), update: vi.fn().mockResolvedValue({}) },
+      creditAccount: { upsert: vi.fn() },
+      creditLedger: { create: vi.fn() },
+    }));
+    mockPrisma.workspace = { findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_test00000000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }), create: vi.fn() };
+    mockPrisma.creditBatch = { create: vi.fn().mockResolvedValue({ externalId: "cbt_x000000000000000" }) };
+    mockPrisma.auditEvent = { create: vi.fn().mockResolvedValue({ id: "evt-1" }) };
+
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
+    expect(mockPrisma.creditBatch.create).toHaveBeenCalled();
+    expect(mockPrisma.auditEvent.create).toHaveBeenCalled();
   });
 
   it("does not grant a payment that was already settled", async () => {
