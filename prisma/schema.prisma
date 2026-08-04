@@ -544,6 +544,7 @@ model Workspace {
   auditEvents         AuditEvent[]
   watchReports        WatchReport[]
   postRequests        PostRequest[]
+  sevenDayPlans       SevenDayPlan[]
 
   @@index([ownerUserId])
 }
@@ -743,4 +744,15 @@ model PostOccurrence {
   postRequest   PostRequest          @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
 
   @@index([postRequestId, status])
+}
+
+model SevenDayPlan {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  destinationRef String
+  planJson      Json
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
 }
