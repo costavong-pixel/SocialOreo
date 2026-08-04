@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { DemoForm } from "@/components/demo/demo-form";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
 
 export const metadata = { title: "Free demo — SocialOlla" };
 
 export default async function DemoPage() {
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getVerifiedSessionUser();
   const signedIn = sessionUser !== null;
 
   return (
@@ -22,7 +22,7 @@ export default async function DemoPage() {
         </p>
         <DemoForm signedIn={signedIn} />
         <p className="mt-6 text-sm text-white/50">
-          Want to keep going? <Link className="text-[var(--social-blue)]" href="/sign-in">Sign in</Link> to create your workspace — we will only transfer your demo content with your explicit consent.
+          Want to keep going? <Link className="text-[var(--social-blue)]" href="/sign-in">Sign in</Link> to create your workspace — nothing is published or transferred without your explicit consent.
         </p>
       </section>
       <AssistantPanel floating authenticated={signedIn} />

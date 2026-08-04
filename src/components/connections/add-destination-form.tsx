@@ -113,8 +113,8 @@ export function WatchForm({ cost = 1, batchAvailable = true }: { cost?: number; 
   );
 }
 
-export function OnboardingFirstPostForm() {
-  const [destination, setDestination] = useState("");
+export function OnboardingFirstPostForm({ destinations }: { destinations: Array<{ externalId: string; label: string; platform: string }> }) {
+  const [destination, setDestination] = useState(destinations[0]?.externalId ?? "");
   const [result, setResult] = useState<string | null>(null);
   return (
     <form
@@ -129,9 +129,17 @@ export function OnboardingFirstPostForm() {
         }
       }}
     >
-      <label className="block text-sm font-bold" htmlFor="odst">Destination external id</label>
-      <input id="odst" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="dst_..." className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
-      <button type="submit" className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]">Create first post + 7-day plan</button>
+      <label className="block text-sm font-bold" htmlFor="odst">Sandbox destination</label>
+      {destinations.length === 0 ? (
+        <p className="text-sm text-white/60">Add a sandbox Instagram/TikTok destination in Connections first.</p>
+      ) : (
+        <select id="odst" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white">
+          {destinations.map((d) => (
+            <option key={d.externalId} value={d.externalId}>{d.label} ({d.platform})</option>
+          ))}
+        </select>
+      )}
+      <button type="submit" disabled={destinations.length === 0} className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff] disabled:opacity-50">Create first post + 7-day plan</button>
       {result && <p role="status" className="text-sm text-white/70">{result}</p>}
     </form>
   );

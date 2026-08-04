@@ -86,7 +86,7 @@ export function DemoForm({ signedIn }: { signedIn: boolean }) {
               </label>
               {consent ? (
                 <p className="mt-2 rounded-xl bg-[var(--social-blue)]/10 px-3 py-2 text-xs text-white/70">
-                  With your consent, your edited title and caption can be moved into your workspace when you sign in. Nothing transfers automatically and nothing is published.
+                  With your consent, your edited title and caption can be copied into your workspace when you sign in. Nothing transfers automatically and nothing is published.
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-white/40">Your demo content stays on this device until you consent to transfer it to your account.</p>
@@ -94,7 +94,7 @@ export function DemoForm({ signedIn }: { signedIn: boolean }) {
             </div>
           ) : (
             <p className="mt-4 text-sm text-white/60">
-              Want to keep going? <Link className="text-[var(--social-blue)] hover:underline" href="/sign-in">Sign in</Link> — we will only transfer your demo content with your explicit consent.
+              Want to keep going? <Link className="text-[var(--social-blue)] hover:underline" href="/sign-in">Sign in</Link> to create your workspace.
             </p>
           )}
         </div>

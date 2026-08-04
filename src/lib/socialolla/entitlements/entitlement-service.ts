@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
-import { lifetimePlan } from "@/lib/socialolla/plans/plan-config";
+import { lifetimePlan, monthlyPlan } from "@/lib/socialolla/plans/plan-config";
 import { ensureMonthlyBatch, newAuditEventExternalId, periodKeyForDate } from "@/lib/socialolla/credits/batch-service";
 
 type DbLike = Prisma.TransactionClient;
@@ -73,6 +73,82 @@ export async function grantLifetimeEntitlement(
     externalWorkspaceId: workspace.id,
     includedCredits: plan.entitlements.includedMonthlyCredits,
     periodKey,
+    db,
+  });
+  if (!batch) throw new Error("Failed to provision monthly credit batch");
+
+  await db.auditEvent.create({
+    data: {
+      externalId: newAuditEventExternalId(),
+      workspaceId: workspace.dbId,
+      actorAuthUserId: input.ownerUserId,
+      eventType: "entitlement.grant",
+      payload: {
+        squarePaymentId: input.squarePaymentId,
+        priceCents: input.priceCents,
+        planVersion: planVersion.externalId,
+        entitlement: entitlement.externalId,
+        batch: batch.id,
+        credits: batch.created ? plan.entitlements.includedMonthlyCredits : 0,
+        batchReused: !batch.created,
+      },
+    },
+  });
+
+  return {
+    externalIds: { planVersion: planVersion.externalId, entitlement: entitlement.externalId, batch: batch.id },
+    creditsGranted: batch.created ? plan.entitlements.includedMonthlyCredits : 0,
+  };
+}
+
+/**
+ * Slice E: grant a versioned monthly entitlement + current-period MONTHLY
+ * credit batch on a verified sandbox subscription settlement. Exactly-once via
+ * squarePaymentId (enforced by the caller's settlement transaction). Reuses the
+ * period batch so repeat monthly payments in the same period never double-mint.
+ */
+export async function grantMonthlyEntitlement(
+  input: {
+    ownerUserId: string;
+    squarePaymentId: string;
+    priceCents: number;
+  },
+  db: DbLike = prisma,
+): Promise<{ externalIds: { planVersion: string; entitlement: string; batch: string }; creditsGranted: number }> {
+  const workspace = await getOrCreatePersonalWorkspace(input.ownerUserId, undefined, db);
+  const plan = monthlyPlan();
+
+  const canonicalPlanExternalId = `plv_monthly_v${plan.version}`;
+  const planVersion = await db.planVersion.upsert({
+    where: { externalId: canonicalPlanExternalId },
+    update: {},
+    create: {
+      externalId: canonicalPlanExternalId,
+      version: plan.version,
+      name: plan.name,
+      status: "ACTIVE",
+    },
+  });
+
+  const entitlement = await db.entitlementSnapshot.create({
+    data: {
+      externalId: newEntitlementExternalId(),
+      workspaceId: workspace.dbId,
+      planVersionId: planVersion.id,
+      maxWatchCompetitors: plan.entitlements.maxWatchCompetitors,
+      maxDestinations: plan.entitlements.maxDestinations,
+      includedMonthlyCredits: plan.entitlements.includedMonthlyCredits,
+      postCreditsPerRequest: plan.entitlements.postCreditsPerRequest,
+      watchCreditsPerRequest: plan.entitlements.watchCreditsPerRequest,
+      validFrom: new Date(),
+    },
+  });
+
+  const batch = await ensureMonthlyBatch({
+    internalWorkspaceId: workspace.dbId,
+    externalWorkspaceId: workspace.id,
+    includedCredits: plan.entitlements.includedMonthlyCredits,
+    periodKey: periodKeyForDate(),
     db,
   });
   if (!batch) throw new Error("Failed to provision monthly credit batch");

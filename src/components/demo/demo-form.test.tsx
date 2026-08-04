@@ -59,6 +59,6 @@ describe("DemoForm", () => {
 
     fireEvent.click(consent);
 
-    expect(screen.getByText(/your edited title and caption can be moved into your workspace/)).toBeTruthy();
+    expect(screen.getByText(/your edited title and caption can be copied into your workspace/)).toBeTruthy();
   });
 });

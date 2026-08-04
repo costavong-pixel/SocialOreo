@@ -4,6 +4,7 @@ import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
+import { OnboardingFirstPostForm } from "@/components/connections/add-destination-form";
 
 export const metadata = { title: "Onboarding — SocialOlla" };
 
@@ -17,6 +18,11 @@ export default async function OnboardingPage() {
     where: { workspaceId: workspaceDb.dbId },
     orderBy: { createdAt: "desc" },
     take: 5,
+  });
+  const destinations = await prisma.destination.findMany({
+    where: { workspaceId: workspaceDb.dbId },
+    orderBy: { createdAt: "desc" },
+    take: 20,
   });
 
   return (
@@ -34,10 +40,14 @@ export default async function OnboardingPage() {
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="font-display text-lg font-extrabold">Seven-day plan</h2>
+        <div className="mt-3">
+          <OnboardingFirstPostForm
+            destinations={destinations.map((d) => ({ externalId: d.externalId, label: d.accountLabel || d.label, platform: d.platform }))}
+          />
+        </div>
         {plans.length === 0 ? (
           <p className="mt-2 text-sm text-white/50">No seven-day plan yet. Approve your profile, add a sandbox destination, then create your first Post to generate a plan.</p>
-        ) : (
-          <div className="mt-3 space-y-3">
+        ) : (          <div className="mt-3 space-y-3">
             {plans.map((plan) => {
               const items = Array.isArray(plan.planJson) ? (plan.planJson as Array<{ day: number; topic: string; status?: string }>) : [];
               return (

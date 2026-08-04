@@ -61,6 +61,10 @@ export function lifetimePlan(): PlanDefinition {
   return planConfig().lifetime;
 }
 
+export function monthlyPlan(): PlanDefinition {
+  return planConfig().monthly;
+}
+
 export function formatPriceCents(cents: number, currency = "USD"): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0 }).format(cents / 100);
 }

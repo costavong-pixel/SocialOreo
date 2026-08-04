@@ -2,6 +2,7 @@ import { m2ListPosts, m2Workspace } from "@/app/m2-actions";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { prisma } from "@/lib/db/prisma";
 import { shellStateLabel } from "@/lib/socialolla/shell/shell";
+import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { CreatePostForm } from "@/components/connections/add-destination-form";
 import { VariantEditor, type VariantShape } from "@/components/posts/variant-editor";
 import { ScheduleControl, type DestinationShape, type OccurrenceShape, type SlotShape } from "@/components/posts/schedule-control";
@@ -39,6 +40,7 @@ export default async function PostsPage() {
               destinations={destinations}
               occurrences={p.occurrences as unknown as OccurrenceShape[]}
               slots={slots.filter((slot) => slot.destinationRef === p.destinationRef)}
+              providerDisabled={providerDisabledEnabled()}
             />
           </div>
         ))}

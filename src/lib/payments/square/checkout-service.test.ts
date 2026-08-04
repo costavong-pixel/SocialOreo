@@ -185,6 +185,11 @@ describe("settleSquareCheckout", () => {
     const checkoutUpdate = vi.fn().mockResolvedValue({});
     const subscriptionUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
     const userUpdate = vi.fn().mockResolvedValue({});
+    const planVersionUpsert = vi.fn().mockResolvedValue({ id: "plv-1", externalId: "plv_monthly_v1" });
+    const entitlementCreate = vi.fn().mockResolvedValue({ id: "ent-1", externalId: "ent_1" });
+    const batchFindFirst = vi.fn().mockResolvedValue(null);
+    const batchCreate = vi.fn().mockResolvedValue({ id: "batch-1", externalId: "cbt_1", amount: 20, remaining: 20, kind: "MONTHLY", expiresAt: null, periodKey: "2026-08", createdAt: new Date() });
+    const auditCreate = vi.fn().mockResolvedValue({});
     mockTransaction.mockImplementation((callback) => callback({
       squareCheckout: {
         findUnique: vi.fn().mockResolvedValue({ id: "checkout-1", userId: "user-1", product: "MONTHLY", squarePaymentId: null }),
@@ -193,9 +198,17 @@ describe("settleSquareCheckout", () => {
       },
       squareSubscription: { updateMany: subscriptionUpdateMany, findMany: vi.fn().mockResolvedValue([{ status: "ACTIVE" }]) },
       user: { update: userUpdate },
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_monthly0000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }),
+        create: vi.fn(),
+      },
+      planVersion: { upsert: planVersionUpsert },
+      entitlementSnapshot: { create: entitlementCreate },
+      creditBatch: { findFirst: batchFindFirst, create: batchCreate },
+      auditEvent: { create: auditCreate },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" })).resolves.toEqual({ status: "settled", creditsGranted: 0 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan" })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
     expect(subscriptionUpdateMany).toHaveBeenCalledWith({
       where: { userId: null, squareCustomerId: "customer-1", planVariationId: "monthly-plan" },
       data: { userId: "user-1" },
@@ -205,6 +218,9 @@ describe("settleSquareCheckout", () => {
       data: expect.objectContaining({ pendingKey: null, completedAt: expect.any(Date) }),
     });
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "MONTHLY" } });
+    expect(entitlementCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ planVersionId: "plv-1" }) }));
+    expect(batchCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: "MONTHLY", amount: 20 }) }));
+    expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "entitlement.grant" }) }));
   });
 
   it("does not grant Monthly from a payment when Square has not confirmed an active subscription", async () => {

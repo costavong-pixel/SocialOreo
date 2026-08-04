@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { m2SchedulePost } from "@/app/m2-actions";
-import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 
 const TIMEZONES = [
   "UTC",
@@ -58,12 +57,14 @@ export function ScheduleControl({
   destinations,
   occurrences,
   slots,
+  providerDisabled = true,
 }: {
   postExternalId: string;
   destinationRef: string;
   destinations: DestinationShape[];
   occurrences: OccurrenceShape[];
   slots: SlotShape[];
+  providerDisabled?: boolean;
 }) {
   const router = useRouter();
   const [localDateTime, setLocalDateTime] = useState("");
@@ -86,8 +87,6 @@ export function ScheduleControl({
       return null;
     }
   }, [localDateTime, timezone]);
-
-  const mode = providerDisabledEnabled();
 
   async function schedule() {
     if (!utcPreview) return;
@@ -125,7 +124,7 @@ export function ScheduleControl({
       <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
         <p className="font-bold text-white/80">Preview</p>
         <p>Destination: {destination?.label ?? destinationRef} ({destination?.platform ?? "—"} · {destination?.status ?? "provider-disabled"})</p>
-        <p>Provider mode: {mode ? "provider-disabled (no live transport)" : "not configured"}</p>
+        <p>Provider mode: {providerDisabled ? "provider-disabled (no live transport)" : "not configured"}</p>
         <p>{utcPreview ? <>Local wall time {utcPreview.wallTime} → stored UTC <code>{utcPreview.iso}</code></> : "Pick a date and timezone to see the UTC conversion."}</p>
         <p className="text-white/40">Scheduling requires an approved final variant. No credit is charged by scheduling.</p>
       </div>

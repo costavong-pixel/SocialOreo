@@ -27,7 +27,8 @@ async function requireUser() {
 }
 
 function signDemoVisitor(token: string): string {
-  const secret = process.env.DEMO_VISITOR_SECRET ?? process.env.AUTH0_SECRET ?? "socialolla-demo-visitor";
+  const secret = process.env.DEMO_VISITOR_SECRET ?? process.env.AUTH0_SECRET;
+  if (!secret) throw new Error("Demo visitor signing requires DEMO_VISITOR_SECRET or AUTH0_SECRET.");
   return createHmac("sha256", secret).update(token).digest("base64url").slice(0, 22);
 }
 

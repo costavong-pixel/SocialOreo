@@ -292,6 +292,19 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
           },
           data: { userId: checkout.userId },
         });
+        // M2 canonical monthly grant: entitlement snapshot + current-period
+        // MONTHLY credit batch (reuse-first, exactly-once per squarePaymentId).
+        const { grantMonthlyEntitlement } = await import("@/lib/socialolla/entitlements/entitlement-service");
+        const granted = await grantMonthlyEntitlement(
+          {
+            ownerUserId: checkout.userId,
+            squarePaymentId: input.paymentId,
+            priceCents: Number(process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS ?? 1900),
+          },
+          transaction,
+        );
+        await recomputeAccessPlan(transaction, checkout.userId);
+        return { status: "settled" as const, creditsGranted: granted.creditsGranted };
       }
 
       if (checkout.product === "LIFETIME") {

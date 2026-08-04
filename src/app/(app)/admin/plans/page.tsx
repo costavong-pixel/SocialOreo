@@ -3,6 +3,7 @@ import { m2AdminInspect, m2AdminAudit, m2RequireAdmin } from "@/app/m2-actions";
 import { formatPriceCents, lifetimePlan } from "@/lib/socialolla/plans/plan-config";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { AdminAdjustCreditsForm } from "@/components/admin/admin-adjust-credits-form";
+import { AdminSetLifetimePriceForm } from "@/components/admin/admin-set-lifetime-price-form";
 
 export const metadata = { title: "Admin — Plans — SocialOlla" };
 
@@ -24,6 +25,9 @@ export default async function AdminPlansPage() {
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <p className="font-bold">{plan.name}</p>
         <p className="text-sm text-white/60">Price: {formatPriceCents(plan.priceCents)} · version {plan.version}</p>
+        <div className="mt-3">
+          <AdminSetLifetimePriceForm currentPriceCents={plan.priceCents} />
+        </div>
       </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
