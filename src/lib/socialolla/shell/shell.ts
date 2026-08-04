@@ -3,7 +3,9 @@
  * Mobile-first navigation, design tokens, plain-language state labels, and a
  * language selector contract. No prototype/admin routes are exposed.
  */
-export const SHELL_NAV = [
+import type { TranslationKey } from "@/lib/socialolla/i18n/translations";
+
+export const SHELL_NAV: ReadonlyArray<{ href: string; labelKey: TranslationKey }> = [
   { href: "/home", labelKey: "nav.dashboard" },
   { href: "/posts", labelKey: "nav.posts" },
   { href: "/watch", labelKey: "nav.watch" },
@@ -12,7 +14,7 @@ export const SHELL_NAV = [
   { href: "/credits", labelKey: "nav.credits" },
   { href: "/assistant", labelKey: "nav.assistant" },
   { href: "/settings", labelKey: "nav.settings" },
-] as const;
+];
 
 export type ShellStateKind = "loading" | "empty" | "error" | "offline" | "partial-success";
 

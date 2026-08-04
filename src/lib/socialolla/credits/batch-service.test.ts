@@ -47,6 +47,7 @@ describe("Slice E — canonical credit engine", () => {
     mocks.prisma.creditTransaction.create.mockResolvedValue({ id: "tx-1" });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected transaction form");
     });

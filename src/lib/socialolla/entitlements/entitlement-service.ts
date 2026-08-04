@@ -4,10 +4,6 @@ import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { lifetimePlan } from "@/lib/socialolla/plans/plan-config";
 import { newAuditEventExternalId } from "@/lib/socialolla/credits/batch-service";
 
-function newPlanVersionExternalId(): string {
-  return `plv_${randomBytes(12).toString("base64url")}`;
-}
-
 function newEntitlementExternalId(): string {
   return `ent_${randomBytes(12).toString("base64url")}`;
 }
@@ -28,11 +24,12 @@ export async function grantLifetimeEntitlement(input: {
   const workspace = await getOrCreatePersonalWorkspace(input.ownerUserId);
   const plan = lifetimePlan();
 
+  const canonicalPlanExternalId = `plv_lifetime_v${plan.version}`;
   const planVersion = await prisma.planVersion.upsert({
-    where: { externalId: `plv_lifetime_v${plan.version}` },
+    where: { externalId: canonicalPlanExternalId },
     update: {},
     create: {
-      externalId: newPlanVersionExternalId(),
+      externalId: canonicalPlanExternalId,
       version: plan.version,
       name: plan.name,
       status: "ACTIVE",

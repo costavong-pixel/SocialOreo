@@ -85,6 +85,9 @@ describe("Slice C — SocialOreo Post integration", () => {
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") {
+        return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
+      }
       if (Array.isArray(arg)) {
         return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       }

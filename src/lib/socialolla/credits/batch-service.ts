@@ -63,26 +63,52 @@ export async function ensureMonthlyBatch(input: {
     };
   }
   if (input.includedCredits <= 0) return null;
-  const created = await prisma.creditBatch.create({
-    data: {
-      externalId: newCreditBatchExternalId(),
-      workspaceId: input.internalWorkspaceId,
-      kind: "MONTHLY",
-      amount: input.includedCredits,
-      remaining: input.includedCredits,
-      periodKey: period,
-    },
-  });
-  return {
-    id: created.externalId,
-    internalId: created.id,
-    workspaceId: input.externalWorkspaceId,
-    kind: created.kind,
-    amount: created.amount,
-    remaining: created.remaining,
-    expiresAt: null,
-    createdAt: created.createdAt.toISOString(),
-  };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const created = await prisma.creditBatch.create({
+        data: {
+          externalId: newCreditBatchExternalId(),
+          workspaceId: input.internalWorkspaceId,
+          kind: "MONTHLY",
+          amount: input.includedCredits,
+          remaining: input.includedCredits,
+          periodKey: period,
+        },
+      });
+      return {
+        id: created.externalId,
+        internalId: created.id,
+        workspaceId: input.externalWorkspaceId,
+        kind: created.kind,
+        amount: created.amount,
+        remaining: created.remaining,
+        expiresAt: null,
+        createdAt: created.createdAt.toISOString(),
+      };
+    } catch (error) {
+      const isUniqueConflict = error instanceof Error && "code" in error && (error as { code?: string }).code === "P2002";
+      if (isUniqueConflict && attempt < 2) {
+        const winner = await prisma.creditBatch.findFirst({
+          where: { workspaceId: input.internalWorkspaceId, kind: "MONTHLY", periodKey: period },
+        });
+        if (winner) {
+          return {
+            id: winner.externalId,
+            internalId: winner.id,
+            workspaceId: input.externalWorkspaceId,
+            kind: winner.kind,
+            amount: winner.amount,
+            remaining: winner.remaining,
+            expiresAt: winner.expiresAt?.toISOString() ?? null,
+            createdAt: winner.createdAt.toISOString(),
+          };
+        }
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Could not create monthly batch");
 }
 
 interface BatchRow {
@@ -151,12 +177,15 @@ export async function holdCredits(params: {
   const batch = await selectSpendableBatch(params.internalWorkspaceId, params.amount);
   if (!batch) throw new Error("Insufficient credits");
 
-  const [updated, transaction] = await prisma.$transaction([
-    prisma.creditBatch.updateMany({
+  // Interactive transaction: the HOLD create rolls back if the guarded decrement
+  // matches 0 (concurrent drain) — no phantom HOLD is ever persisted.
+  const transaction = await prisma.$transaction(async (tx) => {
+    const updated = await tx.creditBatch.updateMany({
       where: { id: batch.id, remaining: { gte: params.amount } },
       data: { remaining: { decrement: params.amount } },
-    }),
-    prisma.creditTransaction.create({
+    });
+    if (updated.count === 0) throw new Error("Insufficient credits");
+    return tx.creditTransaction.create({
       data: {
         batchId: batch.id,
         kind: "HOLD",
@@ -164,11 +193,8 @@ export async function holdCredits(params: {
         reference: params.reference,
         idempotencyKey: params.idempotencyKey,
       },
-    }),
-  ]);
-  if (updated.count === 0) {
-    throw new Error("Insufficient credits");
-  }
+    });
+  });
   await auditEvent(batch.workspaceId, "credit.hold", { batch: batch.externalId, amount: params.amount, reference: params.reference }, params.actorAuthUserId);
   return { held: true, replayed: false, transactionId: transaction.id, batchExternalId: batch.externalId };
 }
@@ -179,7 +205,7 @@ async function matchingHold(intent: string) {
   });
 }
 
-/** Finalize requires a matching HOLD on the same base intent key. */
+/** Finalize requires a matching HOLD and refuses after a REFUND. */
 export async function finalizeCredits(params: {
   amount: number;
   reference: string;
@@ -189,6 +215,10 @@ export async function finalizeCredits(params: {
   const hold = await matchingHold(params.intent);
   if (!hold) throw new Error("No matching hold for finalize");
   if (hold.amount !== params.amount) throw new Error("Finalize amount does not match hold");
+  const refunded = await prisma.creditTransaction.findUnique({
+    where: { idempotencyKey: refundKey(params.intent) },
+  });
+  if (refunded) throw new Error("Cannot finalize after refund");
   const existing = await prisma.creditTransaction.findUnique({
     where: { idempotencyKey: finalizeKey(params.intent) },
   });
@@ -217,6 +247,10 @@ export async function refundCredits(params: {
   const hold = await matchingHold(params.intent);
   if (!hold) throw new Error("No matching hold for refund");
   if (hold.amount !== params.amount) throw new Error("Refund amount does not match hold");
+  const finalized = await prisma.creditTransaction.findUnique({
+    where: { idempotencyKey: finalizeKey(params.intent) },
+  });
+  if (finalized) throw new Error("Cannot refund after finalize");
   const existing = await prisma.creditTransaction.findUnique({
     where: { idempotencyKey: refundKey(params.intent) },
   });

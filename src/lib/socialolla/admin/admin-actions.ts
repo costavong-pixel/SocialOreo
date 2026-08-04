@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { planConfig, lifetimePlan, type PlanDefinition } from "@/lib/socialolla/plans/plan-config";
 import { adjustCredits, intentKey } from "@/lib/socialolla/credits/batch-service";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
@@ -8,6 +9,7 @@ import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
  * - plan/price configuration (single source), entitlement inspection,
  *   manual adjustment/refund with reason + audit, provider-disable switches,
  *   audit-event viewer.
+ * All admin actions require a server-verified ADMIN role for the caller.
  */
 
 export function adminPlanConfig(): Record<string, PlanDefinition> {
@@ -41,6 +43,8 @@ export async function adminAdjustCredits(input: {
   amount: number;
   reason: string;
 }) {
+  const adminOk = await requireAdminByAuthUserId(input.adminAuthUserId);
+  if (!adminOk) throw new Error("Admin role required");
   if (input.amount === 0) throw new Error("Amount must be non-zero");
   const workspace = await getOrCreatePersonalWorkspace(input.targetUserId);
   const result = await adjustCredits({

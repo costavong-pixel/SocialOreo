@@ -1,42 +1,51 @@
 import Link from "next/link";
+import { planConfig, formatPriceCents } from "@/lib/socialolla/plans/plan-config";
 
 const plans = [
   {
-    name: "Free audit",
+    name: "Free demo",
     price: "$0",
     referencePrice: null,
     billing: "One-time",
-    detail: "A focused public snapshot before you commit.",
-    items: ["One account audit", "7 recent public videos", "Complete report and campaign priorities", "No Competitor Board access"],
-    action: "Start free",
+    detail: "One free live-quality title/caption demo before you commit.",
+    items: ["One labelled title/caption demo", "Editable and copyable result", "No sign-up required", "No credits consumed"],
+    action: "Try the demo",
     featured: false,
   },
   {
     name: "Lifetime",
-    price: "$89",
-    referencePrice: "$199",
+    price: null as string | null,
+    referencePrice: null,
     billing: "One-time",
-    detail: "Competitor Board access without a subscription.",
-    items: ["Compare your profile with one competitor", "Complete public-evidence comparison", "Purchase additional full-audit credits separately", "Lifetime and Monthly are separate products"],
+    detail: "SocialOlla lifetime plan with included credits.",
+    items: ["One personal workspace", "Destination-specific Post creation", "Watch with exact credit preview", "Included monthly credits + purchase packs"],
     action: "Choose Lifetime",
-    featured: false,
+    featured: true,
   },
   {
     name: "Monthly",
-    price: "$19",
-    referencePrice: "$39",
+    price: null as string | null,
+    referencePrice: null,
     billing: "per month",
-    detail: "Competitor Board access for broader ongoing comparison.",
-    items: ["Compare your profile with up to three competitors", "Complete public-evidence comparison", "Separate product; no Lifetime purchase required", "Cancel through Square when live checkout is enabled"],
+    detail: "Recurring plan with monthly included credits.",
+    items: ["One personal workspace", "Monthly credit batch", "Watch with exact credit preview", "Cancel in Square sandbox when live checkout is enabled"],
     action: "Choose Monthly",
-    featured: true,
+    featured: false,
   },
 ];
 
 export default function PricingPage() {
+  const config = planConfig();
+  const lifetime = config.lifetime;
+  const monthly = config.monthly;
+  const plansResolved = plans.map((plan) => ({
+    ...plan,
+    price: plan.name === "Lifetime" ? formatPriceCents(lifetime.priceCents) : plan.name === "Monthly" ? formatPriceCents(monthly.priceCents) : plan.price,
+  }));
+
   return (
     <main className="min-h-[100dvh] bg-[var(--social-page)] px-5 py-5 text-[var(--social-text)] sm:px-8 lg:px-12">
-      <nav className="so-public-nav mx-auto max-w-7xl"><Link className="font-display text-xl font-extrabold tracking-[-0.04em]" href="/">SocialOreo</Link><Link className="so-public-back" href="/">← Home</Link><div className="flex items-center gap-4"><Link className="hidden text-sm font-bold text-white/65 hover:text-white sm:block" href="/terms">Terms</Link><Link className="rounded-full bg-[var(--social-blue)] px-4 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]" href="/audits/new">Start a free audit</Link></div></nav>
+      <nav className="so-public-nav mx-auto max-w-7xl"><Link className="font-display text-xl font-extrabold tracking-[-0.04em]" href="/">SocialOlla</Link><Link className="so-public-back" href="/">← Home</Link><div className="flex items-center gap-4"><Link className="hidden text-sm font-bold text-white/65 hover:text-white sm:block" href="/terms">Terms</Link><Link className="rounded-full bg-[var(--social-blue)] px-4 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]" href="/sign-in">Sign in</Link></div></nav>
 
       <section className="mx-auto max-w-7xl pb-16 pt-20 text-center lg:pb-24 lg:pt-28"><p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--social-blue)]">Clear access, honest limits</p><h1 className="mx-auto mt-4 max-w-4xl text-5xl font-black tracking-[-0.04em] sm:text-6xl">Start with the evidence. Choose competitor access only when you need it.</h1><p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[var(--social-muted-on-dark)]">The free trial includes one public 7-post audit and its complete report. Lifetime and Monthly unlock different Competitor Board limits; additional full audits use separate credits.</p></section>
 

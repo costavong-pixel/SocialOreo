@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
     creditBatch: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
     creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
     auditEvent: { create: vi.fn() },
-    watchReport: { create: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    watchReport: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn(),
   };
   return { prisma };
@@ -61,8 +61,10 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.watchReport.create.mockResolvedValue({ id: "wr-1", externalId: "wpr_report000000000" });
     mocks.prisma.watchReport.update.mockResolvedValue({ id: "wr-1" });
+    mocks.prisma.watchReport.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.watchReport.findMany.mockResolvedValue([]);
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected");
     });
@@ -109,7 +111,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     await expect(
       createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.instagram.com/fail/", platform: "instagram", confirmed: true }),
     ).rejects.toThrow("fixture down");
-    expect(mocks.prisma.watchReport.update).toHaveBeenCalledWith(
+    expect(mocks.prisma.watchReport.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "FAILED" }) }),
     );
     const kinds = mocks.prisma.creditTransaction.create.mock.calls.map((call) => call[0].data.kind);

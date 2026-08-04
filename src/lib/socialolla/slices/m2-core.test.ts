@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
+    user: { findUnique: vi.fn() },
     workspace: { findUnique: vi.fn(), create: vi.fn() },
     destination: { findFirst: vi.fn(), create: vi.fn() },
     profile: { upsert: vi.fn() },
@@ -56,6 +57,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "true");
+    mocks.prisma.user.findUnique.mockResolvedValue({ id: "user-1", role: "ADMIN", accessPlan: "LIFETIME" });
     mocks.prisma.workspace.findUnique.mockResolvedValue({
       id: "ws-1",
       externalId: "wsp_slice000000000000",
@@ -100,6 +102,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.auditEvent.findMany.mockResolvedValue([]);
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected");
     });

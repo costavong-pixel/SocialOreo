@@ -56,28 +56,31 @@ export function createWatchService() {
 
     const intent = intentKey(workspace.id, `watch:${input.profileUrl}`, "basic-profile-analysis");
     const reference = `watch:${input.profileUrl}`;
-    const hold = await holdCredits({
-      internalWorkspaceId: workspace.dbId,
-      amount: cost,
-      reference,
-      idempotencyKey: `${intent}:hold`,
-      actorAuthUserId: input.authUserId,
-    });
-    if (!hold.held) throw new Error("Failed to hold credits");
 
-    const report = await prisma.watchReport.create({
-      data: {
-        externalId: newWatchReportExternalId(),
-        workspaceId: workspace.dbId,
-        profileUrl: input.profileUrl,
-        platform: input.platform,
-        status: "RUNNING",
-        provider: "provider-disabled",
-        creditCost: cost,
-      },
-    });
-
+    let report: { id: string; externalId: string };
     try {
+      // Hold inside the try so a report-creation failure refunds the hold.
+      const hold = await holdCredits({
+        internalWorkspaceId: workspace.dbId,
+        amount: cost,
+        reference,
+        idempotencyKey: `${intent}:hold`,
+        actorAuthUserId: input.authUserId,
+      });
+      if (!hold.held) throw new Error("Failed to hold credits");
+
+      report = await prisma.watchReport.create({
+        data: {
+          externalId: newWatchReportExternalId(),
+          workspaceId: workspace.dbId,
+          profileUrl: input.profileUrl,
+          platform: input.platform,
+          status: "RUNNING",
+          provider: "provider-disabled",
+          creditCost: cost,
+        },
+      });
+
       const analysis = await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 });
       await prisma.watchReport.update({
         where: { id: report.id },
@@ -86,11 +89,13 @@ export function createWatchService() {
       await finalizeCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId });
       return { reportExternalId: report.externalId, status: "COMPLETED", analysis };
     } catch (error) {
-      await prisma.watchReport.update({
-        where: { id: report.id },
-        data: { status: "FAILED", completedAt: new Date() },
-      });
-      await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId });
+      await prisma.watchReport
+        .updateMany({
+          where: { status: "RUNNING" },
+          data: { status: "FAILED", completedAt: new Date() },
+        })
+        .catch(() => undefined);
+      await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId }).catch(() => undefined);
       throw error;
     }
   }

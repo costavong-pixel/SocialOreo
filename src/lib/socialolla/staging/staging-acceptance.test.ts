@@ -69,6 +69,7 @@ describe("Staging acceptance — approved conversational onboarding flow", () =>
     });
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
+      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected");
     });

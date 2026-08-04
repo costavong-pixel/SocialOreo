@@ -2,7 +2,6 @@ import { createContentFactoryClient, type ContentFactoryClient } from "./client"
 import { prisma } from "@/lib/db/prisma";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import {
-  ensureMonthlyBatch,
   finalizeCredits,
   holdCredits,
   intentKey,
@@ -71,14 +70,9 @@ export function createPostService(client?: ContentFactoryClient) {
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    await ensureMonthlyBatch({
-      internalWorkspaceId: workspace.dbId,
-      externalWorkspaceId: workspace.id,
-      includedCredits: entitlement?.includedMonthlyCredits ?? 0,
-    });
 
     // Single canonical intent key used by execute, finalize and release.
-    const intent = intentKey(workspace.id, destination.externalId, input.contentIntent?.trim() || `post:${input.language}`);
+    const intent = intentKey(workspace.id, destination.externalId, input.contentIntent?.trim() || "post");
     const reference = `req:${destination.externalId}`;
 
     // Hold is idempotent per intent. Transient attempt failures auto-refund;
@@ -131,7 +125,8 @@ export function createPostService(client?: ContentFactoryClient) {
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
-    const intent = intentKey(workspace.id, destination.externalId, input.contentIntent?.trim() || `post:${"en"}`);
+    // Same canonical default intent as execute (no language in the default).
+    const intent = intentKey(workspace.id, destination.externalId, input.contentIntent?.trim() || "post");
     const refund = await refundCredits({ amount: creditsPerRequest, reference: `req:${destination.externalId}`, intent });
     return { refunded: refund.refunded };
   }
