@@ -59,7 +59,12 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
 
   test("guest protected-action boundary: no credits access without session", async ({ page }) => {
     await page.goto(BASE + "/credits", { waitUntil: "domcontentloaded" });
-    await page.waitForURL(/\/auth\/login/, { timeout: 15000 });
+    // Live-Auth0 deployments redirect through /auth/login into the Auth0
+    // Universal Login host, so accept any redirect away from the protected
+    // route. The invariant under test is: no credits access without a session.
+    await page.waitForURL(/\/auth\/login|\/u\/login|\/authorize/, { timeout: 15000 });
+    const url = page.url();
+    expect(/\/credits/.test(url)).toBe(false);
     await shot(page, "guest-boundary-redirect");
   });
 
