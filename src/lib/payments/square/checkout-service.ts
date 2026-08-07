@@ -124,7 +124,7 @@ export async function startSquareCheckout(input: {
     .digest("hex");
 
   return prisma.$transaction(async (transaction) => {
-    await transaction.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${pendingKey}))`);
+    await transaction.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${pendingKey}))::text`);
     // A retry reuses a short-lived, server-owned link only when every Square
     // context field matches that used to create it. Browser input never
     // supplies the checkout/session identifier or Square idempotency key.
