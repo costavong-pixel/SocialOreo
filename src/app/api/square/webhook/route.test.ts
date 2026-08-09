@@ -89,6 +89,7 @@ describe("POST /api/square/webhook", () => {
       paymentId: "payment-1",
       customerId: "customer-1",
       monthlyPlanVariationId: "monthly-plan-variation",
+      priceCents: 1900,
     });
   });
 
@@ -170,5 +171,18 @@ describe("POST /api/square/webhook", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, duplicate: true });
     expect(mockRecordSquareSubscription).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with 503 when production mode config is incomplete", async () => {
+    configureSandbox();
+    process.env.SQUARE_ENV = "production";
+    delete process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+    const body = JSON.stringify({ event_id: "event-1", type: "payment.updated" });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(503);
+    expect(mockWithSquareWebhookClaim).not.toHaveBeenCalled();
+    expect(mockSettleSquareCheckout).not.toHaveBeenCalled();
   });
 });

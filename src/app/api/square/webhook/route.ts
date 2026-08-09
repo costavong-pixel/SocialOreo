@@ -62,6 +62,7 @@ export async function POST(request: Request) {
         paymentId: payment.data.id,
         customerId: payment.data.customer_id ?? null,
         monthlyPlanVariationId: config.monthlyPlanVariationId,
+        priceCents: config.monthlyPriceCents,
       });
       return {
         creditsGranted: result.creditsGranted,

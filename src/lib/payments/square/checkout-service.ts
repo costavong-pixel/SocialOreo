@@ -117,7 +117,7 @@ export async function startSquareCheckout(input: {
       input.userId,
       product.ledgerProduct,
       input.config.applicationId,
-      "sandbox",
+      input.config.environment,
       input.config.locationId,
       product.kind === "subscription" ? product.catalogVariationId : "",
     ].join("\u0000"))
@@ -138,7 +138,7 @@ export async function startSquareCheckout(input: {
         userId: input.userId,
         product: product.ledgerProduct as SquareProduct,
         squareApplicationId: input.config.applicationId,
-        squareEnvironment: "sandbox",
+        squareEnvironment: input.config.environment,
         squareLocationId: input.config.locationId,
         squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
       },
@@ -148,11 +148,15 @@ export async function startSquareCheckout(input: {
     if (pending?.checkoutUrl) return { checkoutUrl: pending.checkoutUrl };
 
     // Abandon stale or configuration-mismatched links locally. We do not
-    // claim that the Square-hosted link was deactivated.
+    // claim that the Square-hosted link was deactivated. The sweep is scoped
+    // to this Square environment/application so one environment never expires
+    // another environment's pending links.
     await transaction.squareCheckout.updateMany({
       where: {
         userId: input.userId,
         product: product.ledgerProduct as SquareProduct,
+        squareEnvironment: input.config.environment,
+        squareApplicationId: input.config.applicationId,
         squarePaymentId: null,
         completedAt: null,
         checkoutUrl: { not: null },
@@ -165,7 +169,7 @@ export async function startSquareCheckout(input: {
         userId: input.userId,
         product: product.ledgerProduct as SquareProduct,
         squareApplicationId: input.config.applicationId,
-        squareEnvironment: "sandbox",
+        squareEnvironment: input.config.environment,
         squareLocationId: input.config.locationId,
         squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
         pendingKey,
@@ -204,6 +208,8 @@ type SettlementInput = {
   paymentId: string;
   customerId: string | null;
   monthlyPlanVariationId: string;
+  /** Authoritative monthly price (config.monthlyPriceCents) for the entitlement audit. */
+  priceCents: number;
 };
 
 type Transaction = Prisma.TransactionClient;
@@ -299,7 +305,7 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
           {
             ownerUserId: checkout.userId,
             squarePaymentId: input.paymentId,
-            priceCents: Number(process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS ?? 1900),
+            priceCents: input.priceCents,
           },
           transaction,
         );

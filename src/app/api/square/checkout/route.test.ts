@@ -93,4 +93,18 @@ describe("POST /api/square/checkout", () => {
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({ error: "We could not open checkout." });
   });
+
+  it("fails closed with 503 in production mode when config is incomplete (no Square call, no DB write)", async () => {
+    configureSandbox();
+    process.env.SQUARE_ENV = "production";
+    delete process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireTester.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+
+    const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "single_audit" }) }));
+
+    expect(response.status).toBe(503);
+    expect(mockStartSquareCheckout).not.toHaveBeenCalled();
+    expect(mockSyncUser).not.toHaveBeenCalled();
+  });
 });

@@ -1,6 +1,12 @@
+import { planConfig } from "@/lib/socialolla/plans/plan-config";
+
+export type SquareEnv = "sandbox" | "production";
+
 export type SquareConfig = {
+  /** Environment selector: 'sandbox' (default gate) or 'production'. */
+  environment: SquareEnv;
   applicationId: string;
-  /** Sandbox merchant/test-account identity returned by the Locations API. */
+  /** Merchant/test-account identity returned by the Locations API. */
   expectedMerchantId: string;
   accessToken: string;
   locationId: string;
@@ -24,6 +30,15 @@ function value(name: string): string | null {
   const configured = process.env[name]?.trim();
   return configured || null;
 }
+
+/**
+ * Explicit environment selector. Only 'sandbox' and 'production' are valid;
+ * any other/missing value yields null so Square stays fail-closed.
+ */
+export function squareEnv(): SquareEnv | null {
+  const configured = process.env.SQUARE_ENV?.trim();
+  return configured === "sandbox" || configured === "production" ? configured : null;
+}
 function positiveCents(value: string | null): number | null {
   if (!value || !/^\d+$/.test(value)) return null;
 
@@ -46,8 +61,22 @@ function currencyCode(value: string | null): string | null {
   return normalized && /^[A-Z]{3}$/.test(normalized) ? normalized : null;
 }
 
+/**
+ * Single authoritative monthly price. In production the Square payment price
+ * must agree with the plan/UI price (both derive from SQUARE_MONTHLY_PRICE_CENTS)
+ * and no divergent legacy override may be set; otherwise the configuration is
+ * invalid and must fail closed. Sandbox is unaffected (legacy override ignored).
+ */
+function monthlyPriceAgrees(monthlyPriceCents: number | null, environment: SquareEnv | null): boolean {
+  if (environment !== "production" || monthlyPriceCents === null) return true;
+  const legacyOverride = Number(process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS);
+  const legacyDiverges = !Number.isNaN(legacyOverride) && legacyOverride !== monthlyPriceCents;
+  return planConfig().monthly.priceCents === monthlyPriceCents && !legacyDiverges;
+}
+
 export function getSquareConfig(): SquareConfig | null {
-  if (process.env.SQUARE_ENV !== "sandbox") return null;
+  const environment = squareEnv();
+  if (!environment) return null;
 
   const applicationId = value("SQUARE_APPLICATION_ID");
   const expectedMerchantId = value("SQUARE_EXPECTED_MERCHANT_ID");
@@ -76,13 +105,15 @@ export function getSquareConfig(): SquareConfig | null {
     !monthlyPlanVariationId ||
     !monthlyPriceCents ||
     !singleAuditCatalogVariationId ||
-    !creatorPackCatalogVariationId ||
-    monthlyPriceCents !== 1900
+    !creatorPackCatalogVariationId
   ) {
     return null;
   }
 
+  if (!monthlyPriceAgrees(monthlyPriceCents, environment)) return null;
+
   return {
+    environment,
     applicationId,
     expectedMerchantId,
     accessToken,
@@ -106,7 +137,7 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
     if (!value(name)) invalidOrMissing.push(name);
   };
 
-  if (process.env.SQUARE_ENV !== "sandbox") invalidOrMissing.push("SQUARE_ENV");
+  if (!squareEnv()) invalidOrMissing.push("SQUARE_ENV");
   required("SQUARE_ACCESS_TOKEN");
   required("SQUARE_APPLICATION_ID");
   required("SQUARE_EXPECTED_MERCHANT_ID");
@@ -120,7 +151,12 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
   if (!currencyCode(value("SQUARE_CURRENCY"))) invalidOrMissing.push("SQUARE_CURRENCY");
   if (!httpsUrl(value("SQUARE_WEBHOOK_NOTIFICATION_URL"))) invalidOrMissing.push("SQUARE_WEBHOOK_NOTIFICATION_URL");
   if (!httpsUrl(value("APP_BASE_URL"))) invalidOrMissing.push("APP_BASE_URL");
-  if (positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS")) !== 1900) invalidOrMissing.push("SQUARE_MONTHLY_PRICE_CENTS");
+  const monthlyPriceCents = positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS"));
+  if (!monthlyPriceCents) {
+    invalidOrMissing.push("SQUARE_MONTHLY_PRICE_CENTS");
+  } else if (!monthlyPriceAgrees(monthlyPriceCents, squareEnv())) {
+    invalidOrMissing.push("SQUARE_MONTHLY_PRICE_CENTS_MISMATCH");
+  }
 
   return { valid: invalidOrMissing.length === 0, invalidOrMissing };
 }
