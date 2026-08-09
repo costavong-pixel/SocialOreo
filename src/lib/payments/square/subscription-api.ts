@@ -1,7 +1,5 @@
 import type { SquareConfig } from "./config";
-
-const SQUARE_SANDBOX_API = "https://connect.squareupsandbox.com";
-const SQUARE_API_VERSION = "2026-07-15";
+import { squareApiBaseUrl, squareApiVersion } from "./square-api";
 
 type SquareSubscription = { status?: string; canceled_date?: string | null };
 
@@ -13,12 +11,12 @@ export class SquareSubscriptionError extends Error {
 }
 
 export async function cancelMonthlySubscription(input: { subscriptionId: string; config: SquareConfig }): Promise<{ status: string; canceledDate: string | null }> {
-  const response = await fetch(`${SQUARE_SANDBOX_API}/v2/subscriptions/${encodeURIComponent(input.subscriptionId)}/cancel`, {
+  const response = await fetch(`${squareApiBaseUrl(input.config.environment)}/v2/subscriptions/${encodeURIComponent(input.subscriptionId)}/cancel`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.config.accessToken}`,
       "Content-Type": "application/json",
-      "Square-Version": SQUARE_API_VERSION,
+      "Square-Version": squareApiVersion(),
     },
   });
   const payload = (await response.json().catch(() => null)) as { subscription?: SquareSubscription } | null;

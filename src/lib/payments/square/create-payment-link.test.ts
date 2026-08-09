@@ -48,24 +48,18 @@ describe("createSquarePaymentLink", () => {
     );
   });
 
-  it("uses Square hosted quick pay with the fixed Monthly plan variation", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "link-monthly", url: "https://square.link/u/monthly", order_id: "order-monthly" } }), { status: 200 }));
+  it("targets the production API base when the config environment is production", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "link-p", url: "https://square.link/u/prod", order_id: "order-p" } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
+    const productionConfig: SquareConfig = { ...config, environment: "production" };
 
-    await createSquarePaymentLink({ checkoutId: "checkout-2", idempotencyKey: "server-monthly-key", config, product: getSquareProduct(config, "monthly") });
-    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
-      body: JSON.stringify({
-        idempotency_key: "server-monthly-key",
-        quick_pay: { location_id: "location", name: "SocialOreo Monthly", price_money: { amount: 1900, currency: "CAD" } },
-        checkout_options: { subscription_plan_id: "monthly-plan-variation", redirect_url: "https://example.test/pricing?checkout=checkout-2" },
-        description: "SocialOreo Monthly Sandbox subscription",
-      }),
-    }));
+    await expect(createSquarePaymentLink({ checkoutId: "checkout-p", idempotencyKey: "server-key", config: productionConfig, product: getSquareProduct(productionConfig, "single_audit") })).resolves.toEqual({ checkoutUrl: "https://square.link/u/prod", orderId: "order-p", paymentLinkId: "link-p" });
+    expect(fetchMock).toHaveBeenCalledWith("https://connect.squareup.com/v2/online-checkout/payment-links", expect.objectContaining({ headers: expect.objectContaining({ "Square-Version": "2026-07-15" }) }));
   });
 
-  it("does not expose Square failures to callers", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 500 })));
+  it("throws a fail-closed error when Square returns no usable payment link", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "link", url: "https://square.link/u/x" } }), { status: 200 })));
 
-    await expect(createSquarePaymentLink({ checkoutId: "checkout-3", idempotencyKey: "server-key-3", config, product: getSquareProduct(config, "lifetime") })).rejects.toBeInstanceOf(SquareCheckoutError);
+    await expect(createSquarePaymentLink({ checkoutId: "checkout-2", idempotencyKey: "server-key", config, product: getSquareProduct(config, "single_audit") })).rejects.toBeInstanceOf(SquareCheckoutError);
   });
 });
