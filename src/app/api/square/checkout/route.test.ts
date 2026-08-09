@@ -1,18 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetVerifiedSessionUser, mockSyncUser, mockStartSquareCheckout, mockRequireTester } = vi.hoisted(() => ({
+const { mockGetVerifiedSessionUser, mockSyncUser, mockStartSquareCheckout, mockRequireCheckoutAccess } = vi.hoisted(() => ({
   mockGetVerifiedSessionUser: vi.fn(),
   mockSyncUser: vi.fn(),
   mockStartSquareCheckout: vi.fn(),
-  mockRequireTester: vi.fn(),
+  mockRequireCheckoutAccess: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({ getVerifiedSessionUser: () => mockGetVerifiedSessionUser() }));
 vi.mock("@/lib/auth/sync-user", () => ({ syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args) }));
 vi.mock("@/lib/payments/square/checkout-service", () => ({ startSquareCheckout: (...args: unknown[]) => mockStartSquareCheckout(...args) }));
-vi.mock("@/lib/payments/square/tester-gate", () => ({ requireSquareSandboxTester: () => mockRequireTester() }));
+vi.mock("@/lib/payments/square/tester-gate", () => ({
+  requireSquareCheckoutAccess: () => mockRequireCheckoutAccess(),
+  requireSquareSandboxTester: () => mockRequireCheckoutAccess(),
+}));
 
 import { POST } from "./route";
+import { clearRateLimits } from "@/lib/rate-limit/rate-limit";
 
 const originalEnv = { ...process.env };
 
@@ -37,13 +41,14 @@ describe("POST /api/square/checkout", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.clearAllMocks();
-    mockRequireTester.mockReset();
+    mockRequireCheckoutAccess.mockReset();
+    clearRateLimits();
   });
 
   it("requires an authenticated user", async () => {
     configureSandbox();
     mockGetVerifiedSessionUser.mockResolvedValue(null);
-    mockRequireTester.mockResolvedValue(null);
+    mockRequireCheckoutAccess.mockResolvedValue(null);
 
     const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", body: JSON.stringify({ product: "lifetime" }) }));
     expect(response.status).toBe(403);
@@ -52,7 +57,7 @@ describe("POST /api/square/checkout", () => {
   it("rejects a client-supplied product outside the server catalog", async () => {
     configureSandbox();
     mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
-    mockRequireTester.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
 
     const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "free_access" }) }));
     expect(response.status).toBe(400);
@@ -62,7 +67,7 @@ describe("POST /api/square/checkout", () => {
   it("starts a server-owned sandbox checkout for an approved one-time product", async () => {
     configureSandbox();
     mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
-    mockRequireTester.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
     mockSyncUser.mockResolvedValue({ id: "user-1" });
     mockStartSquareCheckout.mockResolvedValue({ checkoutUrl: "https://square.link/u/sandbox" });
 
@@ -75,7 +80,7 @@ describe("POST /api/square/checkout", () => {
   it("rejects Monthly on the general checkout endpoint because it uses the dedicated owner-gated hosted route", async () => {
     configureSandbox();
     mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
-    mockRequireTester.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
 
     const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "monthly" }) }));
 
@@ -86,7 +91,7 @@ describe("POST /api/square/checkout", () => {
   it("returns a JSON error when syncing the authenticated user fails", async () => {
     configureSandbox();
     mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
-    mockRequireTester.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
     mockSyncUser.mockRejectedValue(new Error("database unavailable"));
 
     const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "single_audit" }) }));
@@ -99,12 +104,40 @@ describe("POST /api/square/checkout", () => {
     process.env.SQUARE_ENV = "production";
     delete process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
     mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
-    mockRequireTester.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
 
     const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "single_audit" }) }));
 
     expect(response.status).toBe(503);
     expect(mockStartSquareCheckout).not.toHaveBeenCalled();
     expect(mockSyncUser).not.toHaveBeenCalled();
+  });
+
+  it("opens checkout to any verified user in production mode", async () => {
+    configureSandbox();
+    process.env.SQUARE_ENV = "production";
+    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-prod", email: "buyer@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-prod", email: "buyer@example.com" });
+    mockSyncUser.mockResolvedValue({ id: "user-prod" });
+    mockStartSquareCheckout.mockResolvedValue({ checkoutUrl: "https://square.link/u/prod" });
+
+    const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "lifetime" }) }));
+    expect(response.status).toBe(200);
+    expect(mockStartSquareCheckout).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-prod", productId: "lifetime" }));
+  });
+
+  it("returns 429 after the per-user rate limit is exhausted (never replacing a sandbox 403)", async () => {
+    configureSandbox();
+    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-1", email: "creator@example.com" });
+    mockStartSquareCheckout.mockResolvedValue({ checkoutUrl: "https://square.link/u/ok" });
+    mockSyncUser.mockResolvedValue({ id: "user-1" });
+
+    let lastStatus = 0;
+    for (let i = 0; i < 12; i += 1) {
+      const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "lifetime" }) }));
+      lastStatus = response.status;
+    }
+    expect(lastStatus).toBe(429);
   });
 });

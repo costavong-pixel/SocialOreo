@@ -40,7 +40,7 @@ export async function createSquarePaymentLink(input: {
       subscription_plan_id: input.product.catalogVariationId,
       redirect_url: redirectUrl,
     },
-    description: "SocialOreo Monthly Sandbox subscription",
+    description: "SocialOreo Monthly subscription",
   } : {
     idempotency_key: input.idempotencyKey,
     order: {

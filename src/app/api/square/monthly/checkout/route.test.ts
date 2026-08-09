@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockRequireTester, mockConfig, mockSyncUser, mockStart } = vi.hoisted(() => ({
-  mockRequireTester: vi.fn(), mockConfig: vi.fn(), mockSyncUser: vi.fn(), mockStart: vi.fn(),
+const { mockRequireCheckoutAccess, mockConfig, mockSyncUser, mockStart } = vi.hoisted(() => ({
+  mockRequireCheckoutAccess: vi.fn(), mockConfig: vi.fn(), mockSyncUser: vi.fn(), mockStart: vi.fn(),
 }));
 
-vi.mock("@/lib/payments/square/tester-gate", () => ({ requireSquareSandboxTester: () => mockRequireTester() }));
+vi.mock("@/lib/payments/square/tester-gate", () => ({
+  requireSquareCheckoutAccess: () => mockRequireCheckoutAccess(),
+  requireSquareSandboxTester: () => mockRequireCheckoutAccess(),
+}));
 vi.mock("@/lib/payments/square/config", () => ({ getSquareConfig: () => mockConfig() }));
 vi.mock("@/lib/auth/sync-user", () => ({ syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args) }));
 vi.mock("@/lib/payments/square/checkout-service", () => ({
@@ -13,13 +16,17 @@ vi.mock("@/lib/payments/square/checkout-service", () => ({
 }));
 
 import { POST } from "./route";
+import { clearRateLimits } from "@/lib/rate-limit/rate-limit";
 
 describe("POST /api/square/monthly/checkout", () => {
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    vi.clearAllMocks();
+    clearRateLimits();
+  });
 
   it("creates a hosted checkout only for the authenticated allowlisted tester", async () => {
     const config = { applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
-    mockRequireTester.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
     mockConfig.mockReturnValue(config);
     mockSyncUser.mockResolvedValue({ id: "user-1" });
     mockStart.mockResolvedValue({ checkoutUrl: "https://square.link/u/hosted" });
@@ -31,7 +38,7 @@ describe("POST /api/square/monthly/checkout", () => {
   });
 
   it("fails closed before configuration or Square calls for unauthenticated/non-allowlisted callers", async () => {
-    mockRequireTester.mockResolvedValue(null);
+    mockRequireCheckoutAccess.mockResolvedValue(null);
     const response = await POST();
     expect(response.status).toBe(403);
     expect(mockConfig).not.toHaveBeenCalled();
@@ -40,10 +47,33 @@ describe("POST /api/square/monthly/checkout", () => {
   });
 
   it("rejects a missing or non-Sandbox configuration", async () => {
-    mockRequireTester.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
     mockConfig.mockReturnValue(null);
     const response = await POST();
     expect(response.status).toBe(503);
     expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it("opens the hosted checkout to any verified user in production mode", async () => {
+    const config = { applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-prod", email: "buyer@example.com" });
+    mockConfig.mockReturnValue(config);
+    mockSyncUser.mockResolvedValue({ id: "user-prod" });
+    mockStart.mockResolvedValue({ checkoutUrl: "https://square.link/u/prod" });
+
+    const response = await POST();
+    expect(response.status).toBe(200);
+    expect(mockStart).toHaveBeenCalledWith({ userId: "user-prod", productId: "monthly", config });
+  });
+
+  it("returns 429 after the per-user rate limit is exhausted", async () => {
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
+    mockConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 });
+    mockSyncUser.mockResolvedValue({ id: "user-1" });
+    mockStart.mockResolvedValue({ checkoutUrl: "https://square.link/u/ok" });
+
+    let lastStatus = 0;
+    for (let i = 0; i < 12; i += 1) lastStatus = (await POST()).status;
+    expect(lastStatus).toBe(429);
   });
 });

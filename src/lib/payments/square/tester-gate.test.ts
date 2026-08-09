@@ -8,7 +8,7 @@ const { mockGetVerifiedSessionUser, mockRequireAdminByAuthUserId } = vi.hoisted(
 vi.mock("@/lib/auth/current-user", () => ({ getVerifiedSessionUser: () => mockGetVerifiedSessionUser() }));
 vi.mock("@/lib/auth/roles", () => ({ requireAdminByAuthUserId: (...args: unknown[]) => mockRequireAdminByAuthUserId(...args) }));
 
-import { getSquareSandboxTesterEmails, requireSquareSandboxTester } from "./tester-gate";
+import { getSquareSandboxTesterEmails, requireSquareCheckoutAccess, requireSquareSandboxTester } from "./tester-gate";
 
 const originalEnv = { ...process.env };
 
@@ -43,5 +43,33 @@ describe("Square Sandbox tester gate", () => {
 
     await expect(requireSquareSandboxTester()).resolves.toEqual(owner);
     expect(getSquareSandboxTesterEmails()).toEqual(new Set(["owner@example.com"]));
+  });
+
+  it("keeps the sandbox path byte-for-byte via requireSquareCheckoutAccess", async () => {
+    process.env.SQUARE_ENV = "sandbox";
+    process.env.SQUARE_SANDBOX_TESTER_EMAILS = "owner@example.com";
+    const owner = { id: "auth0-owner", email: "owner@example.com" };
+    mockGetVerifiedSessionUser.mockResolvedValue(owner);
+    mockRequireAdminByAuthUserId.mockResolvedValue(true);
+
+    await expect(requireSquareCheckoutAccess()).resolves.toEqual(owner);
+    expect(mockRequireAdminByAuthUserId).toHaveBeenCalledWith("auth0-owner");
+  });
+
+  it("lets any verified session user through the production gate without the tester allowlist", async () => {
+    process.env.SQUARE_ENV = "production";
+    delete process.env.SQUARE_SANDBOX_TESTER_EMAILS;
+    const user = { id: "auth0-user", email: "user@example.com" };
+    mockGetVerifiedSessionUser.mockResolvedValue(user);
+
+    await expect(requireSquareCheckoutAccess()).resolves.toEqual(user);
+    expect(mockRequireAdminByAuthUserId).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with no session in production", async () => {
+    process.env.SQUARE_ENV = "production";
+    mockGetVerifiedSessionUser.mockResolvedValue(null);
+
+    await expect(requireSquareCheckoutAccess()).resolves.toBeNull();
   });
 });

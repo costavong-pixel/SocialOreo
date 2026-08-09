@@ -57,12 +57,12 @@ describe("CheckoutButtons", () => {
     await vi.waitFor(() => expect(assignMock).toHaveBeenCalledWith("https://square.link/monthly"));
   });
 
-  it("shows the server error when checkout is not available (e.g. not a tester)", async () => {
+  it("shows the server error when checkout is not available (e.g. not authorized)", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
       headers: { get: () => "application/json" },
-      json: async () => ({ error: "Sandbox checkout is limited to testers." }),
+      json: async () => ({ error: "Checkout is restricted to authorized accounts." }),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -70,12 +70,12 @@ describe("CheckoutButtons", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Choose Lifetime" }));
 
-    expect(await screen.findByText("Sandbox checkout is limited to testers.")).toBeTruthy();
+    expect(await screen.findByText("Checkout is restricted to authorized accounts.")).toBeTruthy();
     expect(assignMock).not.toHaveBeenCalled();
   });
 
-  it("labels the purchase surface as sandbox-only", () => {
+  it("labels the purchase surface as Square-hosted", () => {
     render(<CheckoutButtons lifetimePriceCents={7900} monthlyPriceCents={1900} />);
-    expect(screen.getByText(/Sandbox checkout only/)).toBeTruthy();
+    expect(screen.getByText(/Square-hosted checkout/)).toBeTruthy();
   });
 });

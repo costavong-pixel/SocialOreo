@@ -28,7 +28,7 @@ export function LifetimeCheckoutButton() {
         setNotice(null);
         throw new Error(payload?.error ?? `Checkout request failed (${response.status}).`);
       }
-      setNotice("Opening Square sandbox checkout…");
+      setNotice("Opening Square-hosted checkout…");
       window.location.assign(payload.checkoutUrl);
     } catch (checkoutError) {
       setError(checkoutError instanceof Error ? checkoutError.message : "We could not open checkout.");
@@ -47,7 +47,7 @@ export function LifetimeCheckoutButton() {
       >
         {loading ? "Opening checkout…" : "Choose Lifetime"}
       </button>
-      <p className="mt-2 text-xs text-white/50">Checkout is Square sandbox-only and tester-gated. Entitlement is granted exactly once after settlement.</p>
+      <p className="mt-2 text-xs text-white/50">Checkout is Square-hosted. Entitlement is granted exactly once after settlement.</p>
       {notice && <p role="status" className="mt-2 text-sm text-white/70">{notice}</p>}
       {error && <p role="alert" className="mt-2 text-sm text-rose-300">{error}</p>}
     </div>

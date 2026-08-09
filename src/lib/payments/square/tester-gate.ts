@@ -1,5 +1,6 @@
 import { getVerifiedSessionUser, type VerifiedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
+import { squareEnv } from "@/lib/payments/square/config";
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -28,4 +29,16 @@ export async function requireSquareSandboxTester(): Promise<VerifiedSessionUser 
   if (!authUser) return null;
 
   return await isSquareSandboxTester(authUser) ? authUser : null;
+}
+
+/**
+ * Environment-aware checkout access gate (PROD-IMP-013). The environment source
+ * is squareEnv() (fail closed on null) so it can never disagree with the API
+ * host selected from config.environment:
+ * - production: a verified session user is sufficient (no tester allowlist/admin);
+ * - sandbox: the existing allowlist + admin gate applies byte-for-byte.
+ */
+export async function requireSquareCheckoutAccess(): Promise<VerifiedSessionUser | null> {
+  if (squareEnv() === "production") return getVerifiedSessionUser();
+  return requireSquareSandboxTester();
 }

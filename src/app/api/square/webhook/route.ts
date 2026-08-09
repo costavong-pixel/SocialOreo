@@ -24,7 +24,7 @@ const subscriptionSchema = z.object({
 
 export async function POST(request: Request) {
   const config = getSquareConfig();
-  if (!config) return NextResponse.json({ error: "Sandbox checkout is not configured yet." }, { status: 503 });
+  if (!config) return NextResponse.json({ error: "Checkout is not configured yet." }, { status: 503 });
 
   const rawBody = await request.text();
   const verification = verifySquareWebhookSignature(
