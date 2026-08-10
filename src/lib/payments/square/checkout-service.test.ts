@@ -22,7 +22,7 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: mockPrisma,
 }));
 
-import { recordSquareSubscription, settleSquareCheckout, startSquareCheckout } from "./checkout-service";
+import { recordSquareSubscription, settleSquareCheckout, settleSquareRenewal, startSquareCheckout } from "./checkout-service";
 import type { SquareConfig } from "./config";
 vi.mock("./merchant-context", () => ({ verifySquareMerchantContext: vi.fn().mockResolvedValue(true) }));
 
@@ -479,5 +479,134 @@ describe("settleSquareCheckout", () => {
     // ProviderCallLog is written only by audit provider calls (Apify/AI), never
     // by Square payment/webhook/credit flows. PROD-IMP-011 invariant.
     expect(mockPrisma.providerCallLog.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("settleSquareRenewal", () => {
+  function renewalTx() {
+    const tx = {
+      squareSubscription: { findMany: vi.fn() },
+      squareCheckout: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
+      squarePaymentAuditLog: { create: vi.fn().mockResolvedValue({ id: "audit-1" }) },
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_monthly0000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }),
+        create: vi.fn(),
+      },
+      planVersion: { upsert: vi.fn().mockResolvedValue({ id: "plv-1", externalId: "plv_monthly_v1" }) },
+      entitlementSnapshot: { create: vi.fn().mockResolvedValue({ id: "ent-1" }) },
+      creditBatch: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "batch-1", amount: 20, remaining: 20, kind: "MONTHLY", createdAt: new Date() }) },
+      auditEvent: { create: vi.fn().mockResolvedValue({ id: "evt-1" }) },
+      user: { update: vi.fn().mockResolvedValue({}) },
+    };
+    return tx;
+  }
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    mockTransaction.mockImplementation((callback: (transaction: typeof mockPrisma) => unknown) => callback(mockPrisma));
+  });
+
+  it("settles a renewal matching exactly-one ACTIVE subscription and grants once", async () => {
+    const tx = renewalTx();
+    tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: "user-1" }]);
+    tx.squareCheckout.findFirst.mockResolvedValue(null);
+    tx.squareCheckout.create.mockResolvedValue({ id: "synthetic-1" });
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
+
+    expect(tx.squareCheckout.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        product: "MONTHLY", squareOrderId: "order-renew-1", squarePaymentId: "pay-renew-1",
+        squareEnvironment: "sandbox", checkoutUrl: null, pendingKey: null, idempotencyKey: null,
+        squarePaymentLinkId: null, expiresAt: null, completedAt: expect.any(Date),
+      }),
+    }));
+    expect(tx.squarePaymentAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "payment.renewal", source: "WEBHOOK" }) }));
+    expect(mockPrisma.providerCallLog.create).not.toHaveBeenCalled();
+  });
+
+  it("treats a redelivered renewal as duplicate exactly once by squarePaymentId", async () => {
+    const tx = renewalTx();
+    tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: "user-1" }]);
+    tx.squareCheckout.findFirst.mockResolvedValue({ id: "synthetic-1" });
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
+    expect(tx.squareCheckout.create).not.toHaveBeenCalled();
+    expect(tx.entitlementSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("maps a concurrent double delivery P2002/40001 to duplicate (no double grant)", async () => {
+    const tx = renewalTx();
+    tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: "user-1" }]);
+    tx.squareCheckout.findFirst.mockResolvedValue(null);
+    tx.squareCheckout.create.mockRejectedValue(Object.assign(new Error("unique"), { code: "P2002" }));
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
+    expect(tx.entitlementSnapshot.create).not.toHaveBeenCalled();
+
+    tx.squareCheckout.create.mockRejectedValue(Object.assign(new Error("serialization"), { code: "40001" }));
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
+  });
+
+  it("fails closed (no grant, audit only) when the payment amount does not equal the monthly price", async () => {
+    const tx = renewalTx();
+    tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: "user-1" }]);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 2500, config: checkoutConfig,
+    })).resolves.toEqual({ status: "unknown", creditsGranted: 0 });
+    expect(tx.squareCheckout.create).not.toHaveBeenCalled();
+    expect(tx.entitlementSnapshot.create).not.toHaveBeenCalled();
+    expect(tx.squarePaymentAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "payment.renewal.unknown", subscriptionStatus: "amount_mismatch" }) }));
+  });
+
+  it("fails closed when there is no ACTIVE subscription or the match is ambiguous", async () => {
+    const tx = renewalTx();
+    tx.squareSubscription.findMany.mockResolvedValue([]);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "unknown", creditsGranted: 0 });
+
+    tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: "user-1" }, { id: "sub-2", userId: "user-1" }]);
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "unknown", creditsGranted: 0 });
+    expect(tx.squareCheckout.create).not.toHaveBeenCalled();
+  });
+
+  it("infers ownership from exactly-one completed MONTHLY checkout excluding synthetic rows", async () => {
+    const tx = renewalTx();
+    tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: null }]);
+    tx.squareCheckout.findFirst.mockResolvedValue(null);
+    tx.squareCheckout.create.mockResolvedValue({ id: "synthetic-1" });
+    tx.squareCheckout.findMany.mockResolvedValue([{ id: "c1", userId: "user-1" }]);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRenewal({
+      orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
+      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+    })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
+    // Inference must exclude synthetic rows (checkoutUrl IS NULL).
+    expect(tx.squareCheckout.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ checkoutUrl: { not: null } }) }));
   });
 });

@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { getSquareConfig } from "@/lib/payments/square/config";
-import { recordSquareSubscription, settleSquareCheckout, withSquareWebhookClaim } from "@/lib/payments/square/checkout-service";
+import { recordSquareSubscription, settleSquareCheckout, settleSquareRenewal, withSquareWebhookClaim } from "@/lib/payments/square/checkout-service";
 import { verifySquareWebhookSignature } from "@/lib/payments/square/verify-webhook-signature";
+
+const moneySchema = z.object({ amount: z.number(), currency: z.string() }).optional();
 
 const paymentSchema = z.object({
   id: z.string().min(1),
@@ -11,6 +13,8 @@ const paymentSchema = z.object({
   customer_id: z.string().min(1).nullable().optional(),
   location_id: z.string().min(1),
   status: z.string(),
+  amount_money: moneySchema,
+  total_money: moneySchema,
 });
 
 const subscriptionSchema = z.object({
@@ -64,10 +68,27 @@ export async function POST(request: Request) {
         monthlyPlanVariationId: config.monthlyPlanVariationId,
         priceCents: config.monthlyPriceCents,
       });
+      if (result.status === "unknown") {
+        // A COMPLETED payment with no server-created order is a recurring MONTHLY
+        // renewal auto-charge. Reconcile it (amount must equal the monthly price).
+        const renewal = await settleSquareRenewal({
+          orderId: payment.data.order_id,
+          paymentId: payment.data.id,
+          customerId: payment.data.customer_id ?? "",
+          monthlyPlanVariationId: config.monthlyPlanVariationId,
+          amountCents: payment.data.total_money?.amount ?? payment.data.amount_money?.amount ?? 0,
+          config,
+        });
+        return {
+          creditsGranted: renewal.creditsGranted,
+          duplicate: renewal.status === "duplicate",
+          ignored: renewal.status === "unknown",
+        };
+      }
       return {
         creditsGranted: result.creditsGranted,
         duplicate: result.status === "duplicate",
-        ignored: result.status === "unknown",
+        ignored: false,
       };
     }
 

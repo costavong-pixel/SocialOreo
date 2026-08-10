@@ -339,6 +339,128 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
   }
 }
 
+/**
+ * Reconcile recurring MONTHLY renewal payments (Square auto-charge orders never
+ * map to a server-created SquareCheckout). PROD-IMP-014: exactly-one ACTIVE
+ * subscription match, amount must equal the configured monthly price, and a
+ * synthetic settlement row (inert: checkoutUrl/pending/link/idempotency/expiry
+ * all null) gives exactly-once via the existing unique keys.
+ */
+export async function settleSquareRenewal(input: {
+  orderId: string;
+  paymentId: string;
+  customerId: string;
+  monthlyPlanVariationId: string;
+  amountCents: number;
+  config: SquareConfig;
+}): Promise<{ status: "settled" | "duplicate" | "unknown"; creditsGranted: number }> {
+  const { prisma } = await import("@/lib/db/prisma");
+
+  const auditUnknown = async (transaction: Transaction, reason: string) => {
+    await transaction.squarePaymentAuditLog.create({
+      data: { source: "WEBHOOK", eventType: "payment.renewal.unknown", subscriptionStatus: reason },
+    });
+  };
+
+  try {
+    return await prisma.$transaction(async (transaction) => {
+      // C1: a renewal must equal the configured monthly price. A non-renewal
+      // COMPLETED payment (invoice, dashboard, Tap-to-Pay) must never be minted
+      // as a renewal; amount mismatch -> audit-only, no grant.
+      if (input.amountCents !== input.config.monthlyPriceCents) {
+        await auditUnknown(transaction, "amount_mismatch");
+        return { status: "unknown" as const, creditsGranted: 0 };
+      }
+      if (!input.customerId) {
+        await auditUnknown(transaction, "no_customer");
+        return { status: "unknown" as const, creditsGranted: 0 };
+      }
+
+      // Exactly-one ACTIVE MONTHLY subscription match (fail closed on ambiguity).
+      const subscriptions = await transaction.squareSubscription.findMany({
+        where: { squareCustomerId: input.customerId, planVariationId: input.monthlyPlanVariationId, status: "ACTIVE" },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, userId: true },
+        take: 2,
+      });
+      if (subscriptions.length !== 1) {
+        await auditUnknown(transaction, subscriptions.length === 0 ? "no_active_subscription" : "subscription_ambiguous");
+        return { status: "unknown" as const, creditsGranted: 0 };
+      }
+      const subscription = subscriptions[0];
+
+      // Duplicate short-circuit: this payment already settled.
+      const existing = await transaction.squareCheckout.findFirst({
+        where: { squarePaymentId: input.paymentId },
+        select: { id: true },
+      });
+      if (existing) return { status: "duplicate" as const, creditsGranted: 0 };
+
+      // Ownership: prefer the subscription's userId; fall back to exactly-one
+      // completed MONTHLY checkout EXCLUDING synthetic rows (checkoutUrl IS NULL)
+      // so synthetic renewal rows never pollute count-based inference.
+      let userId = subscription.userId;
+      if (!userId) {
+        const completed = await transaction.squareCheckout.findMany({
+          where: { product: "MONTHLY", squareCustomerId: input.customerId, completedAt: { not: null }, checkoutUrl: { not: null } },
+          select: { id: true, userId: true },
+          take: 2,
+        });
+        if (completed.length !== 1 || !completed[0].userId) {
+          await auditUnknown(transaction, "owner_inference_failed");
+          return { status: "unknown" as const, creditsGranted: 0 };
+        }
+        userId = completed[0].userId;
+      }
+
+      // Synthetic settlement row (inert; C4 keeps every pending/unique column null).
+      const synthetic = await transaction.squareCheckout.create({
+        data: {
+          userId,
+          product: "MONTHLY",
+          squareOrderId: input.orderId,
+          squarePaymentId: input.paymentId,
+          squareCustomerId: input.customerId,
+          squareApplicationId: input.config.applicationId,
+          squareEnvironment: input.config.environment,
+          squareLocationId: input.config.locationId,
+          squarePlanVariationId: input.config.monthlyPlanVariationId,
+          checkoutUrl: null,
+          pendingKey: null,
+          expiresAt: null,
+          idempotencyKey: null,
+          squarePaymentLinkId: null,
+          completedAt: new Date(),
+        },
+        select: { id: true },
+      });
+
+      const { grantMonthlyEntitlement } = await import("@/lib/socialolla/entitlements/entitlement-service");
+      const granted = await grantMonthlyEntitlement(
+        { ownerUserId: userId, squarePaymentId: input.paymentId, priceCents: input.config.monthlyPriceCents },
+        transaction,
+      );
+      await recomputeAccessPlan(transaction, userId);
+      await transaction.squarePaymentAuditLog.create({
+        data: {
+          userId,
+          squareCheckoutId: synthetic.id,
+          squareSubscriptionId: subscription.id,
+          source: "WEBHOOK",
+          eventType: "payment.renewal",
+        },
+      });
+      return { status: "settled" as const, creditsGranted: granted.creditsGranted };
+    }, { isolationLevel: "Serializable" });
+  } catch (error) {
+    const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.code : (error as { code?: unknown }).code;
+    if (code === "P2002" || code === "40001") {
+      return { status: "duplicate", creditsGranted: 0 };
+    }
+    throw error;
+  }
+}
+
 export async function recordSquareSubscription(input: {
   subscriptionId: string;
   customerId: string;
@@ -376,6 +498,9 @@ export async function recordSquareSubscription(input: {
           product: "MONTHLY",
           squareCustomerId: input.customerId,
           completedAt: { not: null },
+          // Exclude synthetic renewal rows (checkoutUrl IS NULL) so they never
+          // pollute the exactly-one ownership inference (PROD-IMP-014).
+          checkoutUrl: { not: null },
         },
         select: { id: true, userId: true },
         take: 2,

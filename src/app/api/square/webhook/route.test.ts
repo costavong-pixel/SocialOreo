@@ -1,14 +1,16 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockSettleSquareCheckout, mockRecordSquareSubscription, mockWithSquareWebhookClaim } = vi.hoisted(() => ({
+const { mockSettleSquareCheckout, mockSettleSquareRenewal, mockRecordSquareSubscription, mockWithSquareWebhookClaim } = vi.hoisted(() => ({
   mockSettleSquareCheckout: vi.fn(),
+  mockSettleSquareRenewal: vi.fn(),
   mockRecordSquareSubscription: vi.fn(),
   mockWithSquareWebhookClaim: vi.fn(),
 }));
 
 vi.mock("@/lib/payments/square/checkout-service", () => ({
   settleSquareCheckout: (...args: unknown[]) => mockSettleSquareCheckout(...args),
+  settleSquareRenewal: (...args: unknown[]) => mockSettleSquareRenewal(...args),
   recordSquareSubscription: (...args: unknown[]) => mockRecordSquareSubscription(...args),
   withSquareWebhookClaim: (...args: unknown[]) => mockWithSquareWebhookClaim(...args),
 }));
@@ -184,5 +186,46 @@ describe("POST /api/square/webhook", () => {
     expect(response.status).toBe(503);
     expect(mockWithSquareWebhookClaim).not.toHaveBeenCalled();
     expect(mockSettleSquareCheckout).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a COMPLETED unknown-order payment as a MONTHLY renewal when amount matches", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
+    mockSettleSquareRenewal.mockResolvedValue({ status: "settled", creditsGranted: 20 });
+    const body = JSON.stringify({
+      event_id: "event-renewal",
+      created_at: "2026-07-26T15:09:32.671Z",
+      type: "payment.updated",
+      data: { object: { payment: { id: "pay-renew", order_id: "order-renew", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1900, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 20, duplicate: false, ignored: false });
+    expect(mockSettleSquareRenewal).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: "order-renew",
+      paymentId: "pay-renew",
+      customerId: "customer-1",
+      monthlyPlanVariationId: "monthly-plan-variation",
+      amountCents: 1900,
+    }));
+  });
+
+  it("does not reconcile an unknown-order payment whose amount does not match (renewal ignored)", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
+    mockSettleSquareRenewal.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
+    const body = JSON.stringify({
+      event_id: "event-unknown-amount",
+      created_at: "2026-07-26T15:09:32.671Z",
+      type: "payment.updated",
+      data: { object: { payment: { id: "pay-x", order_id: "order-x", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 2500, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 0, duplicate: false, ignored: true });
   });
 });
