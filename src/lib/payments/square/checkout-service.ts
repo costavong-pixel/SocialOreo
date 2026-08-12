@@ -13,6 +13,13 @@ export class SquareCheckoutServiceError extends Error {
   }
 }
 
+class SquareWebhookClaimLostError extends SquareCheckoutServiceError {
+  constructor() {
+    super("Webhook claim was lost before completion.");
+    this.name = "SquareWebhookClaimLostError";
+  }
+}
+
 const WEBHOOK_LEASE_MS = 5 * 60 * 1000;
 const PENDING_CHECKOUT_TTL_MS = 15 * 60 * 1000;
 let squarePrisma: (typeof import("@/lib/db/prisma"))["prisma"] | null = null;
@@ -71,7 +78,7 @@ export async function completeSquareWebhookEvent(input: { eventId: string; proce
     where: { squareEventId: input.eventId, processingToken: input.processingToken, processedAt: null },
     data: { processedAt: new Date() },
   });
-  if (result.count !== 1) throw new SquareCheckoutServiceError("Webhook claim was lost before completion.");
+  if (result.count !== 1) throw new SquareWebhookClaimLostError();
 }
 
 export async function releaseSquareWebhookEvent(input: { eventId: string; processingToken: string }) {
@@ -88,14 +95,27 @@ export const squareWebhookLeaseMs = WEBHOOK_LEASE_MS;
 export async function withSquareWebhookClaim<T>(input: { eventId: string; eventType: string; rawBody: string }, work: () => Promise<T>): Promise<{ state: "completed" | "processing" | "processed"; value?: T }> {
   const claim = await claimSquareWebhookEvent(input);
   if (claim.state !== "claimed") return { state: claim.state };
+
+  let value: T;
   try {
-    const value = await work();
-    await completeSquareWebhookEvent({ eventId: input.eventId, processingToken: claim.processingToken });
-    return { state: "processed", value };
+    value = await work();
   } catch (error) {
     await releaseSquareWebhookEvent({ eventId: input.eventId, processingToken: claim.processingToken });
     throw error;
   }
+
+  try {
+    await completeSquareWebhookEvent({ eventId: input.eventId, processingToken: claim.processingToken });
+  } catch (error) {
+    if (error instanceof SquareWebhookClaimLostError) {
+      console.warn("Square webhook claim lost after processing.", { eventId: input.eventId, eventType: input.eventType });
+      return { state: "processed", value };
+    }
+    await releaseSquareWebhookEvent({ eventId: input.eventId, processingToken: claim.processingToken });
+    throw error;
+  }
+
+  return { state: "processed", value };
 }
 
 export async function startSquareCheckout(input: {
