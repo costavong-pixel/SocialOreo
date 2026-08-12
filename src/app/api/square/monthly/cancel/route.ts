@@ -21,7 +21,7 @@ export async function POST() {
 
   try {
     const user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
-    const existing = await getActiveMonthlySubscriptionForUser(user.id);
+    const existing = await getActiveMonthlySubscriptionForUser(user.id, config.monthlyPlanVariationId);
     if (!existing) return NextResponse.json({ error: "No active Monthly subscription was found." }, { status: 404 });
 
     const subscription = await cancelMonthlySubscription({ subscriptionId: existing.subscriptionId, config });

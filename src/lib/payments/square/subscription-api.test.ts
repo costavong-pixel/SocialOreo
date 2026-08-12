@@ -38,6 +38,7 @@ describe("cancelMonthlySubscription", () => {
       "https://connect.squareupsandbox.com/v2/subscriptions/sub-1/cancel",
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer secret", "Square-Version": "2026-07-15" }) }),
     );
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("body");
   });
 
   it("cancels against the production API base byte-for-byte", async () => {
@@ -49,6 +50,15 @@ describe("cancelMonthlySubscription", () => {
 
   it("throws when Square rejects the cancellation", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ errors: [] }), { status: 400 })));
+    await expect(cancelMonthlySubscription({ subscriptionId: "sub-1", config: sandboxConfig })).rejects.toThrow("Square could not update the Monthly subscription.");
+  });
+
+  it.each([
+    { status: "ACTIVE", canceled_date: null },
+    { status: "ACTIVE", canceled_date: "not-a-date" },
+    { status: "UNKNOWN", canceled_date: "2026-08-24" },
+  ])("fails closed for an invalid cancellation response (%o)", async (subscription) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ subscription }), { status: 200 })));
     await expect(cancelMonthlySubscription({ subscriptionId: "sub-1", config: sandboxConfig })).rejects.toThrow("Square could not update the Monthly subscription.");
   });
 });

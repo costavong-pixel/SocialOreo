@@ -750,10 +750,10 @@ export async function recordSquareSubscription(input: {
   }, { isolationLevel: "Serializable" });
 }
 
-export async function getActiveMonthlySubscriptionForUser(userId: string): Promise<{ subscriptionId: string; customerId: string; planVariationId: string } | null> {
+export async function getActiveMonthlySubscriptionForUser(userId: string, planVariationId: string): Promise<{ subscriptionId: string; customerId: string; planVariationId: string } | null> {
   const { prisma } = await import("@/lib/db/prisma");
   const subscription = await prisma.squareSubscription.findFirst({
-    where: { userId, status: "ACTIVE" },
+    where: { userId, status: "ACTIVE", planVariationId },
     orderBy: { updatedAt: "desc" },
     select: { squareSubscriptionId: true, squareCustomerId: true, planVariationId: true },
   });

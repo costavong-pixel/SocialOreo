@@ -39,6 +39,7 @@ describe("POST /api/square/monthly/cancel", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ status: "ACTIVE", canceledDate: "2026-08-24" });
+    expect(mockActiveSubscription).toHaveBeenCalledWith("user-1", "monthly-plan-1");
     expect(mockRecord).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1", customerId: "customer-1", status: "ACTIVE", canceledDate: "2026-08-24", eventType: "subscription.cancel_requested" }));
   });
 
@@ -51,6 +52,18 @@ describe("POST /api/square/monthly/cancel", () => {
     expect(mockGetSquareConfig).not.toHaveBeenCalled();
     expect(mockSyncUser).not.toHaveBeenCalled();
     expect(mockActiveSubscription).not.toHaveBeenCalled();
+    expect(mockCancelSubscription).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when an authenticated user does not own a configured Monthly subscription", async () => {
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-other", email: "other@example.com" });
+    mockSyncUser.mockResolvedValue({ id: "user-other" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockActiveSubscription.mockResolvedValue(null);
+
+    const response = await POST();
+
+    expect(response.status).toBe(404);
     expect(mockCancelSubscription).not.toHaveBeenCalled();
   });
 

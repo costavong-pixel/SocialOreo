@@ -8,7 +8,7 @@ const { mockTransaction, mockPrisma } = vi.hoisted(() => {
     squareRefund: { findUnique: vi.fn(), create: vi.fn() },
     creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
     squarePaymentAuditLog: { create: vi.fn() },
-    squareSubscription: { findMany: vi.fn() },
+    squareSubscription: { findFirst: vi.fn(), findMany: vi.fn() },
     user: { update: vi.fn() },
     $queryRaw: vi.fn(),
     workspace: { findUnique: vi.fn(), create: vi.fn() },
@@ -27,7 +27,7 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: mockPrisma,
 }));
 
-import { recordSquareSubscription, settleSquareCheckout, settleSquareRefund, settleSquareRenewal, startSquareCheckout } from "./checkout-service";
+import { getActiveMonthlySubscriptionForUser, recordSquareSubscription, settleSquareCheckout, settleSquareRefund, settleSquareRenewal, startSquareCheckout } from "./checkout-service";
 import type { SquareConfig } from "./config";
 vi.mock("./merchant-context", () => ({ verifySquareMerchantContext: vi.fn().mockResolvedValue(true) }));
 
@@ -319,6 +319,35 @@ describe("settleSquareCheckout", () => {
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "NONE" } });
   });
 
+  it.each(["CANCELED", "DEACTIVATED", "PAUSED", "COMPLETED"])("drops access for a non-ACTIVE subscription status without clawing back paid-period credits (%s)", async (status) => {
+    const userUpdate = vi.fn().mockResolvedValue({});
+    const creditBatchUpdate = vi.fn();
+    mockTransaction.mockImplementation((callback) => callback({
+      squareSubscription: {
+        findUnique: vi.fn().mockResolvedValue({ userId: "user-1", status: "ACTIVE", lastEventAt: null }),
+        upsert: vi.fn().mockResolvedValue({}),
+        findMany: vi.fn().mockResolvedValue([{ status }]),
+      },
+      squareCheckout: { findMany: vi.fn().mockResolvedValue([]), findFirst: vi.fn().mockResolvedValue(null) },
+      squarePaymentAuditLog: { create: vi.fn().mockResolvedValue({}) },
+      creditBatch: { updateMany: creditBatchUpdate },
+      user: { update: userUpdate },
+    }));
+
+    await recordSquareSubscription({
+      subscriptionId: `subscription-${status.toLowerCase()}`,
+      customerId: "customer-1",
+      planVariationId: "monthly-plan",
+      status,
+      canceledDate: status === "CANCELED" ? "2026-08-24" : null,
+      source: "WEBHOOK",
+      eventType: "subscription.updated",
+    });
+
+    expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "NONE" } });
+    expect(creditBatchUpdate).not.toHaveBeenCalled();
+  });
+
   it("attaches a later ACTIVE subscription after the payment/order has settled", async () => {
     const subscriptionUpsert = vi.fn().mockResolvedValue({});
     const userUpdate = vi.fn().mockResolvedValue({});
@@ -447,6 +476,25 @@ describe("settleSquareCheckout", () => {
     expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(1);
     expect(tx.creditBatch.create).toHaveBeenCalledTimes(1);
     expect(tx.user.update).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "LIFETIME" } });
+  });
+
+  it("looks up only the authenticated user's configured Monthly plan", async () => {
+    mockPrisma.squareSubscription.findFirst.mockResolvedValue({
+      squareSubscriptionId: "subscription-1",
+      squareCustomerId: "customer-1",
+      planVariationId: "monthly-plan",
+    });
+
+    await expect(getActiveMonthlySubscriptionForUser("user-1", "monthly-plan")).resolves.toEqual({
+      subscriptionId: "subscription-1",
+      customerId: "customer-1",
+      planVariationId: "monthly-plan",
+    });
+    expect(mockPrisma.squareSubscription.findFirst).toHaveBeenCalledWith({
+      where: { userId: "user-1", status: "ACTIVE", planVariationId: "monthly-plan" },
+      orderBy: { updatedAt: "desc" },
+      select: { squareSubscriptionId: true, squareCustomerId: true, planVariationId: true },
+    });
   });
 
   function refundTx(product: string, batchRemaining: number | null = null, activeMonthly = false) {
