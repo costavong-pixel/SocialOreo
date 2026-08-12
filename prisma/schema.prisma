@@ -92,6 +92,7 @@ model User {
   squareCheckouts             SquareCheckout[]
   squareSubscriptions         SquareSubscription[]
   squarePaymentAuditLogs      SquarePaymentAuditLog[]
+  squareRefunds               SquareRefund[]
   workspaces                  Workspace[]
 }
 
@@ -171,10 +172,14 @@ model SquareCheckout {
   pendingKey        String?       @unique
   expiresAt           DateTime?
   idempotencyKey    String?       @unique
+  amountCents       Int?
+  currency          String?
+  refundedAt        DateTime?
   completedAt       DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refunds           SquareRefund[]
 
   @@index([userId, product])
   @@index([squareCustomerId, product])
@@ -223,6 +228,26 @@ model SquarePaymentAuditLog {
 
   @@index([userId, createdAt])
   @@index([squareSubscriptionId, createdAt])
+}
+
+model SquareRefund {
+  squareRefundId     String        @id
+  squarePaymentId    String        @unique
+  squareRefundOrderId String?
+  squareCheckoutId   String?
+  userId             String?
+  product            SquareProduct?
+  status             String
+  amountCents        Int
+  currency           String
+  refundedAt         DateTime
+  processedAt        DateTime       @default(now())
+  createdAt          DateTime       @default(now())
+  checkout           SquareCheckout? @relation(fields: [squareCheckoutId], references: [id], onDelete: SetNull)
+  user               User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([squarePaymentId, status])
+  @@index([squareCheckoutId, refundedAt])
 }
 
 model AuditJob {
@@ -618,6 +643,7 @@ model CreditBatch {
   remaining    Int
   expiresAt    DateTime?
   periodKey    String?
+  squarePaymentId String? @unique
   createdAt    DateTime        @default(now())
   workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   transactions CreditTransaction[]

@@ -4,10 +4,15 @@ const { mockTransaction, mockPrisma } = vi.hoisted(() => {
   const mockTransaction = vi.fn();
   const mockPrisma = {
     $transaction: vi.fn((...args: unknown[]) => mockTransaction(...args)),
-    squareCheckout: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    squareCheckout: { findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), updateMany: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    squareRefund: { findUnique: vi.fn(), create: vi.fn() },
+    creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
+    squarePaymentAuditLog: { create: vi.fn() },
+    squareSubscription: { findMany: vi.fn() },
+    user: { update: vi.fn() },
     $queryRaw: vi.fn(),
     workspace: { findUnique: vi.fn(), create: vi.fn() },
-    creditBatch: { findFirst: vi.fn(), create: vi.fn() },
+    creditBatch: { findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
     auditEvent: { create: vi.fn() },
     planVersion: { upsert: vi.fn() },
     entitlementSnapshot: { create: vi.fn() },
@@ -22,7 +27,7 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: mockPrisma,
 }));
 
-import { recordSquareSubscription, settleSquareCheckout, settleSquareRenewal, startSquareCheckout } from "./checkout-service";
+import { recordSquareSubscription, settleSquareCheckout, settleSquareRefund, settleSquareRenewal, startSquareCheckout } from "./checkout-service";
 import type { SquareConfig } from "./config";
 vi.mock("./merchant-context", () => ({ verifySquareMerchantContext: vi.fn().mockResolvedValue(true) }));
 
@@ -365,15 +370,16 @@ describe("settleSquareCheckout", () => {
   });
 
   function lifetimeTx() {
-    const checkouts: Array<{ id: string; orderId: string; userId: string; product: string; squarePaymentId: string | null; completedAt: Date | null }> = [
-      { id: "chk-1", orderId: "order-1", userId: "user-1", product: "LIFETIME", squarePaymentId: null, completedAt: null },
-      { id: "chk-2", orderId: "order-2", userId: "user-1", product: "LIFETIME", squarePaymentId: null, completedAt: null },
+    const checkouts: Array<{ id: string; orderId: string; userId: string; product: string; squarePaymentId: string | null; completedAt: Date | null; refundedAt: Date | null }> = [
+      { id: "chk-1", orderId: "order-1", userId: "user-1", product: "LIFETIME", squarePaymentId: null, completedAt: null, refundedAt: null },
+      { id: "chk-2", orderId: "order-2", userId: "user-1", product: "LIFETIME", squarePaymentId: null, completedAt: null, refundedAt: null },
     ];
     const batchStore: Record<string, unknown> = {};
     let entitlementSeq = 0;
     return {
       squareCheckout: {
         findUnique: vi.fn(async ({ where }: { where: { squareOrderId: string } }) => checkouts.find((c) => c.orderId === where.squareOrderId) ?? null),
+        findFirst: vi.fn(async () => checkouts.find((c) => c.product === "LIFETIME" && c.completedAt !== null && c.refundedAt === null) ?? null),
         update: vi.fn(async ({ where, data }: { where: { id: string }; data: { squarePaymentId: string; completedAt: Date } }) => {
           const checkout = checkouts.find((c) => c.id === where.id);
           if (checkout) {
@@ -383,6 +389,8 @@ describe("settleSquareCheckout", () => {
           return checkout;
         }),
       },
+      squareSubscription: { findMany: vi.fn().mockResolvedValue([]) },
+      user: { update: vi.fn().mockResolvedValue({}) },
       workspace: {
         findUnique: vi.fn().mockResolvedValue({ id: "ws-1", externalId: "wsp_lifetime00000000", ownerUserId: "user-1", label: "Personal workspace", defaultLocale: "en-US", provider: "PERSONAL", createdAt: new Date() }),
         create: vi.fn(),
@@ -438,6 +446,136 @@ describe("settleSquareCheckout", () => {
     // The entitlement grant happened exactly once for this payment.
     expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(1);
     expect(tx.creditBatch.create).toHaveBeenCalledTimes(1);
+    expect(tx.user.update).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "LIFETIME" } });
+  });
+
+  function refundTx(product: string, batchRemaining: number | null = null, activeMonthly = false) {
+    const checkout = {
+      id: "checkout-refund",
+      userId: "user-1",
+      product,
+      squarePaymentId: "payment-refund",
+      squareLocationId: "location-a",
+      completedAt: new Date("2026-08-12T15:00:00.000Z"),
+      amountCents: 9500,
+      currency: "CAD",
+      refundedAt: null,
+    };
+    const batch = batchRemaining == null ? null : {
+      id: "batch-pack",
+      workspaceId: "workspace-1",
+      kind: "PURCHASED",
+      amount: product === "SINGLE_AUDIT" ? 1 : 10,
+      remaining: batchRemaining,
+    };
+    const tx = {
+      squareRefund: { findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({}) },
+      squareCheckout: {
+        findUnique: vi.fn().mockResolvedValue(checkout),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      creditBatch: {
+        findUnique: vi.fn().mockResolvedValue(batch),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+      creditTransaction: { create: vi.fn().mockResolvedValue({}) },
+      squarePaymentAuditLog: { create: vi.fn().mockResolvedValue({}) },
+      squareSubscription: { findMany: vi.fn().mockResolvedValue(activeMonthly ? [{ status: "ACTIVE" }] : []) },
+      user: { update: vi.fn().mockResolvedValue({}) },
+    };
+    return { tx, checkout, batch };
+  }
+
+  const refundInput = (overrides: Partial<Parameters<typeof settleSquareRefund>[0]> = {}) => ({
+    refundId: "refund-1",
+    paymentId: "payment-refund",
+    refundOrderId: "refund-order-created-by-square",
+    locationId: "location-a",
+    merchantId: "merchant-a",
+    status: "COMPLETED",
+    amountCents: 9500,
+    currency: "CAD",
+    config: checkoutConfig,
+    ...overrides,
+  });
+
+  it("accepts one full pack refund by payment-owned batch and clamps unused credits", async () => {
+    const { tx } = refundTx("CREATOR_PACK", 7);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRefund(refundInput())).resolves.toEqual({ status: "settled", creditsReversed: 7 });
+    expect(tx.squareCheckout.updateMany).toHaveBeenCalledWith({
+      where: { id: "checkout-refund", refundedAt: null },
+      data: { refundedAt: expect.any(Date) },
+    });
+    expect(tx.creditBatch.updateMany).toHaveBeenCalledWith({
+      where: { id: "batch-pack", remaining: { gte: 7 } },
+      data: { remaining: { decrement: 7 } },
+    });
+    expect(tx.creditTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "ADJUSTMENT", amount: -7, idempotencyKey: "square:refund:refund-1" }),
+    });
+    expect(tx.squareRefund.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ squareRefundOrderId: "refund-order-created-by-square", squarePaymentId: "payment-refund" }),
+    });
+  });
+
+  it("rejects partial refunds, including two partial events that sum to the payment", async () => {
+    const { tx } = refundTx("CREATOR_PACK", 10);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRefund(refundInput({ refundId: "refund-part-1", amountCents: 4000 }))).resolves.toEqual({ status: "ignored", creditsReversed: 0 });
+    await expect(settleSquareRefund(refundInput({ refundId: "refund-part-2", amountCents: 5500 }))).resolves.toEqual({ status: "ignored", creditsReversed: 0 });
+    expect(tx.squareCheckout.updateMany).not.toHaveBeenCalled();
+    expect(tx.creditBatch.updateMany).not.toHaveBeenCalled();
+    expect(tx.squareRefund.create).not.toHaveBeenCalled();
+  });
+
+  it("ignores non-completed, wrong-currency, and wrong-merchant refunds before opening a transaction", async () => {
+    await expect(settleSquareRefund(refundInput({ status: "PENDING" }))).resolves.toEqual({ status: "ignored", creditsReversed: 0 });
+    await expect(settleSquareRefund(refundInput({ currency: "USD" }))).resolves.toEqual({ status: "ignored", creditsReversed: 0 });
+    await expect(settleSquareRefund(refundInput({ merchantId: "other-merchant" }))).resolves.toEqual({ status: "ignored", creditsReversed: 0 });
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("returns retry for a completed refund that arrives before payment settlement", async () => {
+    const { tx } = refundTx("CREATOR_PACK", 10);
+    tx.squareCheckout.findUnique.mockResolvedValue(null);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+
+    await expect(settleSquareRefund(refundInput({ refundId: "refund-before-payment" }))).resolves.toEqual({ status: "retry", creditsReversed: 0 });
+    expect(tx.squareCheckout.updateMany).not.toHaveBeenCalled();
+    expect(tx.squareRefund.create).not.toHaveBeenCalled();
+  });
+
+  it("revokes refunded Lifetime access while leaving an active Monthly subscription authoritative", async () => {
+    const lifetime = refundTx("LIFETIME");
+    mockTransaction.mockImplementation((callback) => callback(lifetime.tx));
+    await expect(settleSquareRefund(refundInput())).resolves.toEqual({ status: "settled", creditsReversed: 0 });
+    expect(lifetime.tx.user.update).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "NONE" } });
+
+    const monthly = refundTx("MONTHLY", null, true);
+    mockTransaction.mockImplementation((callback) => callback(monthly.tx));
+    await expect(settleSquareRefund(refundInput({ refundId: "refund-monthly" }))).resolves.toEqual({ status: "settled", creditsReversed: 0 });
+    expect(monthly.tx.user.update).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "MONTHLY" } });
+  });
+
+  it("does not treat a legacy pack without payment-owned canonical provenance as refundable", async () => {
+    const { tx } = refundTx("CREATOR_PACK", null);
+    mockTransaction.mockImplementation((callback) => callback(tx));
+    await expect(settleSquareRefund(refundInput())).resolves.toEqual({ status: "ignored", creditsReversed: 0 });
+    expect(tx.squareCheckout.updateMany).not.toHaveBeenCalled();
+    expect(tx.squareRefund.create).not.toHaveBeenCalled();
+  });
+
+  it("treats a repeated refund ID as a no-op", async () => {
+    const { tx } = refundTx("CREATOR_PACK", 10);
+    tx.squareRefund.findUnique.mockResolvedValue({ squareRefundId: "refund-1" });
+    mockTransaction.mockImplementation((callback) => callback(tx));
+    await expect(settleSquareRefund(refundInput())).resolves.toEqual({ status: "duplicate", creditsReversed: 0 });
+    expect(tx.squareCheckout.findUnique).not.toHaveBeenCalled();
+    expect(tx.creditBatch.updateMany).not.toHaveBeenCalled();
   });
 
   it("stamps the configured square environment into the checkout row (production)", async () => {
