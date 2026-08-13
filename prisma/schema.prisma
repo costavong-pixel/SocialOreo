@@ -546,6 +546,8 @@ model Workspace {
   postRequests        PostRequest[]
   sevenDayPlans       SevenDayPlan[]
   scheduleSlots       ScheduleSlot[]
+  contentVersions     ContentVersion[]
+  outcomeRecommendations OutcomePlanRecommendation[]
 
   @@index([ownerUserId])
 }
@@ -681,6 +683,31 @@ enum PostOccurrenceStatus {
   CANCELLED
 }
 
+// Outcome Loop v1 is deliberately manual/provider-disabled. A content version
+// is immutable once an approved final variant is scheduled; all subsequent
+// publication and metrics evidence is explicitly recorded by the workspace
+// owner. No model represents an automatic publishing or scheduler action.
+enum ContentMetricSource {
+  MANUAL
+}
+
+enum ContentOutcomeStatus {
+  INSUFFICIENT_EVIDENCE
+  READY
+}
+
+enum ContentOutcomeDecision {
+  KEEP
+  CHANGE
+  PAUSE
+}
+
+enum OutcomePlanRecommendationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
 model WatchReport {
   id                String            @id @default(cuid())
   externalId        String            @unique
@@ -713,6 +740,7 @@ model PostRequest {
   workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   variants        PostVariant[]
   occurrences     PostOccurrence[]
+  contentVersion  ContentVersion?
 
   @@index([workspaceId, status])
 }
@@ -729,8 +757,114 @@ model PostVariant {
   variantLocale String     @default("en-US")
   isFinal       Boolean    @default(false)
   postRequest   PostRequest @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+  contentVersions ContentVersion[]
 
   @@index([postRequestId])
+}
+
+// Snapshot of the exact final content the owner approved. The service exposes
+// creation only; it never updates this row after scheduling.
+model ContentVersion {
+  id              String                  @id @default(cuid())
+  externalId      String                  @unique
+  workspaceId     String
+  postRequestId   String                  @unique
+  sourceVariantId String
+  destinationRef  String
+  platform        String
+  title           String
+  caption         String?
+  hashtags        String[]
+  cta             String?
+  versionHash     String
+  approvedAt      DateTime
+  createdAt       DateTime                @default(now())
+  workspace       Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  postRequest     PostRequest             @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+  sourceVariant   PostVariant             @relation(fields: [sourceVariantId], references: [id], onDelete: Cascade)
+  publication     ContentPublication?
+  metricSnapshots ContentMetricSnapshot[]
+  evaluations     ContentOutcomeEvaluation[]
+  recommendations OutcomePlanRecommendation[]
+
+  @@index([workspaceId, destinationRef, platform])
+}
+
+// A user-confirmed reference to a post that was manually published outside
+// SocialOlla. V1 has no provider or publishing transport.
+model ContentPublication {
+  id               String              @id @default(cuid())
+  externalId       String              @unique
+  contentVersionId String              @unique
+  platformPostUrl  String              @unique
+  publishedAt      DateTime
+  confirmedAt      DateTime            @default(now())
+  source           ContentMetricSource @default(MANUAL)
+  contentVersion   ContentVersion      @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+
+  @@index([publishedAt])
+}
+
+// Each row is an append-only manual observation. Account-level provider data
+// is intentionally not repurposed as per-post evidence.
+model ContentMetricSnapshot {
+  id               String                     @id @default(cuid())
+  contentVersionId String
+  capturedAt       DateTime
+  source           ContentMetricSource        @default(MANUAL)
+  views            Int?
+  likes            Int?
+  comments         Int?
+  shares           Int?
+  saves            Int?
+  reach            Int?
+  createdAt        DateTime                   @default(now())
+  contentVersion   ContentVersion             @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+  evaluations      ContentOutcomeEvaluation[]
+
+  @@unique([contentVersionId, capturedAt])
+  @@index([contentVersionId, capturedAt])
+}
+
+// Append-only evaluation tied to the newest evidence snapshot used for it.
+// READY means the minimum comparative evidence threshold was met; it does not
+// assert a causal result.
+model ContentOutcomeEvaluation {
+  id               String               @id @default(cuid())
+  contentVersionId String
+  metricSnapshotId String
+  status           ContentOutcomeStatus
+  decision         ContentOutcomeDecision?
+  confidence       Int
+  summary          String
+  evidenceJson     Json
+  evaluatedAt      DateTime             @default(now())
+  contentVersion   ContentVersion       @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+  metricSnapshot   ContentMetricSnapshot @relation(fields: [metricSnapshotId], references: [id], onDelete: Cascade)
+  recommendation   OutcomePlanRecommendation?
+
+  @@index([contentVersionId, evaluatedAt])
+  @@index([metricSnapshotId])
+}
+
+// A recommendation is inert until explicitly accepted by the owner. Approval
+// never creates, schedules, publishes, or calls a provider.
+model OutcomePlanRecommendation {
+  id               String                        @id @default(cuid())
+  externalId       String                        @unique
+  workspaceId      String
+  contentVersionId String
+  evaluationId     String                        @unique
+  status           OutcomePlanRecommendationStatus @default(PENDING_APPROVAL)
+  recommendationJson Json
+  createdAt        DateTime                      @default(now())
+  decidedAt        DateTime?
+  workspace        Workspace                     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentVersion   ContentVersion                @relation(fields: [contentVersionId], references: [id], onDelete: Cascade)
+  evaluation       ContentOutcomeEvaluation      @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt])
+  @@index([contentVersionId, createdAt])
 }
 
 model PostOccurrence {

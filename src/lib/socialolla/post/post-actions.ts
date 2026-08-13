@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { createPostService } from "@/lib/socialolla/content-factory/post-service";
+import { createApprovedContentVersionData } from "@/lib/socialolla/outcomes/outcome-service";
 
 function newPostRequestExternalId(): string {
   return `req_${randomBytes(12).toString("base64url")}`;
@@ -89,6 +90,7 @@ export async function updatePostVariant(input: {
     where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId },
   });
   if (!postRequest) throw new Error("Post request not found");
+  if (postRequest.status === "SCHEDULED") throw new Error("The approved content version is immutable after scheduling.");
   const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id } });
   if (!variant) throw new Error("Variant not found");
   await prisma.postVariant.update({
@@ -119,6 +121,21 @@ export async function approveAndSchedulePost(input: {
   if (!postRequest) throw new Error("Post request not found");
   const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, isFinal: true } });
   if (!variant) throw new Error("No approved final variant");
+  const existingContentVersion = await prisma.contentVersion.findUnique({ where: { postRequestId: postRequest.id } });
+  if (existingContentVersion) {
+    return { status: "SCHEDULED", contentVersionExternalId: existingContentVersion.externalId, replayed: true };
+  }
+
+  // The exact content approved here is captured atomically with the existing
+  // provider-disabled schedule persistence. This does not publish or call any
+  // provider; it only preserves the version that future manual evidence refers to.
+  const contentVersion = createApprovedContentVersionData({
+    workspaceId: workspace.dbId,
+    postRequestId: postRequest.id,
+    destinationRef: postRequest.destinationRef,
+    approvedAt: new Date(),
+    variant,
+  });
 
   await prisma.$transaction([
     prisma.postRequest.update({ where: { id: postRequest.id }, data: { status: "SCHEDULED" } }),
@@ -135,8 +152,9 @@ export async function approveAndSchedulePost(input: {
         timezone: input.timezone,
       },
     }),
+    prisma.contentVersion.create({ data: contentVersion }),
   ]);
-  return { status: "SCHEDULED" };
+  return { status: "SCHEDULED", contentVersionExternalId: contentVersion.externalId, replayed: false };
 }
 
 export async function listPostRequests(authUserId: string) {

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
     postVariant: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     postOccurrence: { create: vi.fn(), updateMany: vi.fn() },
     scheduleSlot: { create: vi.fn(), findMany: vi.fn() },
+    contentVersion: { findUnique: vi.fn(), create: vi.fn() },
     sevenDayPlan: { create: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
     creditBatch: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
@@ -82,10 +83,21 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     mocks.prisma.postRequest.findFirst.mockResolvedValue({ id: "pr-1", externalId: "req_slice000000000000", workspaceId: "ws-1", status: "REVIEW" });
     mocks.prisma.postRequest.update.mockResolvedValue({});
     mocks.prisma.postVariant.create.mockResolvedValue({ id: "v-1" });
-    mocks.prisma.postVariant.findFirst.mockResolvedValue({ id: "v-1", postRequestId: "pr-1", isFinal: true });
+    mocks.prisma.postVariant.findFirst.mockResolvedValue({
+      id: "v-1",
+      postRequestId: "pr-1",
+      platform: "instagram",
+      title: "Final title",
+      caption: "Final caption",
+      hashtags: ["#coffee"],
+      cta: "Learn more",
+      isFinal: true,
+    });
     mocks.prisma.postVariant.update.mockResolvedValue({});
     mocks.prisma.postOccurrence.create.mockResolvedValue({ id: "o-1" });
     mocks.prisma.postOccurrence.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.contentVersion.findUnique.mockResolvedValue(null);
+    mocks.prisma.contentVersion.create.mockResolvedValue({ id: "cv-1", externalId: "ocv_slice000000000000" });
     mocks.prisma.sevenDayPlan.create.mockResolvedValue({ id: "plan-1" });
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, watchCreditsPerRequest: 1, includedMonthlyCredits: 20 });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH]);
@@ -136,9 +148,23 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
       confirmed: true,
     });
     expect(result.status).toBe("SCHEDULED");
+    expect(result.contentVersionExternalId).toMatch(/^ocv_/);
+    expect(mocks.prisma.contentVersion.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ postRequestId: "pr-1", sourceVariantId: "v-1", platform: "instagram" }),
+    }));
     await expect(
       approveAndSchedulePost({ authUserId: "user-1", postRequestExternalId: "req_slice000000000000", scheduleAt: new Date(), timezone: "UTC", confirmed: false }),
     ).rejects.toThrow("confirmation");
+  });
+
+  it("Post: does not permit edits after the approved version was scheduled", async () => {
+    const { updatePostVariant } = await import("@/lib/socialolla/post/post-actions");
+    mocks.prisma.postRequest.findFirst.mockResolvedValueOnce({ id: "pr-1", externalId: "req_slice000000000000", workspaceId: "ws-1", status: "SCHEDULED" });
+
+    await expect(
+      updatePostVariant({ authUserId: "user-1", postRequestExternalId: "req_slice000000000000", title: "Attempted edit" }),
+    ).rejects.toThrow("immutable");
+    expect(mocks.prisma.postVariant.update).not.toHaveBeenCalled();
   });
 
   it("Onboarding: proposes a profile with gaps and confirms it", async () => {

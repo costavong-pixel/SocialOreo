@@ -6,6 +6,8 @@ import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { CreatePostForm } from "@/components/connections/add-destination-form";
 import { VariantEditor, type VariantShape } from "@/components/posts/variant-editor";
 import { ScheduleControl, type DestinationShape, type OccurrenceShape, type SlotShape } from "@/components/posts/schedule-control";
+import { OutcomeLoopCard, type OutcomeLoopCardData } from "@/components/posts/outcome-loop-card";
+import { outcomeEvidence, recommendationPlan } from "@/lib/socialolla/outcomes/outcome-service";
 
 export const metadata = { title: "Posts — SocialOlla" };
 
@@ -21,6 +23,58 @@ export default async function PostsPage() {
     orderBy: { scheduleAt: "desc" },
     take: 100,
   })) as unknown as SlotShape[];
+  const contentVersions = await prisma.contentVersion.findMany({
+    where: { workspaceId: workspace.dbId },
+    include: {
+      publication: true,
+      metricSnapshots: { orderBy: { capturedAt: "desc" }, take: 10 },
+      evaluations: { orderBy: { evaluatedAt: "desc" }, take: 1, include: { recommendation: true } },
+    },
+  });
+  const outcomeByPostRequestId = new Map<string, OutcomeLoopCardData>();
+  for (const contentVersion of contentVersions) {
+    const latestEvaluation = contentVersion.evaluations[0];
+    const recommendation = latestEvaluation?.recommendation;
+    outcomeByPostRequestId.set(contentVersion.postRequestId, {
+      externalId: contentVersion.externalId,
+      platform: contentVersion.platform,
+      approvedAt: contentVersion.approvedAt.toISOString(),
+      publication: contentVersion.publication
+        ? {
+            externalId: contentVersion.publication.externalId,
+            platformPostUrl: contentVersion.publication.platformPostUrl,
+            publishedAt: contentVersion.publication.publishedAt.toISOString(),
+            confirmedAt: contentVersion.publication.confirmedAt.toISOString(),
+          }
+        : null,
+      metricSnapshots: contentVersion.metricSnapshots.map((snapshot) => ({
+        id: snapshot.id,
+        capturedAt: snapshot.capturedAt.toISOString(),
+        views: snapshot.views,
+        likes: snapshot.likes,
+        comments: snapshot.comments,
+        shares: snapshot.shares,
+        saves: snapshot.saves,
+        reach: snapshot.reach,
+      })),
+      evaluation: latestEvaluation
+        ? {
+            status: latestEvaluation.status,
+            decision: latestEvaluation.decision,
+            confidence: latestEvaluation.confidence,
+            summary: latestEvaluation.summary,
+            evidence: outcomeEvidence(latestEvaluation.evidenceJson),
+          }
+        : null,
+      recommendation: recommendation
+        ? {
+            externalId: recommendation.externalId,
+            status: recommendation.status,
+            plan: recommendationPlan(recommendation.recommendationJson),
+          }
+        : null,
+    });
+  }
 
   return (
     <section>
@@ -42,6 +96,7 @@ export default async function PostsPage() {
               slots={slots.filter((slot) => slot.destinationRef === p.destinationRef)}
               providerDisabled={providerDisabledEnabled()}
             />
+            <OutcomeLoopCard outcome={outcomeByPostRequestId.get(p.id) ?? null} />
           </div>
         ))}
       </div>

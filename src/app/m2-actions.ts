@@ -10,6 +10,7 @@ import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { proposeProfile, confirmProfile, addSandboxDestination, createFirstPostAndPlan } from "@/lib/socialolla/onboarding/onboarding-actions";
 import { createPostRequest, updatePostVariant, approveAndSchedulePost, listPostRequests } from "@/lib/socialolla/post/post-actions";
+import { confirmManualPublication, decideOutcomePlanRecommendation, recordManualMetricSnapshot } from "@/lib/socialolla/outcomes/outcome-service";
 import { createWatchService } from "@/lib/socialolla/watch/watch-service";
 import { runFreeDemo, type DemoResult } from "@/lib/socialolla/demo/demo-service";
 import { assistantRespond } from "@/lib/socialolla/assistant/assistant-api";
@@ -100,6 +101,68 @@ export async function m2UpdateVariant(input: { postRequestExternalId: string; ti
 export async function m2SchedulePost(input: { postRequestExternalId: string; scheduleAt: string; timezone: string }) {
   const user = await requireUser();
   return approveAndSchedulePost({ authUserId: user.dbId, postRequestExternalId: input.postRequestExternalId, scheduleAt: new Date(input.scheduleAt), timezone: input.timezone, confirmed: true });
+}
+
+export async function m2ConfirmManualPublication(input: {
+  contentVersionExternalId: string;
+  platformPostUrl: string;
+  publishedAt: string;
+  confirmed: boolean;
+}) {
+  const user = await requireUser();
+  const result = await confirmManualPublication({
+    authUserId: user.dbId,
+    contentVersionExternalId: input.contentVersionExternalId,
+    platformPostUrl: input.platformPostUrl,
+    publishedAt: new Date(input.publishedAt),
+    confirmed: input.confirmed,
+  });
+  revalidatePath("/posts");
+  return result;
+}
+
+export async function m2RecordOutcomeMetrics(input: {
+  contentVersionExternalId: string;
+  capturedAt: string;
+  views: number | null;
+  likes?: number | null;
+  comments?: number | null;
+  shares?: number | null;
+  saves?: number | null;
+  reach?: number | null;
+}) {
+  const user = await requireUser();
+  const result = await recordManualMetricSnapshot({
+    authUserId: user.dbId,
+    contentVersionExternalId: input.contentVersionExternalId,
+    capturedAt: new Date(input.capturedAt),
+    metrics: {
+      views: input.views,
+      likes: input.likes,
+      comments: input.comments,
+      shares: input.shares,
+      saves: input.saves,
+      reach: input.reach,
+    },
+  });
+  revalidatePath("/posts");
+  return result;
+}
+
+export async function m2DecideOutcomeRecommendation(input: {
+  recommendationExternalId: string;
+  decision: "APPROVED" | "REJECTED";
+  confirmed: boolean;
+}) {
+  const user = await requireUser();
+  const result = await decideOutcomePlanRecommendation({
+    authUserId: user.dbId,
+    recommendationExternalId: input.recommendationExternalId,
+    decision: input.decision,
+    confirmed: input.confirmed,
+  });
+  revalidatePath("/posts");
+  return result;
 }
 
 export async function m2ListPosts() {
