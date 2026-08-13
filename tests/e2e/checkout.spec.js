@@ -3,10 +3,22 @@ import fs from "node:fs";
 import path from "node:path";
 
 const STAGING_ORIGIN = "https://staging.socialolla.com";
-const SANDBOX_CHECKOUT_HOST = "sandbox.square.link";
-const UNPINNED_OR_PRODUCTION_HOSTS = new Set([
+// The sandbox short URL that the application returns and stores, and the
+// sandbox-only host Square redirects it to after checkout starts. Both are
+// explicitly approved; every other Square host is rejected.
+const SANDBOX_SHORT_LINK_HOST = "sandbox.square.link";
+const SANDBOX_HOSTED_CHECKOUT_HOST = "connect.squareupsandbox.com";
+// Pinned sandbox paths: the /u/ short-link path on SANDBOX_SHORT_LINK_HOST and
+// Square's sandbox hosted-checkout/testing-panel path on the redirect host.
+const SANDBOX_SHORT_LINK_PATH_PREFIX = "/u/";
+const SANDBOX_HOSTED_CHECKOUT_PATH_PREFIX = "/v2/online-checkout/sandbox-testing-panel/";
+const PRODUCTION_OR_UNPINNED_HOSTS = new Set([
   "square.link",
+  "www.square.link",
   "squareup.com",
+  "www.squareup.com",
+  "connect.squareup.com",
+  "checkout.square.site",
   "checkout.squareup.com",
   "pay.squareup.com",
 ]);
@@ -49,6 +61,49 @@ async function addStagingSession(page, testInfo) {
   }]);
 }
 
+// Proof 1: the URL the application returns (and stores server-side) must be
+// the sandbox short URL: https on hostname sandbox.square.link.
+function assertSandboxShortCheckoutUrl(checkoutUrl) {
+  const url = new URL(checkoutUrl);
+  expect(url.protocol).toBe("https:");
+  expect(url.hostname).toBe(SANDBOX_SHORT_LINK_HOST);
+  expect(PRODUCTION_OR_UNPINNED_HOSTS.has(url.hostname)).toBe(false);
+}
+
+// Proof 2: after following Square redirects, the browser must remain on an
+// explicitly approved sandbox-only host/path. The final host may be either the
+// approved sandbox short-link host (pinned to /u/) or the approved sandbox
+// hosted-checkout testing-panel host (pinned to its testing-panel path).
+// Production/unpinned hosts are rejected before the path is considered.
+function assertApprovedSandboxFinalUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  expect(url.protocol, "checkout must remain on https").toBe("https:");
+  expect(
+    PRODUCTION_OR_UNPINNED_HOSTS.has(url.hostname),
+    `sandbox checkout reached a production/unpinned Square host: ${url.hostname}`,
+  ).toBe(false);
+
+  if (url.hostname === SANDBOX_HOSTED_CHECKOUT_HOST) {
+    expect(
+      url.pathname.startsWith(SANDBOX_HOSTED_CHECKOUT_PATH_PREFIX),
+      `sandbox testing-panel host must stay on the hosted-checkout testing panel path (got ${url.pathname})`,
+    ).toBe(true);
+    return;
+  }
+  if (url.hostname === SANDBOX_SHORT_LINK_HOST) {
+    expect(
+      url.pathname.startsWith(SANDBOX_SHORT_LINK_PATH_PREFIX),
+      `sandbox short-link host must stay on the /u/ short-link path (got ${url.pathname})`,
+    ).toBe(true);
+    return;
+  }
+  throw new Error(`Checkout ended on an unapproved host: ${url.hostname}`);
+}
+
+function isApprovedSandboxHost(url) {
+  return url.protocol === "https:" && (url.hostname === SANDBOX_SHORT_LINK_HOST || url.hostname === SANDBOX_HOSTED_CHECKOUT_HOST);
+}
+
 async function openCheckout(page, offerName, apiPath) {
   // The public pricing links are the customer entry point; the authenticated
   // checkout buttons are intentionally reached through /credits.
@@ -58,6 +113,13 @@ async function openCheckout(page, offerName, apiPath) {
   await pricingLink.click();
   await page.waitForURL((url) => url.origin === STAGING_ORIGIN && url.pathname === "/credits", { timeout: 15000 });
 
+  const sandboxLinkRequestPromise = page.waitForRequest((request) => {
+    try {
+      return new URL(request.url()).hostname === SANDBOX_SHORT_LINK_HOST;
+    } catch {
+      return false;
+    }
+  }, { timeout: 45000 });
   const apiResponsePromise = page.waitForResponse((response) =>
     response.url().endsWith(apiPath) && response.request().method() === "POST",
   );
@@ -66,12 +128,19 @@ async function openCheckout(page, offerName, apiPath) {
 
   const apiResponse = await apiResponsePromise;
   expect(apiResponse.status(), `${apiPath} must authorize the staging tester and create a sandbox link`).toBe(200);
-  await page.waitForURL((url) => url.hostname === SANDBOX_CHECKOUT_HOST, { timeout: 45000 });
+  const payload = await apiResponse.json();
+  const checkoutUrl = payload.checkoutUrl;
+  expect(typeof checkoutUrl, `${apiPath} must return the sandbox checkoutUrl`).toBe("string");
+  assertSandboxShortCheckoutUrl(checkoutUrl);
 
-  const finalURL = new URL(page.url());
-  expect(finalURL.protocol).toBe("https:");
-  expect(finalURL.hostname).toBe(SANDBOX_CHECKOUT_HOST);
-  expect(UNPINNED_OR_PRODUCTION_HOSTS.has(finalURL.hostname)).toBe(false);
+  // The browser must be sent to exactly the short URL the application
+  // returned/stored, never a rewritten or substituted host.
+  const sandboxLinkRequest = await sandboxLinkRequestPromise;
+  expect(sandboxLinkRequest.url()).toBe(checkoutUrl);
+
+  // After Square redirects, execution must remain on an approved sandbox host.
+  await page.waitForURL((url) => isApprovedSandboxHost(url), { timeout: 45000 });
+  assertApprovedSandboxFinalUrl(page.url());
 }
 
 test.describe("staging-only Square sandbox checkout acceptance", () => {
