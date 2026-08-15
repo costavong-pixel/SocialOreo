@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockRequireCheckoutAccess, mockConfig, mockSyncUser, mockStart } = vi.hoisted(() => ({
-  mockRequireCheckoutAccess: vi.fn(), mockConfig: vi.fn(), mockSyncUser: vi.fn(), mockStart: vi.fn(),
+const { mockRequireCheckoutAccess, mockConfig, mockSyncUser, mockStart, mockIsAuthIdentityCollisionError } = vi.hoisted(() => ({
+  mockRequireCheckoutAccess: vi.fn(), mockConfig: vi.fn(), mockSyncUser: vi.fn(), mockStart: vi.fn(), mockIsAuthIdentityCollisionError: vi.fn(),
 }));
 
 vi.mock("@/lib/payments/square/tester-gate", () => ({
@@ -9,7 +9,10 @@ vi.mock("@/lib/payments/square/tester-gate", () => ({
   requireSquareSandboxTester: () => mockRequireCheckoutAccess(),
 }));
 vi.mock("@/lib/payments/square/config", () => ({ getSquareConfig: () => mockConfig() }));
-vi.mock("@/lib/auth/sync-user", () => ({ syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args) }));
+vi.mock("@/lib/auth/sync-user", () => ({
+  syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args),
+  isAuthIdentityCollisionError: (...args: unknown[]) => mockIsAuthIdentityCollisionError(...args),
+}));
 vi.mock("@/lib/payments/square/checkout-service", () => ({
   SquareCheckoutServiceError: class SquareCheckoutServiceError extends Error {},
   startSquareCheckout: (...args: unknown[]) => mockStart(...args),
@@ -75,5 +78,18 @@ describe("POST /api/square/monthly/checkout", () => {
     let lastStatus = 0;
     for (let i = 0; i < 12; i += 1) lastStatus = (await POST()).status;
     expect(lastStatus).toBe(429);
+  });
+
+  it("fails closed without a Square call when the Auth0 identity conflicts with an existing account", async () => {
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-2", email: "creator@example.com" });
+    mockConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 });
+    mockSyncUser.mockRejectedValue(new Error("identity conflict"));
+    mockIsAuthIdentityCollisionError.mockReturnValue(true);
+
+    const response = await POST();
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "This account needs support review before checkout can continue." });
+    expect(mockStart).not.toHaveBeenCalled();
   });
 });

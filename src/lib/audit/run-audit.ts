@@ -6,7 +6,7 @@ import { AuditAlreadyRunningError, createRunningAuditJob } from "@/lib/audit/aud
 import { enqueueTranscriptEnrichment } from "@/lib/audit/transcript-enrichment";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { evaluateAuditGuards } from "@/lib/audit/audit-guards";
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import type { CampaignBrief } from "@/lib/campaign-brief/types";
 import { resolveAuditTier, type RequestedTier } from "@/lib/credits/audit-tier";
 import {
@@ -88,10 +88,23 @@ async function logProviderCall(input: {
 }
 
 export async function createAndRunAudit(input: CreateAuditInput): Promise<CreateAuditResult> {
-  const user = await syncUserFromAuth0({
-    id: input.authUserId,
-    email: input.email,
-  });
+  let user: { id: string };
+  try {
+    user = await syncUserFromAuth0({
+      id: input.authUserId,
+      email: input.email,
+    });
+  } catch (error) {
+    if (isAuthIdentityCollisionError(error)) {
+      return {
+        ok: false,
+        status: 409,
+        message: "This account needs support review before a new audit can be created.",
+      };
+    }
+
+    throw error;
+  }
   const isAdmin = await requireAdminByAuthUserId(input.authUserId);
 
   const auditTier = resolveAuditTier(input.requestedTier);

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { prisma } from "@/lib/db/prisma";
 import { shellStateLabel } from "@/lib/socialolla/shell/shell";
@@ -10,6 +10,7 @@ type DayPlanItem = { day: number; topic: string; status?: string };
 
 export default async function M2CalendarPage() {
   const sessionUser = await resolveDbUserFromVerifiedSession();
+  if (hasDbSessionIdentityConflict(sessionUser)) redirect("/account-conflict");
   if (!sessionUser) redirect("/auth/login");
 
   const workspace = await getOrCreatePersonalWorkspace(sessionUser.dbId);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getSquareConfig } from "@/lib/payments/square/config";
 import { getActiveMonthlySubscriptionForUser, recordSquareSubscription } from "@/lib/payments/square/checkout-service";
 import { cancelMonthlySubscription, SquareSubscriptionError } from "@/lib/payments/square/subscription-api";
@@ -36,6 +36,10 @@ export async function POST() {
     });
     return NextResponse.json({ status: subscription.status, canceledDate: subscription.canceledDate });
   } catch (error) {
+    if (isAuthIdentityCollisionError(error)) {
+      return NextResponse.json({ error: "This account needs support review before cancellation can continue." }, { status: 409 });
+    }
+
     console.warn("Square Monthly cancellation request failed.", { reason: error instanceof SquareSubscriptionError ? "square_rejected" : "internal" });
     return NextResponse.json({ error: "We could not schedule the cancellation." }, { status: 502 });
   }

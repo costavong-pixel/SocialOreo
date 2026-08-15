@@ -14,9 +14,11 @@ const mockAuditJobUpdate = vi.fn();
 const mockProviderCallLogCreate = vi.fn();
 const mockRequireAdmin = vi.fn();
 const mockEnqueueTranscriptEnrichment = vi.fn();
+const mockIsAuthIdentityCollisionError = vi.fn();
 
 vi.mock("@/lib/auth/sync-user", () => ({
   syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args),
+  isAuthIdentityCollisionError: (...args: unknown[]) => mockIsAuthIdentityCollisionError(...args),
 }));
 
 vi.mock("@/lib/auth/roles", () => ({
@@ -118,6 +120,7 @@ describe("createAndRunAudit tier and allowance policy", () => {
     mockProviderCallLogCreate.mockResolvedValue({});
     mockRequireAdmin.mockResolvedValue(false);
     mockEnqueueTranscriptEnrichment.mockResolvedValue(undefined);
+    mockIsAuthIdentityCollisionError.mockReturnValue(false);
     mockFetchSocialAudit.mockRejectedValue(
       new SocialProviderError("provider_failed", "Provider unavailable."),
     );
@@ -136,6 +139,23 @@ describe("createAndRunAudit tier and allowance policy", () => {
 
     expect(mockClaimFreeAllowance).toHaveBeenCalledWith("user-db-1");
     expect(mockConsumeCredit).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe conflict response before provider or credit work when the Auth0 identity collides", async () => {
+    mockSyncUser.mockRejectedValue(new Error("identity conflict"));
+    mockIsAuthIdentityCollisionError.mockReturnValue(true);
+
+    const { createAndRunAudit } = await import("./run-audit");
+    const result = await createAndRunAudit(baseInput);
+
+    expect(result).toEqual({
+      ok: false,
+      status: 409,
+      message: "This account needs support review before a new audit can be created.",
+    });
+    expect(mockCreateRunningAuditJob).not.toHaveBeenCalled();
+    expect(mockConsumeCredit).not.toHaveBeenCalled();
+    expect(mockFetchSocialAudit).not.toHaveBeenCalled();
   });
 
   it("allows admins to run unlimited free audits without consuming the allowance", async () => {

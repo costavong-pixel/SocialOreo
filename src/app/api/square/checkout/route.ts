@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getSquareConfig } from "@/lib/payments/square/config";
 import { startSquareCheckout } from "@/lib/payments/square/checkout-service";
 import { oneTimeSquareProductIds } from "@/lib/payments/square/products";
@@ -49,6 +49,10 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(checkout);
   } catch (error) {
+    if (isAuthIdentityCollisionError(error)) {
+      return NextResponse.json({ error: "This account needs support review before checkout can continue." }, { status: 409 });
+    }
+
     console.error("Square checkout request failed.", error instanceof Error ? error.name : "unknown");
     return NextResponse.json({ error: "We could not open checkout." }, { status: 502 });
   }
