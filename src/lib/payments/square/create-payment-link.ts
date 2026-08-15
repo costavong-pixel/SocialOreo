@@ -1,9 +1,7 @@
 import type { SquareConfig } from "./config";
 import type { SquareProduct } from "./products";
 import { verifySquareMerchantContext } from "./merchant-context";
-
-const SQUARE_SANDBOX_API = "https://connect.squareupsandbox.com";
-const SQUARE_API_VERSION = "2026-07-15";
+import { squareApiBaseUrl, squareApiVersion } from "./square-api";
 
 type SquarePaymentLinkResponse = {
   payment_link?: {
@@ -42,7 +40,7 @@ export async function createSquarePaymentLink(input: {
       subscription_plan_id: input.product.catalogVariationId,
       redirect_url: redirectUrl,
     },
-    description: "SocialOreo Monthly Sandbox subscription",
+    description: "SocialOreo Monthly subscription",
   } : {
     idempotency_key: input.idempotencyKey,
     order: {
@@ -54,12 +52,12 @@ export async function createSquarePaymentLink(input: {
     payment_note: checkoutReference,
   };
 
-  const response = await fetch(`${SQUARE_SANDBOX_API}/v2/online-checkout/payment-links`, {
+  const response = await fetch(`${squareApiBaseUrl(input.config.environment)}/v2/online-checkout/payment-links`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.config.accessToken}`,
       "Content-Type": "application/json",
-      "Square-Version": SQUARE_API_VERSION,
+      "Square-Version": squareApiVersion(),
     },
     body: JSON.stringify(body),
   });

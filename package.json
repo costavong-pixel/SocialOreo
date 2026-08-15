@@ -9,7 +9,8 @@
     "db:seed": "prisma db seed",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.25.0",
@@ -25,6 +26,7 @@
     "@tailwindcss/postcss": "4.3.3",
     "@testing-library/jest-dom": "latest",
     "@testing-library/react": "latest",
+    "@playwright/test": "1.51.1",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",

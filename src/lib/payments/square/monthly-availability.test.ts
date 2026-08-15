@@ -6,7 +6,10 @@ const { mockRequireAdminByAuthUserId, mockGetSquareConfigDiagnostics } = vi.hois
 }));
 
 vi.mock("@/lib/auth/roles", () => ({ requireAdminByAuthUserId: (...args: unknown[]) => mockRequireAdminByAuthUserId(...args) }));
-vi.mock("@/lib/payments/square/config", () => ({ getSquareConfigDiagnostics: () => mockGetSquareConfigDiagnostics() }));
+vi.mock("@/lib/payments/square/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/payments/square/config")>()),
+  getSquareConfigDiagnostics: () => mockGetSquareConfigDiagnostics(),
+}));
 
 import { evaluateServerMonthlyAvailability } from "./monthly-availability";
 
@@ -56,5 +59,22 @@ describe("server Monthly presentation availability", () => {
     await expect(evaluateServerMonthlyAvailability(null, false)).resolves.toEqual({ available: false, reason: "NO_SESSION" });
     expect(mockRequireAdminByAuthUserId).not.toHaveBeenCalled();
     expect(mockGetSquareConfigDiagnostics).not.toHaveBeenCalled();
+  });
+
+  it("is true in production for a verified user without any tester allowlist or admin gate", async () => {
+    process.env.SQUARE_ENV = "production";
+    delete process.env.SQUARE_SANDBOX_TESTER_EMAILS;
+    mockGetSquareConfigDiagnostics.mockReturnValue({ valid: true, invalidOrMissing: [] });
+
+    await expect(evaluateServerMonthlyAvailability(owner)).resolves.toEqual({ available: true, reason: "READY" });
+    expect(mockRequireAdminByAuthUserId).not.toHaveBeenCalled();
+  });
+
+  it("is unavailable in production when Square configuration is incomplete (no config-field leakage)", async () => {
+    process.env.SQUARE_ENV = "production";
+    mockGetSquareConfigDiagnostics.mockReturnValue({ valid: false, invalidOrMissing: ["SQUARE_ACCESS_TOKEN"] });
+
+    const result = await evaluateServerMonthlyAvailability(owner);
+    expect(result).toEqual({ available: false, reason: "SQUARE_CONFIG_INCOMPLETE", invalidOrMissingConfig: ["SQUARE_ACCESS_TOKEN"] });
   });
 });

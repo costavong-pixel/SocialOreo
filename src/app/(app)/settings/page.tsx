@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { normalizeLocale } from "@/lib/socialolla/i18n/locales";
 import { LanguageSelect } from "@/components/nav/language-select";
@@ -10,6 +10,7 @@ export const metadata = { title: "Settings — SocialOlla" };
 
 export default async function M2SettingsPage() {
   const sessionUser = await resolveDbUserFromVerifiedSession();
+  if (hasDbSessionIdentityConflict(sessionUser)) redirect("/account-conflict");
   if (!sessionUser) redirect("/auth/login");
 
   const workspace = await getOrCreatePersonalWorkspace(sessionUser.dbId);

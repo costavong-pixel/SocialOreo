@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { getSquareProduct } from "./products";
+import type { SquareConfig } from "./config";
 
-const config = {
+const config: SquareConfig = {
+  environment: "sandbox",
   applicationId: "app",
   expectedMerchantId: "merchant",
   accessToken: "token",

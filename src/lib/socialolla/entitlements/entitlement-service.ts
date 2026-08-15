@@ -185,7 +185,7 @@ export async function grantCanonicalPack(
     product: "SINGLE_AUDIT" | "CREATOR_PACK";
   },
   db: DbLike = prisma,
-): Promise<{ creditsGranted: number }> {
+): Promise<{ externalIds: { batch: string }; creditsGranted: number }> {
   const workspace = await getOrCreatePersonalWorkspace(input.ownerUserId, undefined, db);
   const credits = input.product === "SINGLE_AUDIT" ? 1 : 10;
   const batch = await db.creditBatch.create({
@@ -196,6 +196,7 @@ export async function grantCanonicalPack(
       amount: credits,
       remaining: credits,
       expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      squarePaymentId: input.squarePaymentId,
     },
   });
   await db.auditEvent.create({
@@ -207,5 +208,5 @@ export async function grantCanonicalPack(
       payload: { squarePaymentId: input.squarePaymentId, product: input.product, batch: batch.externalId, credits },
     },
   });
-  return { creditsGranted: credits };
+  return { externalIds: { batch: batch.externalId }, creditsGranted: credits };
 }

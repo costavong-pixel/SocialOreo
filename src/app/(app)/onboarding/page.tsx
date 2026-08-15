@@ -1,7 +1,7 @@
 import { m2Workspace } from "@/app/m2-actions";
 import { OnboardingProfileReview } from "@/components/onboarding/profile-review";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
-import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { OnboardingFirstPostForm } from "@/components/connections/add-destination-form";
@@ -10,6 +10,7 @@ export const metadata = { title: "Onboarding — SocialOlla" };
 
 export default async function OnboardingPage() {
   const sessionUser = await resolveDbUserFromVerifiedSession();
+  if (hasDbSessionIdentityConflict(sessionUser)) redirect("/account-conflict");
   if (!sessionUser) redirect("/auth/login");
 
   const workspace = await m2Workspace();

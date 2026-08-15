@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 
 import { getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { proposeProfile, confirmProfile, addSandboxDestination, createFirstPostAndPlan } from "@/lib/socialolla/onboarding/onboarding-actions";
@@ -34,9 +34,17 @@ async function requireUser() {
   // sub. Resolve the session user to the DB User row so every workspace-scoped
   // action satisfies the foreign key (the checkout path already does this via
   // syncUserFromAuth0; the M2 server actions must too).
-   const dbUser = await syncUserFromAuth0({ id: sessionUser.id, email: sessionUser.email });
-   return { dbId: dbUser.id, authUserId: dbUser.authUserId, email: dbUser.email };
- }
+  try {
+    const dbUser = await syncUserFromAuth0({ id: sessionUser.id, email: sessionUser.email });
+    return { dbId: dbUser.id, authUserId: dbUser.authUserId, email: dbUser.email };
+  } catch (error) {
+    if (isAuthIdentityCollisionError(error)) {
+      throw new Error("This account needs support review before it can access a workspace.");
+    }
+
+    throw error;
+  }
+}
 
 export type M2DemoResponse =
   | { status: "ok"; reRun: boolean; demo: DemoResult }

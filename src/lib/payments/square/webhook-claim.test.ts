@@ -34,7 +34,7 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: mockPrisma }));
 import { claimSquareWebhookEvent, withSquareWebhookClaim } from "./checkout-service";
 
 describe("Square webhook processing lease", () => {
-  afterEach(() => { rows.clear(); vi.clearAllMocks(); });
+  afterEach(() => { rows.clear(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
   it("starts a new claim incomplete and marks it complete only after work succeeds", async () => {
     let sideEffects = 0;
@@ -62,5 +62,63 @@ describe("Square webhook processing lease", () => {
     expect(first.state).toBe("claimed");
     await expect(claimSquareWebhookEvent({ eventId: "event-4", eventType: "payment.updated", rawBody: "{}", now: new Date("2026-07-26T00:01:00Z") })).resolves.toEqual({ state: "processing" });
     await expect(claimSquareWebhookEvent({ eventId: "event-4", eventType: "payment.updated", rawBody: "{}", now: new Date("2026-07-26T00:06:00Z") })).resolves.toMatchObject({ state: "claimed" });
+  });
+
+  it("returns processed without releasing when completion loses the claim after work succeeds", async () => {
+    mockPrisma.squareWebhookEvent.updateMany.mockResolvedValueOnce({ count: 0 });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const rawBody = "do-not-log-this-body";
+
+    await expect(withSquareWebhookClaim(
+      { eventId: "event-claim-lost", eventType: "payment.updated", rawBody },
+      async () => ({ settled: true }),
+    )).resolves.toEqual({ state: "processed", value: { settled: true } });
+
+    expect(mockPrisma.squareWebhookEvent.deleteMany).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("Square webhook claim lost after processing.", {
+      eventId: "event-claim-lost",
+      eventType: "payment.updated",
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(rawBody);
+  });
+
+  it("does not release a successor claim after a stale lease is reclaimed", async () => {
+    let releaseWork!: (value: { settled: boolean }) => void;
+    const first = withSquareWebhookClaim(
+      { eventId: "event-stale-reclaim", eventType: "payment.updated", rawBody: "body" },
+      () => new Promise((resolve) => { releaseWork = resolve; }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const successor = await claimSquareWebhookEvent({
+      eventId: "event-stale-reclaim",
+      eventType: "payment.updated",
+      rawBody: "body",
+      now: new Date(Date.now() + 6 * 60 * 1000),
+    });
+    expect(successor.state).toBe("claimed");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    releaseWork({ settled: true });
+    await expect(first).resolves.toEqual({ state: "processed", value: { settled: true } });
+    expect(mockPrisma.squareWebhookEvent.deleteMany).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("Square webhook claim lost after processing.", {
+      eventId: "event-stale-reclaim",
+      eventType: "payment.updated",
+    });
+  });
+
+  it("releases and rethrows a non-claim-lost completion failure", async () => {
+    const failure = new Error("database unavailable");
+    mockPrisma.squareWebhookEvent.updateMany.mockRejectedValueOnce(failure);
+
+    await expect(withSquareWebhookClaim(
+      { eventId: "event-completion-failure", eventType: "subscription.updated", rawBody: "body" },
+      async () => ({ recorded: true }),
+    )).rejects.toBe(failure);
+
+    expect(mockPrisma.squareWebhookEvent.deleteMany).toHaveBeenCalledWith({
+      where: { squareEventId: "event-completion-failure", processingToken: expect.any(String), processedAt: null },
+    });
   });
 });

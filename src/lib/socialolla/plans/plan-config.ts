@@ -51,9 +51,15 @@ export interface PlanDefinition {
 /** Single pricing source: page and checkout both read this. */
 export function planConfig(): Record<string, PlanDefinition> {
   const lifetimePrice = Number(process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS ?? 7900);
+  // Monthly price is driven by the SAME authoritative env var the Square
+  // payment configuration uses (SQUARE_MONTHLY_PRICE_CENTS), so the UI price,
+  // the Square payment-link amount and the entitlement audit price never
+  // diverge. Defaults to the sandbox price 1900 when unset.
+  const rawMonthlyPrice = Number(process.env.SQUARE_MONTHLY_PRICE_CENTS ?? 1900);
+  const monthlyPrice = Number.isSafeInteger(rawMonthlyPrice) && rawMonthlyPrice > 0 ? rawMonthlyPrice : 1900;
   return {
     lifetime: { ...DEFAULT_PLANS.lifetime, priceCents: lifetimePrice },
-    monthly: { ...DEFAULT_PLANS.monthly },
+    monthly: { ...DEFAULT_PLANS.monthly, priceCents: monthlyPrice },
   };
 }
 

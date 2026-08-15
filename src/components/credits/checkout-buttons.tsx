@@ -49,7 +49,7 @@ export function CheckoutButtons({ lifetimePriceCents, monthlyPriceCents }: { lif
     <section aria-label="Purchase credits or access" className="mt-8 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
       <h2 className="font-display text-lg font-extrabold">Purchase</h2>
       <p className="mt-1 text-xs text-white/50">
-        Sandbox checkout only — Square-hosted, tester-gated, provider-disabled. No live payment is processed outside the configured sandbox merchant.
+        Square-hosted checkout. No payment is processed until you complete it at Square.
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {offers.map((offer) => (

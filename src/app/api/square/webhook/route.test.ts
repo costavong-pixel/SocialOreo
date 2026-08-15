@@ -1,14 +1,18 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockSettleSquareCheckout, mockRecordSquareSubscription, mockWithSquareWebhookClaim } = vi.hoisted(() => ({
+const { mockSettleSquareCheckout, mockSettleSquareRefund, mockSettleSquareRenewal, mockRecordSquareSubscription, mockWithSquareWebhookClaim } = vi.hoisted(() => ({
   mockSettleSquareCheckout: vi.fn(),
+  mockSettleSquareRefund: vi.fn(),
+  mockSettleSquareRenewal: vi.fn(),
   mockRecordSquareSubscription: vi.fn(),
   mockWithSquareWebhookClaim: vi.fn(),
 }));
 
 vi.mock("@/lib/payments/square/checkout-service", () => ({
   settleSquareCheckout: (...args: unknown[]) => mockSettleSquareCheckout(...args),
+  settleSquareRefund: (...args: unknown[]) => mockSettleSquareRefund(...args),
+  settleSquareRenewal: (...args: unknown[]) => mockSettleSquareRenewal(...args),
   recordSquareSubscription: (...args: unknown[]) => mockRecordSquareSubscription(...args),
   withSquareWebhookClaim: (...args: unknown[]) => mockWithSquareWebhookClaim(...args),
 }));
@@ -89,7 +93,94 @@ describe("POST /api/square/webhook", () => {
       paymentId: "payment-1",
       customerId: "customer-1",
       monthlyPlanVariationId: "monthly-plan-variation",
+      priceCents: 1900,
     });
+  });
+
+  it("passes the completed payment amount and currency into settlement for refund provenance", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "settled", creditsGranted: 1 });
+    const body = JSON.stringify({
+      event_id: "event-payment-with-money", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
+      data: { object: { payment: { id: "payment-with-money", order_id: "order-with-money", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", total_money: { amount: 1100, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    expect(mockSettleSquareCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 1100, currency: "CAD" }));
+  });
+
+  it("accepts a completed refund using payment ownership even when Square gives the refund a different order", async () => {
+    configureSandbox();
+    mockSettleSquareRefund.mockResolvedValue({ status: "settled", creditsReversed: 7 });
+    const body = JSON.stringify({
+      event_id: "event-refund-updated", merchant_id: "sandbox-merchant-id", created_at: "2026-08-12T15:09:32.671Z", type: "refund.updated",
+      data: { object: { refund: { id: "refund-1", payment_id: "payment-1", order_id: "refund-order-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 9500, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, creditsReversed: 7, duplicate: false, ignored: false });
+    expect(mockSettleSquareRefund).toHaveBeenCalledWith(expect.objectContaining({
+      refundId: "refund-1",
+      paymentId: "payment-1",
+      refundOrderId: "refund-order-1",
+      merchantId: "sandbox-merchant-id",
+      amountCents: 9500,
+      currency: "CAD",
+    }));
+  });
+
+  it("returns 503 for a refund whose payment mapping is not ready so the claim can be retried", async () => {
+    configureSandbox();
+    mockSettleSquareRefund.mockResolvedValue({ status: "retry", creditsReversed: 0 });
+    const body = JSON.stringify({
+      event_id: "event-refund-before-payment", merchant_id: "sandbox-merchant-id", type: "refund.updated",
+      data: { object: { refund: { id: "refund-before-payment", payment_id: "payment-not-settled", order_id: "refund-order-2", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 9500, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "Square webhook will be retried." });
+  });
+
+  it("accepts a completed refund.created event with the same full-refund contract", async () => {
+    configureSandbox();
+    mockSettleSquareRefund.mockResolvedValue({ status: "settled", creditsReversed: 1 });
+    const body = JSON.stringify({
+      event_id: "event-refund-created", merchant_id: "sandbox-merchant-id", type: "refund.created",
+      data: { object: { refund: { id: "refund-created", payment_id: "payment-created", order_id: "refund-order-created", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1100, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    expect(mockSettleSquareRefund).toHaveBeenCalledWith(expect.objectContaining({ refundId: "refund-created", paymentId: "payment-created" }));
+  });
+
+  it.each([
+    { status: "PENDING", merchant_id: "sandbox-merchant-id", currency: "CAD", unlinked: false, location: "location-1" },
+    { status: "COMPLETED", merchant_id: "wrong-merchant", currency: "CAD", unlinked: false, location: "location-1" },
+    { status: "COMPLETED", merchant_id: "sandbox-merchant-id", currency: "USD", unlinked: false, location: "location-1" },
+    { status: "COMPLETED", merchant_id: "sandbox-merchant-id", currency: "CAD", unlinked: true, location: "location-1" },
+    { status: "COMPLETED", merchant_id: "sandbox-merchant-id", currency: "CAD", unlinked: false, location: "other-location" },
+  ])("fails closed for a refund gate mismatch (%o)", async (gate) => {
+    configureSandbox();
+    const body = JSON.stringify({
+      event_id: `event-refund-${gate.status}-${gate.merchant_id}-${gate.currency}-${gate.unlinked}`,
+      merchant_id: gate.merchant_id,
+      type: "refund.updated",
+      data: { object: { refund: { id: "refund-invalid", payment_id: "payment-1", order_id: "refund-order-1", location_id: gate.location, status: gate.status, unlinked: gate.unlinked, amount_money: { amount: 9500, currency: gate.currency } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, ignored: true });
+    expect(mockSettleSquareRefund).not.toHaveBeenCalled();
   });
 
   it("records a signed Monthly subscription status without trusting client data", async () => {
@@ -170,5 +261,59 @@ describe("POST /api/square/webhook", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, duplicate: true });
     expect(mockRecordSquareSubscription).not.toHaveBeenCalled();
+  });
+
+  it("fails closed with 503 when production mode config is incomplete", async () => {
+    configureSandbox();
+    process.env.SQUARE_ENV = "production";
+    delete process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
+    const body = JSON.stringify({ event_id: "event-1", type: "payment.updated" });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(503);
+    expect(mockWithSquareWebhookClaim).not.toHaveBeenCalled();
+    expect(mockSettleSquareCheckout).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a COMPLETED unknown-order payment as a MONTHLY renewal when amount matches", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
+    mockSettleSquareRenewal.mockResolvedValue({ status: "settled", creditsGranted: 20 });
+    const body = JSON.stringify({
+      event_id: "event-renewal",
+      created_at: "2026-07-26T15:09:32.671Z",
+      type: "payment.updated",
+      data: { object: { payment: { id: "pay-renew", order_id: "order-renew", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1900, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 20, duplicate: false, ignored: false });
+    expect(mockSettleSquareRenewal).toHaveBeenCalledWith(expect.objectContaining({
+      orderId: "order-renew",
+      paymentId: "pay-renew",
+      customerId: "customer-1",
+      monthlyPlanVariationId: "monthly-plan-variation",
+      amountCents: 1900,
+    }));
+  });
+
+  it("does not reconcile an unknown-order payment whose amount does not match (renewal ignored)", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
+    mockSettleSquareRenewal.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
+    const body = JSON.stringify({
+      event_id: "event-unknown-amount",
+      created_at: "2026-07-26T15:09:32.671Z",
+      type: "payment.updated",
+      data: { object: { payment: { id: "pay-x", order_id: "order-x", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 2500, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 0, duplicate: false, ignored: true });
   });
 });

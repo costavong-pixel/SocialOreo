@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getVerifiedSessionUser } from "@/lib/auth/current-user";
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { exchangeInstagramAuthorizationCode, getInstagramProfessionalProfile } from "@/lib/instagram-insights/client";
 import { getInstagramInsightsConfig } from "@/lib/instagram-insights/config";
@@ -18,7 +18,13 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   if (!authUser || !config || !code) return NextResponse.redirect(dashboardUrl(request, "failed"));
-  const user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
+  let user: { id: string };
+  try {
+    user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
+  } catch (error) {
+    if (isAuthIdentityCollisionError(error)) return NextResponse.redirect(dashboardUrl(request, "identity_conflict"));
+    throw error;
+  }
   const validState = verifyInstagramOAuthState(request.cookies.get("socialoreo_meta_oauth")?.value, state, user.id);
   if (!validState) return NextResponse.redirect(dashboardUrl(request, "invalid_state"));
   try {

@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { getSessionUser } from "@/lib/auth/current-user";
 import { planConfig, formatPriceCents } from "@/lib/socialolla/plans/plan-config";
 import { CheckoutButtons } from "@/components/credits/checkout-buttons";
 
 export const metadata = { title: "Pricing — SocialOlla" };
 
-export default function PricingPage() {
+export default async function PricingPage() {
+  const sessionUser = await getSessionUser();
   const config = planConfig();
   const lifetime = config.lifetime;
   const monthly = config.monthly;
@@ -51,7 +53,14 @@ export default function PricingPage() {
         <Link className="so-public-back" href="/">← Home</Link>
         <div className="flex items-center gap-4">
           <Link className="hidden text-sm font-bold text-white/65 hover:text-white sm:block" href="/terms">Terms</Link>
-          <Link className="rounded-full bg-[var(--social-blue)] px-4 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]" href="/sign-in">Sign in</Link>
+          {sessionUser ? (
+            <>
+              <Link className="text-sm font-bold text-white/65 hover:text-white" href="/dashboard">Dashboard</Link>
+              <Link className="rounded-full bg-[var(--social-blue)] px-4 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]" href="/auth/logout">Sign out</Link>
+            </>
+          ) : (
+            <Link className="rounded-full bg-[var(--social-blue)] px-4 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]" href="/sign-in">Sign in</Link>
+          )}
         </div>
       </nav>
       <section className="mx-auto max-w-7xl py-12">
@@ -72,7 +81,7 @@ export default function PricingPage() {
         <div className="mx-auto mt-10 max-w-3xl">
           <CheckoutButtons lifetimePriceCents={lifetime.priceCents} monthlyPriceCents={monthly.priceCents} />
           <p className="mt-4 text-center text-sm text-white/50">
-            Checkout is Square sandbox-only and tester-gated until it is made available. <Link className="text-[var(--social-blue)] hover:underline" href="/sign-in">Sign in</Link> to start a checkout.
+            Checkout is Square sandbox-only and tester-gated until it is made available. {sessionUser ? "Use your dashboard to continue." : <Link className="text-[var(--social-blue)] hover:underline" href="/sign-in">Sign in</Link>} {!sessionUser && " to start a checkout."}
           </p>
         </div>
       </section>

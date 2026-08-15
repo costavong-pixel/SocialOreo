@@ -10,6 +10,13 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/test-results/**/trace.zip
+/test-results/**/video.webm
+/playwright-report/**/trace.zip
+/playwright-report/**/video.webm
 
 # next.js
 /.next/
