@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -92,6 +93,37 @@ describe("syncUserFromAuth0", () => {
       }),
     }));
     expect(mockTransaction).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ isolationLevel: "Serializable" }));
+  });
+
+  it("retries a serializable transaction before creating a new account", async () => {
+    mockFindUnique.mockResolvedValue(null);
+    mockFindFirst.mockResolvedValue(null);
+    mockCreate.mockResolvedValue({ id: "db-new", authUserId: "auth0-new", email: "new@example.com" });
+    let attempts = 0;
+    mockTransaction.mockImplementation((callback) => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Prisma.PrismaClientKnownRequestError("Serialization failure", {
+          code: "P2034",
+          clientVersion: "6.19.3",
+        });
+      }
+
+      return callback({
+        user: {
+          findFirst: (...args: unknown[]) => mockFindFirst(...args),
+          findUnique: (...args: unknown[]) => mockFindUnique(...args),
+          update: (...args: unknown[]) => mockUpdate(...args),
+          create: (...args: unknown[]) => mockCreate(...args),
+        },
+      });
+    });
+
+    const user = await syncUserFromAuth0({ id: "auth0-new", email: "new@example.com" });
+
+    expect(user.id).toBe("db-new");
+    expect(attempts).toBe(2);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a historical known subject usable even when another legacy subject has the same email", async () => {
