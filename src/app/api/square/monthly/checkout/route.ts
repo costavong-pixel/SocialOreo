@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getSquareConfig } from "@/lib/payments/square/config";
 import { SquareCheckoutServiceError, startSquareCheckout } from "@/lib/payments/square/checkout-service";
 import { requireSquareCheckoutAccess } from "@/lib/payments/square/tester-gate";
@@ -23,6 +23,10 @@ export async function POST() {
     const checkout = await startSquareCheckout({ userId: user.id, productId: "monthly", config });
     return NextResponse.json(checkout);
   } catch (error) {
+    if (isAuthIdentityCollisionError(error)) {
+      return NextResponse.json({ error: "This account needs support review before checkout can continue." }, { status: 409 });
+    }
+
     // Never log request data or Square responses. Hosted checkout handles card
     // and contact data directly with Square.
     console.warn("Square Monthly hosted checkout request failed.", { reason: error instanceof SquareCheckoutServiceError ? "square_rejected" : "internal" });

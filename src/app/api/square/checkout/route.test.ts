@@ -1,14 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetVerifiedSessionUser, mockSyncUser, mockStartSquareCheckout, mockRequireCheckoutAccess } = vi.hoisted(() => ({
+const { mockGetVerifiedSessionUser, mockSyncUser, mockStartSquareCheckout, mockRequireCheckoutAccess, mockIsAuthIdentityCollisionError } = vi.hoisted(() => ({
   mockGetVerifiedSessionUser: vi.fn(),
   mockSyncUser: vi.fn(),
   mockStartSquareCheckout: vi.fn(),
   mockRequireCheckoutAccess: vi.fn(),
+  mockIsAuthIdentityCollisionError: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({ getVerifiedSessionUser: () => mockGetVerifiedSessionUser() }));
-vi.mock("@/lib/auth/sync-user", () => ({ syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args) }));
+vi.mock("@/lib/auth/sync-user", () => ({
+  syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args),
+  isAuthIdentityCollisionError: (...args: unknown[]) => mockIsAuthIdentityCollisionError(...args),
+}));
 vi.mock("@/lib/payments/square/checkout-service", () => ({ startSquareCheckout: (...args: unknown[]) => mockStartSquareCheckout(...args) }));
 vi.mock("@/lib/payments/square/tester-gate", () => ({
   requireSquareCheckoutAccess: () => mockRequireCheckoutAccess(),
@@ -42,6 +46,7 @@ describe("POST /api/square/checkout", () => {
     process.env = { ...originalEnv };
     vi.clearAllMocks();
     mockRequireCheckoutAccess.mockReset();
+    mockIsAuthIdentityCollisionError.mockReset();
     clearRateLimits();
   });
 
@@ -97,6 +102,20 @@ describe("POST /api/square/checkout", () => {
     const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "single_audit" }) }));
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toEqual({ error: "We could not open checkout." });
+  });
+
+  it("fails closed without a Square call when the Auth0 identity conflicts with an existing account", async () => {
+    configureSandbox();
+    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-2", email: "creator@example.com" });
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-2", email: "creator@example.com" });
+    mockSyncUser.mockRejectedValue(new Error("identity conflict"));
+    mockIsAuthIdentityCollisionError.mockReturnValue(true);
+
+    const response = await POST(new Request("http://localhost/api/square/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product: "lifetime" }) }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "This account needs support review before checkout can continue." });
+    expect(mockStartSquareCheckout).not.toHaveBeenCalled();
   });
 
   it("fails closed with 503 in production mode when config is incomplete (no Square call, no DB write)", async () => {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getVerifiedSessionUser } from "@/lib/auth/current-user";
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { fetchInstagramAccountInsights } from "@/lib/instagram-insights/client";
 import { getInstagramInsightsConfig } from "@/lib/instagram-insights/config";
@@ -15,7 +15,13 @@ export async function POST(request: NextRequest) {
   const authUser = await getVerifiedSessionUser();
   const config = getInstagramInsightsConfig();
   if (!authUser || !config) return redirectToDashboard(request, "unavailable");
-  const user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
+  let user: { id: string };
+  try {
+    user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
+  } catch (error) {
+    if (isAuthIdentityCollisionError(error)) return redirectToDashboard(request, "identity_conflict");
+    throw error;
+  }
   const connection = await prisma.instagramInsightsConnection.findUnique({ where: { userId: user.id } });
   if (!connection || connection.status !== "CONNECTED") return redirectToDashboard(request, "reconnect");
   try {

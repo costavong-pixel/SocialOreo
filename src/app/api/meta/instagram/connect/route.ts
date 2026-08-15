@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getVerifiedSessionUser } from "@/lib/auth/current-user";
-import { syncUserFromAuth0 } from "@/lib/auth/sync-user";
+import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getInstagramInsightsConfig } from "@/lib/instagram-insights/config";
 import { createInstagramOAuthState } from "@/lib/instagram-insights/oauth";
 
@@ -10,7 +10,16 @@ export async function GET() {
   if (!authUser) return NextResponse.redirect(new URL("/auth/login", process.env.APP_URL));
   const config = getInstagramInsightsConfig();
   if (!config) return NextResponse.redirect(new URL("/dashboard?instagram=unavailable", process.env.APP_URL));
-  const user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
+  let user: { id: string };
+  try {
+    user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
+  } catch (error) {
+    if (isAuthIdentityCollisionError(error)) {
+      return NextResponse.redirect(new URL("/dashboard?instagram=identity_conflict", process.env.APP_URL));
+    }
+
+    throw error;
+  }
   const { state, cookieValue } = createInstagramOAuthState(user.id);
   const authorize = new URL("https://www.instagram.com/oauth/authorize");
   authorize.searchParams.set("client_id", config.clientId);

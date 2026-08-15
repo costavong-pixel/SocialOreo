@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { prisma } from "@/lib/db/prisma";
 import { translate } from "@/lib/socialolla/i18n/translations";
@@ -12,6 +12,7 @@ const LOCALE = "en-US";
 
 export default async function M2HomePage() {
   const sessionUser = await resolveDbUserFromVerifiedSession();
+  if (hasDbSessionIdentityConflict(sessionUser)) redirect("/account-conflict");
   if (!sessionUser) redirect("/auth/login");
 
   const workspace = await getOrCreatePersonalWorkspace(sessionUser.dbId);

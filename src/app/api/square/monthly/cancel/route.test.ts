@@ -1,14 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockRequireCheckoutAccess, mockSyncUser, mockGetSquareConfig, mockActiveSubscription, mockRecord, mockCancelSubscription } = vi.hoisted(() => ({
-  mockRequireCheckoutAccess: vi.fn(), mockSyncUser: vi.fn(), mockGetSquareConfig: vi.fn(), mockActiveSubscription: vi.fn(), mockRecord: vi.fn(), mockCancelSubscription: vi.fn(),
+const { mockRequireCheckoutAccess, mockSyncUser, mockGetSquareConfig, mockActiveSubscription, mockRecord, mockCancelSubscription, mockIsAuthIdentityCollisionError } = vi.hoisted(() => ({
+  mockRequireCheckoutAccess: vi.fn(), mockSyncUser: vi.fn(), mockGetSquareConfig: vi.fn(), mockActiveSubscription: vi.fn(), mockRecord: vi.fn(), mockCancelSubscription: vi.fn(), mockIsAuthIdentityCollisionError: vi.fn(),
 }));
 
 vi.mock("@/lib/payments/square/tester-gate", () => ({
   requireSquareCheckoutAccess: () => mockRequireCheckoutAccess(),
   requireSquareSandboxTester: () => mockRequireCheckoutAccess(),
 }));
-vi.mock("@/lib/auth/sync-user", () => ({ syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args) }));
+vi.mock("@/lib/auth/sync-user", () => ({
+  syncUserFromAuth0: (...args: unknown[]) => mockSyncUser(...args),
+  isAuthIdentityCollisionError: (...args: unknown[]) => mockIsAuthIdentityCollisionError(...args),
+}));
 vi.mock("@/lib/payments/square/config", () => ({ getSquareConfig: () => mockGetSquareConfig() }));
 vi.mock("@/lib/payments/square/checkout-service", () => ({
   getActiveMonthlySubscriptionForUser: (...args: unknown[]) => mockActiveSubscription(...args),
@@ -91,5 +94,19 @@ describe("POST /api/square/monthly/cancel", () => {
     let lastStatus = 0;
     for (let i = 0; i < 12; i += 1) lastStatus = (await POST()).status;
     expect(lastStatus).toBe(429);
+  });
+
+  it("fails closed without a cancellation request when the Auth0 identity conflicts with an existing account", async () => {
+    mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-2", email: "creator@example.com" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockSyncUser.mockRejectedValue(new Error("identity conflict"));
+    mockIsAuthIdentityCollisionError.mockReturnValue(true);
+
+    const response = await POST();
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ error: "This account needs support review before cancellation can continue." });
+    expect(mockActiveSubscription).not.toHaveBeenCalled();
+    expect(mockCancelSubscription).not.toHaveBeenCalled();
   });
 });
