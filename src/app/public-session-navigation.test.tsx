@@ -39,8 +39,8 @@ describe("public session-aware navigation", () => {
 
     render(await HomePage());
 
-    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
-    expect(screen.getByTestId("assistant-auth")).toHaveTextContent("false");
+    expect((screen.getByRole("link", { name: "Sign in" }) as HTMLAnchorElement).getAttribute("href")).toBe("/sign-in");
+    expect(screen.getByTestId("assistant-auth").textContent).toBe("false");
   });
 
   it("shows Dashboard and Sign out after an Auth0 session reaches the homepage", async () => {
@@ -48,10 +48,10 @@ describe("public session-aware navigation", () => {
 
     render(await HomePage());
 
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/dashboard");
-    expect(screen.getByRole("link", { name: "Sign out" })).toHaveAttribute("href", "/auth/logout");
+    expect((screen.getByRole("link", { name: "Dashboard" }) as HTMLAnchorElement).getAttribute("href")).toBe("/dashboard");
+    expect((screen.getByRole("link", { name: "Sign out" }) as HTMLAnchorElement).getAttribute("href")).toBe("/auth/logout");
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
-    expect(screen.getByTestId("assistant-auth")).toHaveTextContent("true");
+    expect(screen.getByTestId("assistant-auth").textContent).toBe("true");
   });
 
   it("does not present unverified sessions as assistant-authorized", async () => {
@@ -59,7 +59,7 @@ describe("public session-aware navigation", () => {
 
     render(await HomePage());
 
-    expect(screen.getByTestId("assistant-auth")).toHaveTextContent("false");
+    expect(screen.getByTestId("assistant-auth").textContent).toBe("false");
   });
 
   it("does not invite an already signed-in visitor to authenticate again from pricing", async () => {
@@ -67,8 +67,8 @@ describe("public session-aware navigation", () => {
 
     render(await PricingPage());
 
-    expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/dashboard");
-    expect(screen.getByRole("link", { name: "Sign out" })).toHaveAttribute("href", "/auth/logout");
+    expect((screen.getByRole("link", { name: "Dashboard" }) as HTMLAnchorElement).getAttribute("href")).toBe("/dashboard");
+    expect((screen.getByRole("link", { name: "Sign out" }) as HTMLAnchorElement).getAttribute("href")).toBe("/auth/logout");
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
   });
 });

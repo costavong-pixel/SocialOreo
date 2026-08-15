@@ -122,7 +122,7 @@ export type DbSessionResolution = ResolvedDbUser | { status: "identity-conflict"
 export function hasDbSessionIdentityConflict(
   resolution: DbSessionResolution,
 ): resolution is { status: "identity-conflict" } {
-  return resolution?.status === "identity-conflict";
+  return resolution !== null && "status" in resolution && resolution.status === "identity-conflict";
 }
 
 /**
