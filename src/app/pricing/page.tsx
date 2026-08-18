@@ -24,7 +24,7 @@ export default async function PricingPage() {
     },
     {
       name: "Lifetime",
-      price: formatPriceCents(lifetime.priceCents),
+      price: formatPriceCents(lifetime.priceCents, lifetime.currency),
       referencePrice: null,
       billing: "One-time",
       detail: "SocialOlla lifetime plan with included credits.",
@@ -35,7 +35,7 @@ export default async function PricingPage() {
     },
     {
       name: "Monthly",
-      price: formatPriceCents(monthly.priceCents),
+      price: formatPriceCents(monthly.priceCents, monthly.currency),
       referencePrice: null,
       billing: "per month",
       detail: "Recurring plan with monthly included credits.",
@@ -79,7 +79,12 @@ export default async function PricingPage() {
           ))}
         </div>
         <div className="mx-auto mt-10 max-w-3xl">
-          <CheckoutButtons lifetimePriceCents={lifetime.priceCents} monthlyPriceCents={monthly.priceCents} />
+          <CheckoutButtons
+            lifetimePriceCents={lifetime.priceCents}
+            lifetimeCurrency={lifetime.currency}
+            monthlyPriceCents={monthly.priceCents}
+            monthlyCurrency={monthly.currency}
+          />
           <p className="mt-4 text-center text-sm text-white/50">
             Checkout is Square sandbox-only and tester-gated until it is made available. {sessionUser ? "Use your dashboard to continue." : <Link className="text-[var(--social-blue)] hover:underline" href="/sign-in">Sign in</Link>} {!sessionUser && " to start a checkout."}
           </p>

@@ -22,7 +22,7 @@ export const DEFAULT_PLANS = {
     name: "SocialOlla Monthly",
     version: 1,
     priceCents: 1900, // $19.00 (sandbox monthly)
-    currency: "USD",
+    currency: "CAD",
     entitlements: {
       maxDestinations: 1,
       maxWatchCompetitors: 3,
@@ -71,6 +71,6 @@ export function monthlyPlan(): PlanDefinition {
   return planConfig().monthly;
 }
 
-export function formatPriceCents(cents: number, currency = "USD"): string {
+export function formatPriceCents(cents: number, currency: string): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0 }).format(cents / 100);
 }

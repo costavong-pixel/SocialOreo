@@ -10,7 +10,8 @@ export const metadata = {
 
 export default async function HomePage() {
   const sessionUser = await getSessionUser();
-  const price = formatPriceCents(planConfig().lifetime.priceCents);
+  const lifetime = planConfig().lifetime;
+  const price = formatPriceCents(lifetime.priceCents, lifetime.currency);
   return (
     <main className="min-h-[100dvh] bg-[var(--social-page)] px-5 py-5 text-[var(--social-text)] sm:px-8 lg:px-12">
       <nav className="so-public-nav mx-auto max-w-7xl">

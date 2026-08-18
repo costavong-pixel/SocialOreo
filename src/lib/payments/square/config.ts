@@ -79,6 +79,11 @@ function monthlyPriceAgrees(monthlyPriceCents: number | null, environment: Squar
   return planConfig().monthly.priceCents === monthlyPriceCents && !legacyDiverges;
 }
 
+function monthlyCurrencyAgrees(squareCurrency: string | null, environment: SquareEnv | null): boolean {
+  if (environment !== "production" || !squareCurrency) return true;
+  return planConfig().monthly.currency.toUpperCase() === squareCurrency;
+}
+
 export function getSquareConfig(): SquareConfig | null {
   const environment = squareEnv();
   if (!environment) return null;
@@ -118,6 +123,8 @@ export function getSquareConfig(): SquareConfig | null {
   }
 
   if (!monthlyPlanIdentifiersAreDistinct(monthlyPlanId, monthlyPlanVariationId)) return null;
+
+  if (!monthlyCurrencyAgrees(currency, environment)) return null;
 
   if (!monthlyPriceAgrees(monthlyPriceCents, environment)) return null;
 
@@ -166,6 +173,9 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
   const monthlyPlanVariationId = value("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
   if (monthlyPlanIdentifiersAreDistinct(monthlyPlanId, monthlyPlanVariationId) === false) {
     invalidOrMissing.push("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY_MISMATCH");
+  }
+  if (!monthlyCurrencyAgrees(currencyCode(value("SQUARE_CURRENCY")), squareEnv())) {
+    invalidOrMissing.push("SQUARE_MONTHLY_CURRENCY_MISMATCH");
   }
   const monthlyPriceCents = positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS"));
   if (!monthlyPriceCents) {

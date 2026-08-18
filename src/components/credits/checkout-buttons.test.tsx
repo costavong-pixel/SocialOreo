@@ -16,6 +16,20 @@ describe("CheckoutButtons", () => {
     assignMock.mockClear();
   });
 
+  it("renders explicit Lifetime USD and Monthly CAD currencies", () => {
+    render(
+      <CheckoutButtons
+        lifetimePriceCents={7900}
+        lifetimeCurrency="USD"
+        monthlyPriceCents={4900}
+        monthlyCurrency="CAD"
+      />,
+    );
+
+    expect(screen.getByText("$79")).toBeTruthy();
+    expect(screen.getByText("CA$49")).toBeTruthy();
+  });
+
   it("opens the Square hosted checkout link returned for Lifetime", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -24,7 +38,7 @@ describe("CheckoutButtons", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CheckoutButtons lifetimePriceCents={7900} monthlyPriceCents={1900} />);
+    render(<CheckoutButtons lifetimePriceCents={7900} lifetimeCurrency="USD" monthlyPriceCents={1900} monthlyCurrency="CAD" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Choose Lifetime" }));
 
@@ -46,7 +60,7 @@ describe("CheckoutButtons", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CheckoutButtons lifetimePriceCents={7900} monthlyPriceCents={1900} />);
+    render(<CheckoutButtons lifetimePriceCents={7900} lifetimeCurrency="USD" monthlyPriceCents={1900} monthlyCurrency="CAD" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Choose Monthly" }));
 
@@ -66,7 +80,7 @@ describe("CheckoutButtons", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CheckoutButtons lifetimePriceCents={7900} monthlyPriceCents={1900} />);
+    render(<CheckoutButtons lifetimePriceCents={7900} lifetimeCurrency="USD" monthlyPriceCents={1900} monthlyCurrency="CAD" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Choose Lifetime" }));
 
@@ -75,7 +89,7 @@ describe("CheckoutButtons", () => {
   });
 
   it("labels the purchase surface as Square-hosted", () => {
-    render(<CheckoutButtons lifetimePriceCents={7900} monthlyPriceCents={1900} />);
+    render(<CheckoutButtons lifetimePriceCents={7900} lifetimeCurrency="USD" monthlyPriceCents={1900} monthlyCurrency="CAD" />);
     expect(screen.getByText(/Square-hosted checkout/)).toBeTruthy();
   });
 });
