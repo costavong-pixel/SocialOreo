@@ -42,6 +42,7 @@ const checkoutConfig: SquareConfig = {
   webhookNotificationUrl: "https://example.test/webhook",
   appBaseUrl: "https://example.test",
   lifetimeCatalogVariationId: "lifetime",
+  monthlyPlanId: "plan-parent",
   monthlyPlanVariationId: "plan-a",
   monthlyPriceCents: 1900,
   singleAuditCatalogVariationId: "single",

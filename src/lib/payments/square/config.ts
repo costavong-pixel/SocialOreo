@@ -15,6 +15,7 @@ export type SquareConfig = {
   webhookNotificationUrl: string;
   appBaseUrl: string;
   lifetimeCatalogVariationId: string;
+  monthlyPlanId: string;
   monthlyPlanVariationId: string;
   monthlyPriceCents: number;
   singleAuditCatalogVariationId: string;
@@ -61,6 +62,10 @@ function currencyCode(value: string | null): string | null {
   return normalized && /^[A-Z]{3}$/.test(normalized) ? normalized : null;
 }
 
+function monthlyPlanIdentifiersAreDistinct(planId: string | null, variationId: string | null): boolean {
+  return !planId || !variationId || planId !== variationId;
+}
+
 /**
  * Single authoritative monthly price. In production the Square payment price
  * must agree with the plan/UI price (both derive from SQUARE_MONTHLY_PRICE_CENTS)
@@ -87,6 +92,7 @@ export function getSquareConfig(): SquareConfig | null {
   const webhookNotificationUrl = httpsUrl(value("SQUARE_WEBHOOK_NOTIFICATION_URL"));
   const appBaseUrl = httpsUrl(value("APP_BASE_URL"));
   const lifetimeCatalogVariationId = value("SQUARE_CATALOG_VARIATION_LIFETIME");
+  const monthlyPlanId = value("SQUARE_SUBSCRIPTION_PLAN_MONTHLY");
   const monthlyPlanVariationId = value("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
   const monthlyPriceCents = positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS"));
   const singleAuditCatalogVariationId = value("SQUARE_CATALOG_VARIATION_SINGLE_AUDIT");
@@ -102,6 +108,7 @@ export function getSquareConfig(): SquareConfig | null {
     !webhookNotificationUrl ||
     !appBaseUrl ||
     !lifetimeCatalogVariationId ||
+    !monthlyPlanId ||
     !monthlyPlanVariationId ||
     !monthlyPriceCents ||
     !singleAuditCatalogVariationId ||
@@ -109,6 +116,8 @@ export function getSquareConfig(): SquareConfig | null {
   ) {
     return null;
   }
+
+  if (!monthlyPlanIdentifiersAreDistinct(monthlyPlanId, monthlyPlanVariationId)) return null;
 
   if (!monthlyPriceAgrees(monthlyPriceCents, environment)) return null;
 
@@ -123,6 +132,7 @@ export function getSquareConfig(): SquareConfig | null {
     webhookNotificationUrl,
     appBaseUrl: appBaseUrl.replace(/\/$/, ""),
     lifetimeCatalogVariationId,
+    monthlyPlanId,
     monthlyPlanVariationId,
     monthlyPriceCents,
     singleAuditCatalogVariationId,
@@ -144,6 +154,7 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
   required("SQUARE_LOCATION_ID");
   required("SQUARE_WEBHOOK_SIGNATURE_KEY");
   required("SQUARE_CATALOG_VARIATION_LIFETIME");
+  required("SQUARE_SUBSCRIPTION_PLAN_MONTHLY");
   required("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
   required("SQUARE_CATALOG_VARIATION_SINGLE_AUDIT");
   required("SQUARE_CATALOG_VARIATION_CREATOR_PACK");
@@ -151,6 +162,11 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
   if (!currencyCode(value("SQUARE_CURRENCY"))) invalidOrMissing.push("SQUARE_CURRENCY");
   if (!httpsUrl(value("SQUARE_WEBHOOK_NOTIFICATION_URL"))) invalidOrMissing.push("SQUARE_WEBHOOK_NOTIFICATION_URL");
   if (!httpsUrl(value("APP_BASE_URL"))) invalidOrMissing.push("APP_BASE_URL");
+  const monthlyPlanId = value("SQUARE_SUBSCRIPTION_PLAN_MONTHLY");
+  const monthlyPlanVariationId = value("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
+  if (monthlyPlanIdentifiersAreDistinct(monthlyPlanId, monthlyPlanVariationId) === false) {
+    invalidOrMissing.push("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY_MISMATCH");
+  }
   const monthlyPriceCents = positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS"));
   if (!monthlyPriceCents) {
     invalidOrMissing.push("SQUARE_MONTHLY_PRICE_CENTS");

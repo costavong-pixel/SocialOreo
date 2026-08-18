@@ -14,6 +14,7 @@ const sandboxConfig: SquareConfig = {
   webhookNotificationUrl: "https://example.test/api/square/webhook",
   appBaseUrl: "https://example.test",
   lifetimeCatalogVariationId: "lifetime",
+  monthlyPlanId: "plan-parent",
   monthlyPlanVariationId: "plan",
   monthlyPriceCents: 1900,
   singleAuditCatalogVariationId: "single",

@@ -16,6 +16,7 @@ const config: SquareConfig = {
   webhookNotificationUrl: "https://example.test/api/square/webhook",
   appBaseUrl: "https://example.test",
   lifetimeCatalogVariationId: "lifetime-variation",
+  monthlyPlanId: "monthly-plan-id",
   monthlyPlanVariationId: "monthly-plan-variation",
   monthlyPriceCents: 1900,
   singleAuditCatalogVariationId: "single-variation",
@@ -46,6 +47,43 @@ describe("createSquarePaymentLink", () => {
         }),
       }),
     );
+  });
+
+  it("uses the subscription plan ID for Monthly checkout, not its variation ID", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "monthly-link", url: "https://square.link/u/monthly", order_id: "monthly-order" } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createSquarePaymentLink({ checkoutId: "checkout-monthly", idempotencyKey: "monthly-key", config, product: getSquareProduct(config, "monthly") })).resolves.toEqual({
+      checkoutUrl: "https://square.link/u/monthly",
+      orderId: "monthly-order",
+      paymentLinkId: "monthly-link",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://connect.squareupsandbox.com/v2/online-checkout/payment-links",
+      expect.objectContaining({
+        body: JSON.stringify({
+          idempotency_key: "monthly-key",
+          quick_pay: {
+            location_id: "location",
+            name: "SocialOreo Monthly",
+            price_money: { amount: 1900, currency: "CAD" },
+          },
+          checkout_options: {
+            subscription_plan_id: "monthly-plan-id",
+            redirect_url: "https://example.test/pricing?checkout=checkout-monthly",
+          },
+          description: "SocialOreo Monthly subscription",
+        }),
+      }),
+    );
+  });
+
+  it("fails closed before a Square request when Monthly plan identity is absent", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createSquarePaymentLink({ checkoutId: "checkout-missing-plan", idempotencyKey: "monthly-key", config: { ...config, monthlyPlanId: "" }, product: getSquareProduct(config, "monthly") })).rejects.toBeInstanceOf(SquareCheckoutError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("targets the production API base when the config environment is production", async () => {

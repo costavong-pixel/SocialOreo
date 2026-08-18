@@ -34,6 +34,7 @@ function configureSandbox() {
   process.env.SQUARE_WEBHOOK_NOTIFICATION_URL = notificationUrl;
   process.env.APP_BASE_URL = "https://example.test";
   process.env.SQUARE_CATALOG_VARIATION_LIFETIME = "lifetime-variation";
+  process.env.SQUARE_SUBSCRIPTION_PLAN_MONTHLY = "monthly-plan-id";
   process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY = "monthly-plan-variation";
   process.env.SQUARE_MONTHLY_PRICE_CENTS = "1900";
   process.env.SQUARE_CATALOG_VARIATION_SINGLE_AUDIT = "single-variation";
@@ -208,6 +209,26 @@ describe("POST /api/square/webhook", () => {
       eventType: "subscription.updated",
       eventCreatedAt: "2026-07-26T15:09:32.671Z",
     });
+  });
+
+  it("ignores a subscription event whose plan ID is not the configured variation ID", async () => {
+    configureSandbox();
+    const body = JSON.stringify({
+      event_id: "event-subscription-plan-id",
+      created_at: "2026-07-26T15:09:32.671Z",
+      type: "subscription.updated",
+      data: { object: { subscription: { id: "subscription-plan-id", customer_id: "customer-1", location_id: "location-1", plan_variation_id: "monthly-plan-id", status: "ACTIVE" } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", {
+      method: "POST",
+      headers: { "x-square-hmacsha256-signature": signature(body) },
+      body,
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, ignored: true });
+    expect(mockRecordSquareSubscription).not.toHaveBeenCalled();
   });
 
   it("returns HTTP 200 for a signed subscription.created event", async () => {
