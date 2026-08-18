@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-import fs from "node:fs";
-import path from "node:path";
+import { addStagingSession, requireAuthState } from "./auth-state.mjs";
 
 const STAGING_ORIGIN = "https://staging.socialolla.com";
 // The sandbox short URL that the application returns and stores, and the
@@ -24,42 +23,10 @@ const PRODUCTION_OR_UNPINNED_HOSTS = new Set([
   "pay.squareup.com",
 ]);
 
-const SESSION_COOKIE_FILE = process.env.SESSION_COOKIE_FILE?.trim() ?? "";
-if (!SESSION_COOKIE_FILE) {
-  throw new Error("SESSION_COOKIE_FILE is required and must be minted from the staging Auth0 app.");
-}
-const SESSION_COOKIE_PATH = path.resolve(SESSION_COOKIE_FILE);
-const SESSION_COOKIE = fs.existsSync(SESSION_COOKIE_PATH)
-  ? fs.readFileSync(SESSION_COOKIE_PATH, "utf8").trim()
-  : "";
-
-// This marker is deliberately non-secret. The runner must mint the raw
-// __session value with the staging Auth0 app and staging AUTH0_SECRET, never a
-// production secret, then set SESSION_COOKIE_PROVENANCE=staging-auth0.
-const SESSION_COOKIE_PROVENANCE = process.env.SESSION_COOKIE_PROVENANCE ?? "";
-
-if (!SESSION_COOKIE) {
-  throw new Error("Staging checkout E2E requires SESSION_COOKIE_FILE minted from the staging Auth0 app.");
-}
-if (SESSION_COOKIE_PROVENANCE !== "staging-auth0") {
-  throw new Error("Set SESSION_COOKIE_PROVENANCE=staging-auth0 after verifying the staging Auth0 mint source.");
-}
-if (SESSION_COOKIE_PATH === process.cwd() || SESSION_COOKIE_PATH.startsWith(`${process.cwd()}${path.sep}`)) {
-  throw new Error("SESSION_COOKIE_FILE must remain outside the repository.");
-}
-
 function resolvedStagingOrigin(testInfo) {
   const baseURL = testInfo.project.use.baseURL;
   if (typeof baseURL !== "string") throw new Error("Playwright staging baseURL is missing.");
   return new URL(baseURL).origin;
-}
-
-async function addStagingSession(page, testInfo) {
-  await page.context().addCookies([{
-    name: "__session",
-    value: SESSION_COOKIE,
-    url: resolvedStagingOrigin(testInfo),
-  }]);
 }
 
 // Proof 1: the URL the application returns (and stores server-side) must be
@@ -255,8 +222,9 @@ test.describe("staging-only Square sandbox checkout acceptance", () => {
 
   test.beforeEach(async ({ page }, testInfo) => {
     // This assertion runs before every page.goto. playwright.config.mjs also
-    // rejects a non-staging BASE_URL at module load for every E2E spec.
+    // rejects a non-staging BASE_URL before any test can create a page.
     expect(resolvedStagingOrigin(testInfo)).toBe(STAGING_ORIGIN);
+    requireAuthState();
     await addStagingSession(page, testInfo);
   });
 

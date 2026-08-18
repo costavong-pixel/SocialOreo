@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { resolveAuthState } from "./tests/e2e/auth-state.mjs";
 
 const STAGING_ORIGIN = "https://staging.socialolla.com";
 
@@ -30,17 +31,28 @@ function resolveStagingBaseURL(value) {
 }
 
 const baseURL = resolveStagingBaseURL(process.env.BASE_URL);
+const authState = resolveAuthState();
+
+const use = {
+  baseURL,
+  headless: true,
+  trace: "retain-on-failure",
+  video: "retain-on-failure",
+};
+
+// A storageState is a normal Playwright context fixture. It is applied to the
+// suite here, while the guest-boundary test explicitly overrides it with an
+// empty state. The legacy raw cookie remains a per-test fallback.
+if (authState?.kind === "storageState") {
+  use.storageState = authState.path;
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testIgnore: ["**/create-staging-storage-state.mjs"],
   timeout: 60000,
   retries: 0,
   outputDir: "./test-results",
-  use: {
-    baseURL,
-    headless: true,
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
-  },
+  use,
   reporter: [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]],
 });
