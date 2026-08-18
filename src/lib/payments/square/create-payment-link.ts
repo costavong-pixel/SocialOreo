@@ -24,6 +24,9 @@ export async function createSquarePaymentLink(input: {
   config: SquareConfig;
   product: SquareProduct;
 }): Promise<{ checkoutUrl: string; orderId: string; paymentLinkId: string }> {
+  if (input.product.kind === "subscription" && (!input.config.monthlyPlanId || !input.config.monthlyPlanVariationId)) {
+    throw new SquareCheckoutError("Monthly checkout is not configured.");
+  }
   if (!(await verifySquareMerchantContext(input.config))) throw new SquareCheckoutError();
   const redirectUrl = `${input.config.appBaseUrl}/pricing?checkout=${encodeURIComponent(input.checkoutId)}`;
   // Square caps order.reference_id at 40 characters. A CUID plus this compact prefix
@@ -37,7 +40,7 @@ export async function createSquarePaymentLink(input: {
       price_money: { amount: input.product.priceCents!, currency: input.config.currency },
     },
     checkout_options: {
-      subscription_plan_id: input.product.catalogVariationId,
+      subscription_plan_id: input.config.monthlyPlanId,
       redirect_url: redirectUrl,
     },
     description: "SocialOreo Monthly subscription",

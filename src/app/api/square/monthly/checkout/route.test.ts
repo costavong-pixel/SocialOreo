@@ -28,7 +28,7 @@ describe("POST /api/square/monthly/checkout", () => {
   });
 
   it("creates a hosted checkout only for the authenticated allowlisted tester", async () => {
-    const config = { applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
+    const config = { applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
     mockConfig.mockReturnValue(config);
     mockSyncUser.mockResolvedValue({ id: "user-1" });
@@ -58,7 +58,7 @@ describe("POST /api/square/monthly/checkout", () => {
   });
 
   it("opens the hosted checkout to any verified user in production mode", async () => {
-    const config = { applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
+    const config = { applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 };
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-prod", email: "buyer@example.com" });
     mockConfig.mockReturnValue(config);
     mockSyncUser.mockResolvedValue({ id: "user-prod" });
@@ -71,7 +71,7 @@ describe("POST /api/square/monthly/checkout", () => {
 
   it("returns 429 after the per-user rate limit is exhausted", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth-owner", email: "owner@example.com" });
-    mockConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 });
+    mockConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 });
     mockSyncUser.mockResolvedValue({ id: "user-1" });
     mockStart.mockResolvedValue({ checkoutUrl: "https://square.link/u/ok" });
 
@@ -82,7 +82,7 @@ describe("POST /api/square/monthly/checkout", () => {
 
   it("fails closed without a Square call when the Auth0 identity conflicts with an existing account", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-2", email: "creator@example.com" });
-    mockConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 });
+    mockConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan", monthlyPriceCents: 1900 });
     mockSyncUser.mockRejectedValue(new Error("identity conflict"));
     mockIsAuthIdentityCollisionError.mockReturnValue(true);
 

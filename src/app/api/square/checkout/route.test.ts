@@ -35,6 +35,7 @@ function configureSandbox() {
   process.env.SQUARE_WEBHOOK_NOTIFICATION_URL = "https://example.test/api/square/webhook";
   process.env.APP_BASE_URL = "https://example.test";
   process.env.SQUARE_CATALOG_VARIATION_LIFETIME = "lifetime-variation";
+  process.env.SQUARE_SUBSCRIPTION_PLAN_MONTHLY = "monthly-plan";
   process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY = "monthly-plan-variation";
   process.env.SQUARE_MONTHLY_PRICE_CENTS = "1900";
   process.env.SQUARE_CATALOG_VARIATION_SINGLE_AUDIT = "single-variation";

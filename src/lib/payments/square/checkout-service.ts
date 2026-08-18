@@ -123,8 +123,12 @@ export async function startSquareCheckout(input: {
   productId: SquareProductId;
   config: SquareConfig;
 }): Promise<{ checkoutUrl: string }> {
+  if (input.productId === "monthly" && (!input.config.monthlyPlanId || !input.config.monthlyPlanVariationId)) {
+    throw new SquareCheckoutServiceError("Monthly checkout is not configured.");
+  }
   const prisma = await getSquarePrisma();
   const product = getSquareProduct(input.config, input.productId);
+  const monthlyPlanVariationId = product.kind === "subscription" ? input.config.monthlyPlanVariationId : null;
   const now = new Date();
   const expiresAt = new Date(now.getTime() + PENDING_CHECKOUT_TTL_MS);
   // Serialize the complete find/abandon/create/remote-call sequence with a
@@ -139,7 +143,8 @@ export async function startSquareCheckout(input: {
       input.config.applicationId,
       input.config.environment,
       input.config.locationId,
-      product.kind === "subscription" ? product.catalogVariationId : "",
+      product.kind === "subscription" ? input.config.monthlyPlanId : "",
+      monthlyPlanVariationId ?? "",
     ].join("\u0000"))
     .digest("hex");
 
@@ -160,7 +165,7 @@ export async function startSquareCheckout(input: {
         squareApplicationId: input.config.applicationId,
         squareEnvironment: input.config.environment,
         squareLocationId: input.config.locationId,
-        squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
+        squarePlanVariationId: monthlyPlanVariationId,
       },
       orderBy: { updatedAt: "desc" },
       select: { checkoutUrl: true },
@@ -191,7 +196,7 @@ export async function startSquareCheckout(input: {
         squareApplicationId: input.config.applicationId,
         squareEnvironment: input.config.environment,
         squareLocationId: input.config.locationId,
-        squarePlanVariationId: product.kind === "subscription" ? product.catalogVariationId : null,
+        squarePlanVariationId: monthlyPlanVariationId,
         pendingKey,
         expiresAt,
         // Generated only on the server and sent only to Square as an idempotency key.

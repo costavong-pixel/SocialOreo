@@ -34,7 +34,7 @@ describe("POST /api/square/monthly/cancel", () => {
   it("schedules the authenticated user's real subscription at period end while it remains ACTIVE", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-owner", email: "owner@example.com" });
     mockSyncUser.mockResolvedValue({ id: "user-1" });
-    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan-1" });
     mockActiveSubscription.mockResolvedValue({ subscriptionId: "subscription-1", customerId: "customer-1", planVariationId: "monthly-plan-1" });
     mockCancelSubscription.mockResolvedValue({ status: "ACTIVE", canceledDate: "2026-08-24" });
 
@@ -61,7 +61,7 @@ describe("POST /api/square/monthly/cancel", () => {
   it("returns 404 when an authenticated user does not own a configured Monthly subscription", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-other", email: "other@example.com" });
     mockSyncUser.mockResolvedValue({ id: "user-other" });
-    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan-1" });
     mockActiveSubscription.mockResolvedValue(null);
 
     const response = await POST();
@@ -73,7 +73,7 @@ describe("POST /api/square/monthly/cancel", () => {
   it("cancels for any verified subscription owner in production mode", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-prod", email: "buyer@example.com" });
     mockSyncUser.mockResolvedValue({ id: "user-prod" });
-    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan-1" });
     mockActiveSubscription.mockResolvedValue({ subscriptionId: "subscription-1", customerId: "customer-1", planVariationId: "monthly-plan-1" });
     mockCancelSubscription.mockResolvedValue({ status: "CANCELED", canceledDate: "2026-08-24" });
 
@@ -87,7 +87,7 @@ describe("POST /api/square/monthly/cancel", () => {
   it("returns 429 after the per-user rate limit is exhausted", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-owner", email: "owner@example.com" });
     mockSyncUser.mockResolvedValue({ id: "user-1" });
-    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan-1" });
     mockActiveSubscription.mockResolvedValue({ subscriptionId: "subscription-1", customerId: "customer-1", planVariationId: "monthly-plan-1" });
     mockCancelSubscription.mockResolvedValue({ status: "ACTIVE", canceledDate: "2026-08-24" });
 
@@ -98,7 +98,7 @@ describe("POST /api/square/monthly/cancel", () => {
 
   it("fails closed without a cancellation request when the Auth0 identity conflicts with an existing account", async () => {
     mockRequireCheckoutAccess.mockResolvedValue({ id: "auth0-2", email: "creator@example.com" });
-    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanVariationId: "monthly-plan-1" });
+    mockGetSquareConfig.mockReturnValue({ applicationId: "app", monthlyPlanId: "monthly-plan-id", monthlyPlanVariationId: "monthly-plan-1" });
     mockSyncUser.mockRejectedValue(new Error("identity conflict"));
     mockIsAuthIdentityCollisionError.mockReturnValue(true);
 

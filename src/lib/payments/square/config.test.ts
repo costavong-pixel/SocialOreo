@@ -15,6 +15,7 @@ function configureSandbox() {
   process.env.SQUARE_WEBHOOK_NOTIFICATION_URL = "https://example.test/api/square/webhook";
   process.env.APP_BASE_URL = "https://example.test";
   process.env.SQUARE_CATALOG_VARIATION_LIFETIME = "lifetime-variation";
+  process.env.SQUARE_SUBSCRIPTION_PLAN_MONTHLY = "monthly-plan";
   process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY = "monthly-plan-variation";
   process.env.SQUARE_MONTHLY_PRICE_CENTS = "1900";
   process.env.SQUARE_CATALOG_VARIATION_SINGLE_AUDIT = "single-audit-variation";
@@ -49,6 +50,7 @@ describe("Square environment-mode config", () => {
       environment: "sandbox",
       locationId: "sandbox-location",
       currency: "CAD",
+      monthlyPlanId: "monthly-plan",
       monthlyPlanVariationId: "monthly-plan-variation",
       applicationId: "sandbox-app-id",
       monthlyPriceCents: 1900,
@@ -65,6 +67,26 @@ describe("Square environment-mode config", () => {
       applicationId: "sandbox-app-id",
       monthlyPriceCents: 1900,
     });
+  });
+
+  it("fails closed when either monthly subscription identifier is absent", () => {
+    configureSandbox();
+    delete process.env.SQUARE_SUBSCRIPTION_PLAN_MONTHLY;
+    expect(getSquareConfig()).toBeNull();
+    expect(getSquareConfigDiagnostics().invalidOrMissing).toContain("SQUARE_SUBSCRIPTION_PLAN_MONTHLY");
+
+    configureSandbox();
+    delete process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY;
+    expect(getSquareConfig()).toBeNull();
+    expect(getSquareConfigDiagnostics().invalidOrMissing).toContain("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
+  });
+
+  it("fails closed when the plan ID and variation ID are identical", () => {
+    configureSandbox();
+    process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY = "monthly-plan";
+
+    expect(getSquareConfig()).toBeNull();
+    expect(getSquareConfigDiagnostics().invalidOrMissing).toEqual(["SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY_MISMATCH"]);
   });
 
   it("accepts any positive monthly price and rejects zero, negative or non-numeric", () => {
