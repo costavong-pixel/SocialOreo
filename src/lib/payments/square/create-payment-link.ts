@@ -40,7 +40,10 @@ export async function createSquarePaymentLink(input: {
       price_money: { amount: input.product.priceCents!, currency: input.config.currency },
     },
     checkout_options: {
-      subscription_plan_id: input.config.monthlyPlanId,
+      // Square's field name is historical: it expects the subscription plan
+      // variation ID here, because buyers subscribe to a variation rather
+      // than the parent plan.
+      subscription_plan_id: input.config.monthlyPlanVariationId,
       redirect_url: redirectUrl,
     },
     description: "SocialOreo Monthly subscription",
