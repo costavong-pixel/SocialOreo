@@ -1,24 +1,14 @@
 import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  STAGING_AUTH0_HOST,
+  addStagingSession,
+  assertExternalAuthArtifactPath,
+  resolveAuthState,
+} from "./auth-state.mjs";
 
-// The authenticated-shell tests need a valid Auth0 session cookie. It is a
-// machine-local artifact (produced by the coordinator from AUTH0_SECRET), never
-// committed. Tests that require it are skipped when it is absent.
-const SESSION_COOKIE_FILE = process.env.SESSION_COOKIE_FILE ?? "/tmp/opencode/browser-session-cookie.txt";
-const SESSION_COOKIE_PATH = path.resolve(SESSION_COOKIE_FILE);
-const SESSION_COOKIE = fs.existsSync(SESSION_COOKIE_PATH) ? fs.readFileSync(SESSION_COOKIE_PATH, "utf8").trim() : "";
-const hasSession = SESSION_COOKIE.length > 0;
-const STAGING_AUTH0_HOST = "dev-b12p7c5vfprk0hi8.us.auth0.com";
-
-function assertOutsideRepository(candidate, label) {
-  const repository = process.cwd();
-  if (candidate === repository || candidate.startsWith(`${repository}${path.sep}`)) {
-    throw new Error(`${label} must remain outside the repository.`);
-  }
-}
-
-assertOutsideRepository(SESSION_COOKIE_PATH, "SESSION_COOKIE_FILE");
+const hasApprovedAuthState = Boolean(resolveAuthState());
 
 function stagingOrigin(testInfo) {
   const baseURL = testInfo.project.use.baseURL;
@@ -26,12 +16,10 @@ function stagingOrigin(testInfo) {
   return new URL(baseURL).origin;
 }
 
-async function addStagingSession(page, testInfo) {
-  await page.context().addCookies([{ name: "__session", value: SESSION_COOKIE, url: stagingOrigin(testInfo) }]);
-}
-
-const SHOT_DIR = path.resolve(process.env.SHOT_DIR ?? "/tmp/opencode/browser-screenshots");
-assertOutsideRepository(SHOT_DIR, "SHOT_DIR");
+const SHOT_DIR = assertExternalAuthArtifactPath(
+  process.env.SHOT_DIR ?? "/tmp/opencode/browser-screenshots",
+  { label: "SHOT_DIR" },
+);
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 
 async function shot(page, name) {
@@ -79,23 +67,29 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await shot(page, "demo");
   });
 
-  test("guest protected-action boundary: no credits access without session", async ({ page }) => {
-    await page.goto("/credits", { waitUntil: "domcontentloaded" });
-    // The live staging app redirects through /auth/login into its staging
-    // Auth0 tenant. Keep the tenant pin so a production or unexpected issuer
-    // cannot satisfy this guest-boundary assertion.
-    await page.waitForURL((url) =>
-      url.hostname === STAGING_AUTH0_HOST &&
-      (/\/u\/login|\/authorize/.test(url.pathname)),
-      { timeout: 15000 },
-    );
-    const url = page.url();
-    expect(/\/credits/.test(url)).toBe(false);
-    await shot(page, "guest-boundary-redirect");
+  test.describe("guest protected-action boundary", () => {
+    // playwright.config.mjs may provide an authenticated storageState to the
+    // suite. This test must always start without it.
+    test.use({ storageState: { cookies: [], origins: [] } });
+
+    test("no credits access without session", async ({ page }) => {
+      await page.goto("/credits", { waitUntil: "domcontentloaded" });
+      // The live staging app redirects through /auth/login into its staging
+      // Auth0 tenant. Keep the tenant pin so a production or unexpected issuer
+      // cannot satisfy this guest-boundary assertion.
+      await page.waitForURL((url) =>
+        url.hostname === STAGING_AUTH0_HOST &&
+        (/\/u\/login|\/authorize/.test(url.pathname)),
+        { timeout: 15000 },
+      );
+      const url = page.url();
+      expect(/\/credits/.test(url)).toBe(false);
+      await shot(page, "guest-boundary-redirect");
+    });
   });
 
   test("authenticated product shell + onboarding/profile review", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/home", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -111,7 +105,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("connections: sandbox destination form", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/connections", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -121,7 +115,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("posts: variant editor + schedule controls + create", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/posts", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -131,7 +125,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("watch: credit-cost confirmation step", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/watch", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -141,7 +135,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("credits: balance/batches/ledger + checkout entry", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/credits", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -151,7 +145,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("assistant: protected preview + confirmation for authenticated", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/assistant", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -160,7 +154,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("admin: gated control plane with price + adjust + audit", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/admin/plans", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -171,7 +165,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("calendar: seven-day plan + scheduled slots", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/calendar", { waitUntil: "domcontentloaded" });
     await waitContent(page);
@@ -180,7 +174,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("mobile navigation + keyboard focus", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await page.setViewportSize({ width: 390, height: 844 });
     await addStagingSession(page, test.info());
     await page.goto("/home", { waitUntil: "domcontentloaded" });
@@ -192,7 +186,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   });
 
   test("language selector + RTL rendering", async ({ page }) => {
-    test.skip(!hasSession, "requires a session cookie (set SESSION_COOKIE_FILE)");
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/home", { waitUntil: "domcontentloaded" });
     await waitContent(page);
