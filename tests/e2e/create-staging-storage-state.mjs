@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
@@ -64,6 +65,25 @@ function isApprovedOrigin(origin) {
   return origin === STAGING_ORIGIN || origin === `https://${STAGING_AUTH0_HOST}`;
 }
 
+function applyWindowsPrivateAcl(filePath) {
+  if (process.platform !== "win32") return;
+
+  const username = process.env.USERNAME?.trim();
+  const userdomain = process.env.USERDOMAIN?.trim();
+  const account = userdomain && username ? `${userdomain}\\${username}` : username;
+  if (!account) {
+    throw new Error("Unable to determine the current Windows user for the storageState ACL.");
+  }
+
+  try {
+    execFileSync("icacls", [filePath, "/inheritance:r", "/grant:r", `${account}:F`], {
+      stdio: "ignore",
+    });
+  } catch {
+    throw new Error("Unable to apply the owner-only Windows ACL to the storageState file.");
+  }
+}
+
 const cdpUrl = process.env.PLAYWRIGHT_CDP_URL?.trim();
 let browser;
 let context;
@@ -117,6 +137,7 @@ try {
     mode: 0o600,
   });
   fs.chmodSync(outputPath, 0o600);
+  applyWindowsPrivateAcl(outputPath);
   validateStorageStateFile(outputPath);
   console.log(`Approved staging storageState written with mode 0600: ${outputPath}`);
 } finally {
