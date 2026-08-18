@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { DEFAULT_PLANS } from "@/lib/socialolla/plans/plan-config";
 import { getSquareConfig, getSquareConfigDiagnostics } from "./config";
 
 const originalEnv = { ...process.env };
@@ -20,6 +21,12 @@ function configureSandbox() {
   process.env.SQUARE_MONTHLY_PRICE_CENTS = "1900";
   process.env.SQUARE_CATALOG_VARIATION_SINGLE_AUDIT = "single-audit-variation";
   process.env.SQUARE_CATALOG_VARIATION_CREATOR_PACK = "creator-pack-variation";
+}
+
+function configureProduction() {
+  configureSandbox();
+  process.env.SQUARE_ENV = "production";
+  process.env.SQUARE_MONTHLY_PRICE_CENTS = "4900";
 }
 
 describe("Square environment-mode config", () => {
@@ -57,16 +64,46 @@ describe("Square environment-mode config", () => {
     });
   });
 
-  it("accepts a complete production configuration (explicit production mode)", () => {
-    configureSandbox();
-    process.env.SQUARE_ENV = "production";
+  it("accepts a complete production 4900/CAD configuration", () => {
+    configureProduction();
 
     expect(getSquareConfig()).toMatchObject({
       environment: "production",
       locationId: "sandbox-location",
       applicationId: "sandbox-app-id",
-      monthlyPriceCents: 1900,
+      currency: "CAD",
+      monthlyPriceCents: 4900,
     });
+  });
+
+  it("fails closed when production Monthly plan currency differs from Square currency", () => {
+    configureProduction();
+    const monthly = DEFAULT_PLANS.monthly as unknown as { currency: string };
+    const originalCurrency = monthly.currency;
+    monthly.currency = "USD";
+
+    try {
+      expect(getSquareConfig()).toBeNull();
+      expect(getSquareConfigDiagnostics()).toEqual({
+        valid: false,
+        invalidOrMissing: ["SQUARE_MONTHLY_CURRENCY_MISMATCH"],
+      });
+    } finally {
+      monthly.currency = originalCurrency;
+    }
+  });
+
+  it("keeps sandbox valid without requiring a Monthly currency match", () => {
+    configureSandbox();
+    const monthly = DEFAULT_PLANS.monthly as unknown as { currency: string };
+    const originalCurrency = monthly.currency;
+    monthly.currency = "USD";
+
+    try {
+      expect(getSquareConfig()).toMatchObject({ environment: "sandbox", currency: "CAD" });
+    } finally {
+      monthly.currency = originalCurrency;
+    }
   });
 
   it("fails closed when either monthly subscription identifier is absent", () => {
@@ -119,8 +156,7 @@ describe("Square environment-mode config", () => {
   });
 
   it("flags production invalid when the legacy monthly price override disagrees", () => {
-    configureSandbox();
-    process.env.SQUARE_ENV = "production";
+    configureProduction();
     process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS = "2100";
 
     expect(getSquareConfigDiagnostics()).toEqual({
@@ -130,24 +166,21 @@ describe("Square environment-mode config", () => {
   });
 
   it("fails closed (config null) in production when the monthly price disagrees", () => {
-    configureSandbox();
-    process.env.SQUARE_ENV = "production";
+    configureProduction();
     process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS = "2100";
 
     expect(getSquareConfig()).toBeNull();
   });
 
   it("accepts a production config when the price sources agree", () => {
-    configureSandbox();
-    process.env.SQUARE_ENV = "production";
+    configureProduction();
     delete process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS;
 
-    expect(getSquareConfig()).toMatchObject({ environment: "production", monthlyPriceCents: 1900 });
+    expect(getSquareConfig()).toMatchObject({ environment: "production", monthlyPriceCents: 4900 });
   });
 
   it("reports a valid production configuration when price sources agree", () => {
-    configureSandbox();
-    process.env.SQUARE_ENV = "production";
+    configureProduction();
     delete process.env.SOCIALOLLA_MONTHLY_PRICE_CENTS;
 
     expect(getSquareConfigDiagnostics().valid).toBe(true);

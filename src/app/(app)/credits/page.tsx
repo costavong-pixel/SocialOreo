@@ -22,7 +22,12 @@ export default async function CreditsPage() {
       </div>
       {overview.batches.length === 0 && <p className="mt-4 text-sm text-white/50">{shellStateLabel("empty")} — no credit batches yet.</p>}
       <ClaimMonthlyCredits entitled={Boolean(overview.entitlement) && (overview.entitlement?.includedMonthlyCredits ?? 0) > 0} includedMonthlyCredits={overview.entitlement?.includedMonthlyCredits ?? 0} />
-      <CheckoutButtons lifetimePriceCents={plans.lifetime.priceCents} monthlyPriceCents={plans.monthly.priceCents} />
+      <CheckoutButtons
+        lifetimePriceCents={plans.lifetime.priceCents}
+        lifetimeCurrency={plans.lifetime.currency}
+        monthlyPriceCents={plans.monthly.priceCents}
+        monthlyCurrency={plans.monthly.currency}
+      />
       <h2 className="mt-8 font-display text-lg font-extrabold">Recent transactions</h2>
       <div className="mt-3 space-y-2">
         {overview.transactions.map((t) => (

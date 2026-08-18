@@ -10,11 +10,21 @@ type CheckoutResponse = {
   error?: string;
 };
 
-function formatCents(cents: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(cents / 100);
+function formatCents(cents: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0 }).format(cents / 100);
 }
 
-export function CheckoutButtons({ lifetimePriceCents, monthlyPriceCents }: { lifetimePriceCents: number; monthlyPriceCents: number }) {
+export function CheckoutButtons({
+  lifetimePriceCents,
+  lifetimeCurrency,
+  monthlyPriceCents,
+  monthlyCurrency,
+}: {
+  lifetimePriceCents: number;
+  lifetimeCurrency: string;
+  monthlyPriceCents: number;
+  monthlyCurrency: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<CheckoutKind | null>(null);
 
@@ -41,8 +51,8 @@ export function CheckoutButtons({ lifetimePriceCents, monthlyPriceCents }: { lif
   }
 
   const offers: { kind: CheckoutKind; title: string; price: string; detail: string }[] = [
-    { kind: "lifetime", title: "Choose Lifetime", price: formatCents(lifetimePriceCents), detail: "One-time lifetime plan with included credits." },
-    { kind: "monthly", title: "Choose Monthly", price: formatCents(monthlyPriceCents), detail: "Recurring plan with monthly included credits." },
+    { kind: "lifetime", title: "Choose Lifetime", price: formatCents(lifetimePriceCents, lifetimeCurrency), detail: "One-time lifetime plan with included credits." },
+    { kind: "monthly", title: "Choose Monthly", price: formatCents(monthlyPriceCents, monthlyCurrency), detail: "Recurring plan with monthly included credits." },
   ];
 
   return (

@@ -23,6 +23,7 @@ export function runFreeDemo(input: { topic: string; visitorKey: string }): DemoR
   const seed = createHash("sha256").update(`${input.visitorKey}:${input.topic}`).digest("hex");
   const title = `${input.topic.trim()} — demo title ${seed.slice(0, 4)}`;
   const caption = `This is a DEMO title/caption for "${input.topic.trim()}". It is editable and copyable. Publishing requires sign-in and is never automatic.`;
+  const lifetime = lifetimePlan();
   return {
     label: "DEMO",
     title,
@@ -30,7 +31,7 @@ export function runFreeDemo(input: { topic: string; visitorKey: string }): DemoR
     canEdit: true,
     canCopy: true,
     transferRequiresConsent: true,
-    price: formatPriceCents(lifetimePlan().priceCents),
+    price: formatPriceCents(lifetime.priceCents, lifetime.currency),
   };
 }
 

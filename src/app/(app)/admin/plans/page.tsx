@@ -24,7 +24,7 @@ export default async function AdminPlansPage() {
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <p className="font-bold">{plan.name}</p>
-        <p className="text-sm text-white/60">Price: {formatPriceCents(plan.priceCents)} · version {plan.version}</p>
+        <p className="text-sm text-white/60">Price: {formatPriceCents(plan.priceCents, plan.currency)} · version {plan.version}</p>
         <div className="mt-3">
           <AdminSetLifetimePriceForm currentPriceCents={plan.priceCents} />
         </div>
