@@ -23,7 +23,13 @@ if (fs.existsSync(outputPath)) {
   throw new Error("storageState output already exists; choose a new external path rather than overwriting an auth artifact.");
 }
 
-const browser = await chromium.launch({ headless: false });
+// Google may reject OAuth from Playwright's bundled Chromium as an
+// unsupported browser. Use the installed, user-facing Chrome channel for
+// this one-time interactive login; do not add automation-evasion flags.
+const browser = await chromium.launch({
+  channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL?.trim() || "chrome",
+  headless: false,
+});
 try {
   const context = await browser.newContext();
   const page = await context.newPage();
