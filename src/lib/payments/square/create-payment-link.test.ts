@@ -49,7 +49,7 @@ describe("createSquarePaymentLink", () => {
     );
   });
 
-  it("uses the subscription plan ID for Monthly checkout, not its variation ID", async () => {
+  it("uses the subscription plan variation ID for Monthly checkout", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ payment_link: { id: "monthly-link", url: "https://square.link/u/monthly", order_id: "monthly-order" } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -69,7 +69,7 @@ describe("createSquarePaymentLink", () => {
             price_money: { amount: 1900, currency: "CAD" },
           },
           checkout_options: {
-            subscription_plan_id: "monthly-plan-id",
+            subscription_plan_id: "monthly-plan-variation",
             redirect_url: "https://example.test/pricing?checkout=checkout-monthly",
           },
           description: "SocialOreo Monthly subscription",
