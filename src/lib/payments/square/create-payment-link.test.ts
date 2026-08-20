@@ -19,6 +19,9 @@ const config: SquareConfig = {
   monthlyPlanId: "monthly-plan-id",
   monthlyPlanVariationId: "monthly-plan-variation",
   monthlyPriceCents: 1900,
+  lifetimePriceCents: 7900,
+  singleAuditPriceCents: 1100,
+  creatorPackPriceCents: 9500,
   singleAuditCatalogVariationId: "single-variation",
   creatorPackCatalogVariationId: "pack-variation",
 };

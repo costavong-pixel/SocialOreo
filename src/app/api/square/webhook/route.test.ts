@@ -37,6 +37,9 @@ function configureSandbox() {
   process.env.SQUARE_SUBSCRIPTION_PLAN_MONTHLY = "monthly-plan-id";
   process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY = "monthly-plan-variation";
   process.env.SQUARE_MONTHLY_PRICE_CENTS = "1900";
+  process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS = "7900";
+  process.env.SQUARE_CATALOG_PRICE_SINGLE_AUDIT_CENTS = "1100";
+  process.env.SQUARE_CATALOG_PRICE_CREATOR_PACK_CENTS = "9500";
   process.env.SQUARE_CATALOG_VARIATION_SINGLE_AUDIT = "single-variation";
   process.env.SQUARE_CATALOG_VARIATION_CREATOR_PACK = "pack-variation";
 }
@@ -78,7 +81,7 @@ describe("POST /api/square/webhook", () => {
     mockSettleSquareCheckout.mockResolvedValue({ status: "settled", creditsGranted: 10 });
     const body = JSON.stringify({
       event_id: "event-payment-1", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
-      data: { object: { payment: { id: "payment-1", order_id: "order-1", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED" } } },
+      data: { object: { payment: { id: "payment-1", order_id: "order-1", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1900, currency: "CAD" } } } },
     });
 
     const response = await POST(new Request("https://example.test/api/square/webhook", {
@@ -89,13 +92,16 @@ describe("POST /api/square/webhook", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 10, duplicate: false, ignored: false });
-    expect(mockSettleSquareCheckout).toHaveBeenCalledWith({
+    expect(mockSettleSquareCheckout).toHaveBeenCalledWith(expect.objectContaining({
       orderId: "order-1",
       paymentId: "payment-1",
       customerId: "customer-1",
-      monthlyPlanVariationId: "monthly-plan-variation",
-      priceCents: 1900,
-    });
+      paymentStatus: "COMPLETED",
+      amountCents: 1900,
+      currency: "CAD",
+      moneyFieldsConsistent: true,
+      config: expect.objectContaining({ monthlyPlanVariationId: "monthly-plan-variation", monthlyPriceCents: 1900 }),
+    }));
   });
 
   it("passes the completed payment amount and currency into settlement for refund provenance", async () => {
@@ -103,13 +109,28 @@ describe("POST /api/square/webhook", () => {
     mockSettleSquareCheckout.mockResolvedValue({ status: "settled", creditsGranted: 1 });
     const body = JSON.stringify({
       event_id: "event-payment-with-money", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
-      data: { object: { payment: { id: "payment-with-money", order_id: "order-with-money", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", total_money: { amount: 1100, currency: "CAD" } } } },
+      data: { object: { payment: { id: "payment-with-money", order_id: "order-with-money", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", total_money: { amount: 1900, currency: "CAD" } } } },
     });
 
     const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
 
     expect(response.status).toBe(200);
-    expect(mockSettleSquareCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 1100, currency: "CAD" }));
+    expect(mockSettleSquareCheckout).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 1900, currency: "CAD", paymentStatus: "COMPLETED", moneyFieldsConsistent: true }));
+  });
+
+  it("acknowledges an invalid initial settlement without attempting renewal", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "invalid", creditsGranted: 0 });
+    const body = JSON.stringify({
+      event_id: "event-invalid-initial-money", type: "payment.updated",
+      data: { object: { payment: { id: "payment-invalid-initial", order_id: "order-invalid-initial", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1800, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 0, duplicate: false, ignored: true });
+    expect(mockSettleSquareRenewal).not.toHaveBeenCalled();
   });
 
   it("accepts a completed refund using payment ownership even when Square gives the refund a different order", async () => {
@@ -282,6 +303,28 @@ describe("POST /api/square/webhook", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, duplicate: true });
     expect(mockRecordSquareSubscription).not.toHaveBeenCalled();
+  });
+
+  it("does not re-run an invalid payment settlement when the same event is delivered twice", async () => {
+    configureSandbox();
+    mockSettleSquareCheckout.mockResolvedValue({ status: "invalid", creditsGranted: 0 });
+    let deliveries = 0;
+    mockWithSquareWebhookClaim.mockImplementation(async (_input: unknown, work: () => Promise<unknown>) => {
+      deliveries += 1;
+      return deliveries === 1 ? { state: "processed", value: await work() } : { state: "completed" };
+    });
+    const body = JSON.stringify({
+      event_id: "event-invalid-duplicate", type: "payment.updated",
+      data: { object: { payment: { id: "payment-invalid-duplicate", order_id: "order-invalid-duplicate", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1800, currency: "CAD" } } } },
+    });
+
+    const first = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+    const second = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    await expect(second.json()).resolves.toEqual({ received: true, duplicate: true });
+    expect(mockSettleSquareCheckout).toHaveBeenCalledTimes(1);
   });
 
   it("fails closed with 503 when production mode config is incomplete", async () => {

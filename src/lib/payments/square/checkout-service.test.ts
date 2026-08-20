@@ -45,6 +45,9 @@ const checkoutConfig: SquareConfig = {
   monthlyPlanId: "plan-parent",
   monthlyPlanVariationId: "plan-a",
   monthlyPriceCents: 1900,
+  lifetimePriceCents: 7900,
+  singleAuditPriceCents: 1100,
+  creatorPackPriceCents: 9500,
   singleAuditCatalogVariationId: "single",
   creatorPackCatalogVariationId: "pack",
 };
@@ -144,7 +147,7 @@ describe("settleSquareCheckout", () => {
       creditLedger: { create: ledgerCreate },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 9500, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
     expect(accountUpsert).toHaveBeenCalledWith({
       where: { userId: "user-1" },
       update: { balance: { increment: 10 } },
@@ -173,9 +176,111 @@ describe("settleSquareCheckout", () => {
     };
     mockTransaction.mockImplementation((callback) => callback(tx));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 9500, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
     expect(tx.creditBatch.create).toHaveBeenCalled();
     expect(tx.auditEvent.create).toHaveBeenCalled();
+  });
+
+  const initialProducts = [
+    { product: "LIFETIME", expectedAmountCents: 7900 },
+    { product: "MONTHLY", expectedAmountCents: 1900 },
+    { product: "SINGLE_AUDIT", expectedAmountCents: 1100 },
+    { product: "CREATOR_PACK", expectedAmountCents: 9500 },
+  ] as const;
+  const invalidInitialMoneyCases: Array<{
+    name: string;
+    amountCents?: number | null;
+    currency?: string | null;
+    reason: string;
+  }> = [
+    { name: "missing amount", currency: "CAD", reason: "amount_missing_or_malformed" },
+    { name: "missing currency", amountCents: 4900, reason: "currency_missing_or_malformed" },
+    { name: "lower amount", amountCents: 1, currency: "CAD", reason: "amount_mismatch" },
+    { name: "higher amount", amountCents: 99999, currency: "CAD", reason: "amount_mismatch" },
+    { name: "wrong currency", amountCents: 4900, currency: "USD", reason: "currency_mismatch" },
+    { name: "malformed amount", amountCents: 1.5, currency: "CAD", reason: "amount_missing_or_malformed" },
+    { name: "zero amount", amountCents: 0, currency: "CAD", reason: "amount_missing_or_malformed" },
+    { name: "negative amount", amountCents: -1, currency: "CAD", reason: "amount_missing_or_malformed" },
+  ];
+
+  for (const product of initialProducts) {
+    for (const invalid of invalidInitialMoneyCases) {
+      it(`fails closed for ${product.product} with ${invalid.name}`, async () => {
+        const checkoutUpdate = vi.fn();
+        const auditCreate = vi.fn().mockResolvedValue({});
+        mockTransaction.mockImplementation((callback) => callback({
+          squareCheckout: {
+            findUnique: vi.fn().mockResolvedValue({ id: "checkout-invalid", userId: "user-1", product: product.product, squarePaymentId: null }),
+            update: checkoutUpdate,
+          },
+          squarePaymentAuditLog: { create: auditCreate },
+        }));
+
+        const actualMoney = invalid.name === "missing amount"
+          ? { currency: "CAD" }
+          : invalid.name === "missing currency"
+            ? { amountCents: product.expectedAmountCents }
+            : invalid.name === "lower amount"
+              ? { amountCents: product.expectedAmountCents - 1, currency: "CAD" }
+              : invalid.name === "higher amount"
+                ? { amountCents: product.expectedAmountCents + 1, currency: "CAD" }
+                : invalid.name === "wrong currency"
+                  ? { amountCents: product.expectedAmountCents, currency: "USD" }
+                  : { amountCents: invalid.amountCents, currency: invalid.currency };
+
+        const result = await settleSquareCheckout({
+          orderId: "order-invalid",
+          paymentId: "payment-invalid",
+          customerId: "customer-1",
+          paymentStatus: "COMPLETED",
+          config: checkoutConfig,
+          ...actualMoney,
+        });
+
+        expect(result).toEqual({ status: "invalid", creditsGranted: 0 });
+        expect(checkoutUpdate).not.toHaveBeenCalled();
+        expect(auditCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ eventType: "payment.invalid_money", subscriptionStatus: invalid.reason }) });
+      });
+    }
+  }
+
+  it("settles a valid Single Audit payment against its trusted catalog amount", async () => {
+    vi.stubEnv("SOCIALOLLA_LEGACY_CREDITS", "true");
+    const accountUpsert = vi.fn().mockResolvedValue({});
+    const ledgerCreate = vi.fn().mockResolvedValue({});
+    mockTransaction.mockImplementation((callback) => callback({
+      squareCheckout: {
+        findUnique: vi.fn().mockResolvedValue({ id: "checkout-single", userId: "user-1", product: "SINGLE_AUDIT", squarePaymentId: null }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      creditAccount: { upsert: accountUpsert },
+      creditLedger: { create: ledgerCreate },
+      squarePaymentAuditLog: { create: vi.fn() },
+    }));
+
+    await expect(settleSquareCheckout({ orderId: "order-single", paymentId: "payment-single", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1100, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 1 });
+    expect(accountUpsert).toHaveBeenCalledWith(expect.objectContaining({ update: { balance: { increment: 1 } } }));
+    expect(ledgerCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ squarePaymentId: "payment-single" }) }));
+  });
+
+  it("allows a valid payment after an invalid payment for the same checkout", async () => {
+    vi.stubEnv("SOCIALOLLA_LEGACY_CREDITS", "true");
+    const checkoutFindUnique = vi.fn().mockResolvedValue({ id: "checkout-recover", userId: "user-1", product: "CREATOR_PACK", squarePaymentId: null });
+    const checkoutUpdate = vi.fn().mockResolvedValue({});
+    const auditCreate = vi.fn().mockResolvedValue({});
+    const accountUpsert = vi.fn().mockResolvedValue({});
+    const ledgerCreate = vi.fn().mockResolvedValue({});
+    mockTransaction.mockImplementation((callback) => callback({
+      squareCheckout: { findUnique: checkoutFindUnique, update: checkoutUpdate },
+      squarePaymentAuditLog: { create: auditCreate },
+      creditAccount: { upsert: accountUpsert },
+      creditLedger: { create: ledgerCreate },
+    }));
+
+    await expect(settleSquareCheckout({ orderId: "order-recover", paymentId: "payment-bad", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 9400, currency: "CAD" })).resolves.toEqual({ status: "invalid", creditsGranted: 0 });
+    await expect(settleSquareCheckout({ orderId: "order-recover", paymentId: "payment-good", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 9500, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 10 });
+    expect(checkoutUpdate).toHaveBeenCalledTimes(1);
+    expect(accountUpsert).toHaveBeenCalledTimes(1);
   });
 
   it("does not grant a payment that was already settled", async () => {
@@ -185,7 +290,7 @@ describe("settleSquareCheckout", () => {
       creditAccount: { upsert: accountUpsert },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: null, monthlyPlanVariationId: "monthly-plan", priceCents: 1900 })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: null, paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1100, currency: "CAD" })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
     expect(accountUpsert).not.toHaveBeenCalled();
   });
 
@@ -216,9 +321,9 @@ describe("settleSquareCheckout", () => {
       auditEvent: { create: auditCreate },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1900, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
     expect(subscriptionUpdateMany).toHaveBeenCalledWith({
-      where: { userId: null, squareCustomerId: "customer-1", planVariationId: "monthly-plan" },
+      where: { userId: null, squareCustomerId: "customer-1", planVariationId: "plan-a" },
       data: { userId: "user-1" },
     });
     expect(checkoutUpdate).toHaveBeenCalledWith({
@@ -251,10 +356,10 @@ describe("settleSquareCheckout", () => {
       auditEvent: { create: auditCreate },
     }));
 
-    await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 2400 });
+    await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1900, currency: "CAD" });
 
     const auditPayload = auditCreate.mock.calls[0][0].data.payload;
-    expect(auditPayload.priceCents).toBe(2400);
+    expect(auditPayload.priceCents).toBe(1900);
   });
 
   it("does not grant Monthly from a payment when Square has not confirmed an active subscription", async () => {
@@ -269,7 +374,7 @@ describe("settleSquareCheckout", () => {
       user: { update: userUpdate },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: null, monthlyPlanVariationId: "monthly-plan", priceCents: 1900 })).resolves.toEqual({ status: "settled", creditsGranted: 0 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: null, paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1900, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 0 });
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "NONE" } });
   });
 
@@ -448,8 +553,8 @@ describe("settleSquareCheckout", () => {
     const tx = lifetimeTx();
     mockTransaction.mockImplementation((callback) => callback(tx));
 
-    const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 });
-    const second = await settleSquareCheckout({ orderId: "order-2", paymentId: "payment-2", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 });
+    const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
+    const second = await settleSquareCheckout({ orderId: "order-2", paymentId: "payment-2", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
 
     expect(first).toEqual({ status: "settled", creditsGranted: 20 });
     expect(second).toEqual({ status: "settled", creditsGranted: 0 });
@@ -468,8 +573,8 @@ describe("settleSquareCheckout", () => {
     const tx = lifetimeTx();
     mockTransaction.mockImplementation((callback) => callback(tx));
 
-    const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 });
-    const second = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 });
+    const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
+    const second = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
 
     expect(first).toEqual({ status: "settled", creditsGranted: 20 });
     expect(second).toEqual({ status: "duplicate", creditsGranted: 0 });
@@ -661,7 +766,7 @@ describe("settleSquareCheckout", () => {
     const tx = lifetimeTx();
     mockTransaction.mockImplementation((callback) => callback(tx));
 
-    await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", monthlyPlanVariationId: "monthly-plan", priceCents: 1900 });
+    await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
 
     // ProviderCallLog is written only by audit provider calls (Apify/AI), never
     // by Square payment/webhook/credit flows. PROD-IMP-011 invariant.
@@ -702,7 +807,7 @@ describe("settleSquareRenewal", () => {
 
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
 
     expect(tx.squareCheckout.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -724,7 +829,7 @@ describe("settleSquareRenewal", () => {
 
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
     expect(tx.squareCheckout.create).not.toHaveBeenCalled();
     expect(tx.entitlementSnapshot.create).not.toHaveBeenCalled();
@@ -739,14 +844,14 @@ describe("settleSquareRenewal", () => {
 
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
     expect(tx.entitlementSnapshot.create).not.toHaveBeenCalled();
 
     tx.squareCheckout.create.mockRejectedValue(Object.assign(new Error("serialization"), { code: "40001" }));
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "duplicate", creditsGranted: 0 });
   });
 
@@ -757,7 +862,7 @@ describe("settleSquareRenewal", () => {
 
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 2500, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 2500, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "unknown", creditsGranted: 0 });
     expect(tx.squareCheckout.create).not.toHaveBeenCalled();
     expect(tx.entitlementSnapshot.create).not.toHaveBeenCalled();
@@ -770,13 +875,13 @@ describe("settleSquareRenewal", () => {
     mockTransaction.mockImplementation((callback) => callback(tx));
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "unknown", creditsGranted: 0 });
 
     tx.squareSubscription.findMany.mockResolvedValue([{ id: "sub-1", userId: "user-1" }, { id: "sub-2", userId: "user-1" }]);
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "unknown", creditsGranted: 0 });
     expect(tx.squareCheckout.create).not.toHaveBeenCalled();
   });
@@ -791,7 +896,7 @@ describe("settleSquareRenewal", () => {
 
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
-      monthlyPlanVariationId: "plan-a", amountCents: 1900, config: checkoutConfig,
+      monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
     })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
     // Inference must exclude synthetic rows (checkoutUrl IS NULL).
     expect(tx.squareCheckout.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ checkoutUrl: { not: null } }) }));

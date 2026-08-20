@@ -17,6 +17,9 @@ const sandboxConfig: SquareConfig = {
   monthlyPlanId: "plan-parent",
   monthlyPlanVariationId: "plan",
   monthlyPriceCents: 1900,
+  lifetimePriceCents: 7900,
+  singleAuditPriceCents: 1100,
+  creatorPackPriceCents: 9500,
   singleAuditCatalogVariationId: "single",
   creatorPackCatalogVariationId: "pack",
 };

@@ -12,18 +12,29 @@ export type SquareProduct = {
   kind: "one_time" | "subscription";
   credits: number;
   catalogVariationId: string;
-  priceCents?: number;
+  /** Trusted server-side amount contract for the completed payment. */
+  priceCents: number;
 };
 
 export function getSquareProduct(config: SquareConfig, id: SquareProductId): SquareProduct {
   switch (id) {
     case "lifetime":
-      return { id, ledgerProduct: "LIFETIME", name: "SocialOreo Lifetime", kind: "one_time", credits: 0, catalogVariationId: config.lifetimeCatalogVariationId };
+      return { id, ledgerProduct: "LIFETIME", name: "SocialOreo Lifetime", kind: "one_time", credits: 0, catalogVariationId: config.lifetimeCatalogVariationId, priceCents: config.lifetimePriceCents };
     case "monthly":
       return { id, ledgerProduct: "MONTHLY", name: "SocialOreo Monthly", kind: "subscription", credits: 0, catalogVariationId: config.monthlyPlanVariationId, priceCents: config.monthlyPriceCents };
     case "single_audit":
-      return { id, ledgerProduct: "SINGLE_AUDIT", name: "1 full audit credit", kind: "one_time", credits: 1, catalogVariationId: config.singleAuditCatalogVariationId };
+      return { id, ledgerProduct: "SINGLE_AUDIT", name: "1 full audit credit", kind: "one_time", credits: 1, catalogVariationId: config.singleAuditCatalogVariationId, priceCents: config.singleAuditPriceCents };
     case "creator_pack":
-      return { id, ledgerProduct: "CREATOR_PACK", name: "10 full audit credits", kind: "one_time", credits: 10, catalogVariationId: config.creatorPackCatalogVariationId };
+      return { id, ledgerProduct: "CREATOR_PACK", name: "10 full audit credits", kind: "one_time", credits: 10, catalogVariationId: config.creatorPackCatalogVariationId, priceCents: config.creatorPackPriceCents };
+  }
+}
+
+export function getSquareProductForLedgerProduct(config: SquareConfig, ledgerProduct: SquareProduct["ledgerProduct"]): SquareProduct | null {
+  switch (ledgerProduct) {
+    case "LIFETIME": return getSquareProduct(config, "lifetime");
+    case "MONTHLY": return getSquareProduct(config, "monthly");
+    case "SINGLE_AUDIT": return getSquareProduct(config, "single_audit");
+    case "CREATOR_PACK": return getSquareProduct(config, "creator_pack");
+    default: return null;
   }
 }

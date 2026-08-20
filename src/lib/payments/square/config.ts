@@ -18,6 +18,10 @@ export type SquareConfig = {
   monthlyPlanId: string;
   monthlyPlanVariationId: string;
   monthlyPriceCents: number;
+  /** Reviewed server-side Square catalog/checkout money contracts. */
+  lifetimePriceCents: number;
+  singleAuditPriceCents: number;
+  creatorPackPriceCents: number;
   singleAuditCatalogVariationId: string;
   creatorPackCatalogVariationId: string;
 };
@@ -100,6 +104,9 @@ export function getSquareConfig(): SquareConfig | null {
   const monthlyPlanId = value("SQUARE_SUBSCRIPTION_PLAN_MONTHLY");
   const monthlyPlanVariationId = value("SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY");
   const monthlyPriceCents = positiveCents(value("SQUARE_MONTHLY_PRICE_CENTS"));
+  const lifetimePriceCents = positiveCents(value("SOCIALOLLA_LIFETIME_PRICE_CENTS"));
+  const singleAuditPriceCents = positiveCents(value("SQUARE_CATALOG_PRICE_SINGLE_AUDIT_CENTS"));
+  const creatorPackPriceCents = positiveCents(value("SQUARE_CATALOG_PRICE_CREATOR_PACK_CENTS"));
   const singleAuditCatalogVariationId = value("SQUARE_CATALOG_VARIATION_SINGLE_AUDIT");
   const creatorPackCatalogVariationId = value("SQUARE_CATALOG_VARIATION_CREATOR_PACK");
 
@@ -116,6 +123,9 @@ export function getSquareConfig(): SquareConfig | null {
     !monthlyPlanId ||
     !monthlyPlanVariationId ||
     !monthlyPriceCents ||
+    !lifetimePriceCents ||
+    !singleAuditPriceCents ||
+    !creatorPackPriceCents ||
     !singleAuditCatalogVariationId ||
     !creatorPackCatalogVariationId
   ) {
@@ -142,6 +152,9 @@ export function getSquareConfig(): SquareConfig | null {
     monthlyPlanId,
     monthlyPlanVariationId,
     monthlyPriceCents,
+    lifetimePriceCents,
+    singleAuditPriceCents,
+    creatorPackPriceCents,
     singleAuditCatalogVariationId,
     creatorPackCatalogVariationId,
   };
@@ -183,6 +196,9 @@ export function getSquareConfigDiagnostics(): SquareConfigDiagnostics {
   } else if (!monthlyPriceAgrees(monthlyPriceCents, squareEnv())) {
     invalidOrMissing.push("SQUARE_MONTHLY_PRICE_CENTS_MISMATCH");
   }
+  if (!positiveCents(value("SOCIALOLLA_LIFETIME_PRICE_CENTS"))) invalidOrMissing.push("SOCIALOLLA_LIFETIME_PRICE_CENTS");
+  if (!positiveCents(value("SQUARE_CATALOG_PRICE_SINGLE_AUDIT_CENTS"))) invalidOrMissing.push("SQUARE_CATALOG_PRICE_SINGLE_AUDIT_CENTS");
+  if (!positiveCents(value("SQUARE_CATALOG_PRICE_CREATOR_PACK_CENTS"))) invalidOrMissing.push("SQUARE_CATALOG_PRICE_CREATOR_PACK_CENTS");
 
   return { valid: invalidOrMissing.length === 0, invalidOrMissing };
 }
