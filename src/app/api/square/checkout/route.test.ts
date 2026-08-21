@@ -38,6 +38,9 @@ function configureSandbox() {
   process.env.SQUARE_SUBSCRIPTION_PLAN_MONTHLY = "monthly-plan";
   process.env.SQUARE_SUBSCRIPTION_PLAN_VARIATION_MONTHLY = "monthly-plan-variation";
   process.env.SQUARE_MONTHLY_PRICE_CENTS = "1900";
+  process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS = "7900";
+  process.env.SQUARE_CATALOG_PRICE_SINGLE_AUDIT_CENTS = "1100";
+  process.env.SQUARE_CATALOG_PRICE_CREATOR_PACK_CENTS = "9500";
   process.env.SQUARE_CATALOG_VARIATION_SINGLE_AUDIT = "single-variation";
   process.env.SQUARE_CATALOG_VARIATION_CREATOR_PACK = "pack-variation";
 }

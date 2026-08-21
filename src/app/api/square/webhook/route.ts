@@ -5,7 +5,7 @@ import { getSquareConfig } from "@/lib/payments/square/config";
 import { recordSquareSubscription, settleSquareCheckout, settleSquareRefund, settleSquareRenewal, withSquareWebhookClaim } from "@/lib/payments/square/checkout-service";
 import { verifySquareWebhookSignature } from "@/lib/payments/square/verify-webhook-signature";
 
-const moneySchema = z.object({ amount: z.number(), currency: z.string() }).optional();
+const moneySchema = z.object({ amount: z.number().int(), currency: z.string().min(1) }).strict().optional();
 
 const paymentSchema = z.object({
   id: z.string().min(1),
@@ -82,14 +82,22 @@ export async function POST(request: Request) {
       }
 
       const paymentMoney = payment.data.total_money ?? payment.data.amount_money;
+      const moneyFieldsConsistent = !payment.data.total_money || !payment.data.amount_money || (
+        payment.data.total_money.amount === payment.data.amount_money.amount &&
+        payment.data.total_money.currency === payment.data.amount_money.currency
+      );
       const result = await settleSquareCheckout({
         orderId: payment.data.order_id,
         paymentId: payment.data.id,
         customerId: payment.data.customer_id ?? null,
-        monthlyPlanVariationId: config.monthlyPlanVariationId,
-        priceCents: config.monthlyPriceCents,
+        paymentStatus: payment.data.status,
+        config,
         ...(paymentMoney ? { amountCents: paymentMoney.amount, currency: paymentMoney.currency } : {}),
+        moneyFieldsConsistent,
       });
+      if (result.status === "invalid") {
+        return { creditsGranted: 0, duplicate: false, ignored: true };
+      }
       if (result.status === "unknown") {
         // A COMPLETED payment with no server-created order is a recurring MONTHLY
         // renewal auto-charge. Reconcile it (amount must equal the monthly price).
@@ -98,8 +106,10 @@ export async function POST(request: Request) {
           paymentId: payment.data.id,
           customerId: payment.data.customer_id ?? "",
           monthlyPlanVariationId: config.monthlyPlanVariationId,
+          paymentStatus: payment.data.status,
           amountCents: payment.data.total_money?.amount ?? payment.data.amount_money?.amount ?? 0,
           currency: payment.data.total_money?.currency ?? payment.data.amount_money?.currency ?? null,
+          moneyFieldsConsistent,
           config,
         });
         return {

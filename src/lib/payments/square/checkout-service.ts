@@ -4,7 +4,8 @@ import { Prisma, type SquareProduct } from "@prisma/client";
 
 import type { SquareConfig } from "./config";
 import { createSquarePaymentLink } from "./create-payment-link";
-import { getSquareProduct, type SquareProductId } from "./products";
+import { getSquareProduct, getSquareProductForLedgerProduct, type SquareProductId } from "./products";
+import { validateCompletedPaymentMoney } from "./payment-money";
 
 export class SquareCheckoutServiceError extends Error {
   constructor(message = "We could not open checkout.") {
@@ -232,12 +233,13 @@ type SettlementInput = {
   orderId: string;
   paymentId: string;
   customerId: string | null;
-  monthlyPlanVariationId: string;
-  /** Authoritative monthly price (config.monthlyPriceCents) for the entitlement audit. */
-  priceCents: number;
-  /** Captured from Square's completed payment; missing values fail closed for refunds. */
+  paymentStatus: string;
+  config: SquareConfig;
+  /** Captured from Square's completed payment; missing values fail closed. */
   amountCents?: number | null;
   currency?: string | null;
+  /** Both Square money fields must agree when both are present. */
+  moneyFieldsConsistent?: boolean;
 };
 
 type Transaction = Prisma.TransactionClient;
@@ -265,7 +267,7 @@ async function recomputeAccessPlan(transaction: Transaction, userId: string) {
 }
 
 export async function settleSquareCheckout(input: SettlementInput): Promise<{
-  status: "settled" | "duplicate" | "unknown";
+  status: "settled" | "duplicate" | "unknown" | "invalid";
   creditsGranted: number;
 }> {
   const { prisma } = await import("@/lib/db/prisma");
@@ -279,6 +281,40 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
 
       if (!checkout) return { status: "unknown" as const, creditsGranted: 0 };
       if (checkout.squarePaymentId) return { status: "duplicate" as const, creditsGranted: 0 };
+
+      const product = getSquareProductForLedgerProduct(input.config, checkout.product);
+      if (!product) {
+        await transaction.squarePaymentAuditLog.create({
+          data: {
+            userId: checkout.userId,
+            squareCheckoutId: checkout.id,
+            source: "WEBHOOK",
+            eventType: "payment.invalid_money",
+            subscriptionStatus: "product_contract_missing",
+          },
+        });
+        return { status: "invalid" as const, creditsGranted: 0 };
+      }
+      const moneyFailure = validateCompletedPaymentMoney({
+        paymentStatus: input.paymentStatus,
+        amountCents: input.amountCents,
+        currency: input.currency,
+        moneyFieldsConsistent: input.moneyFieldsConsistent,
+        expectedAmountCents: product.priceCents,
+        expectedCurrency: input.config.currency,
+      });
+      if (moneyFailure) {
+        await transaction.squarePaymentAuditLog.create({
+          data: {
+            userId: checkout.userId,
+            squareCheckoutId: checkout.id,
+            source: "WEBHOOK",
+            eventType: "payment.invalid_money",
+            subscriptionStatus: moneyFailure,
+          },
+        });
+        return { status: "invalid" as const, creditsGranted: 0 };
+      }
 
       await transaction.squareCheckout.update({
         where: { id: checkout.id },
@@ -324,7 +360,7 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
           where: {
             userId: null,
             squareCustomerId: input.customerId,
-            planVariationId: input.monthlyPlanVariationId,
+            planVariationId: input.config.monthlyPlanVariationId,
           },
           data: { userId: checkout.userId },
         });
@@ -335,7 +371,7 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
           {
             ownerUserId: checkout.userId,
             squarePaymentId: input.paymentId,
-            priceCents: input.priceCents,
+            priceCents: input.config.monthlyPriceCents,
           },
           transaction,
         );
@@ -350,7 +386,7 @@ export async function settleSquareCheckout(input: SettlementInput): Promise<{
           {
             ownerUserId: checkout.userId,
             squarePaymentId: input.paymentId,
-            priceCents: Number(process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS ?? 7900),
+            priceCents: product.priceCents,
           },
           transaction,
         );
@@ -552,8 +588,10 @@ export async function settleSquareRenewal(input: {
   paymentId: string;
   customerId: string;
   monthlyPlanVariationId: string;
+  paymentStatus: string;
   amountCents: number;
   currency?: string | null;
+  moneyFieldsConsistent?: boolean;
   config: SquareConfig;
 }): Promise<{ status: "settled" | "duplicate" | "unknown"; creditsGranted: number }> {
   const { prisma } = await import("@/lib/db/prisma");
@@ -566,11 +604,19 @@ export async function settleSquareRenewal(input: {
 
   try {
     return await prisma.$transaction(async (transaction) => {
-      // C1: a renewal must equal the configured monthly price. A non-renewal
-      // COMPLETED payment (invoice, dashboard, Tap-to-Pay) must never be minted
-      // as a renewal; amount mismatch -> audit-only, no grant.
-      if (input.amountCents !== input.config.monthlyPriceCents) {
-        await auditUnknown(transaction, "amount_mismatch");
+      // A renewal must be a completed payment whose entire money contract
+      // exactly matches the configured Monthly product. Invalid authentic
+      // events are acknowledged audit-only so Square does not retry forever.
+      const moneyFailure = validateCompletedPaymentMoney({
+        paymentStatus: input.paymentStatus,
+        amountCents: input.amountCents,
+        currency: input.currency,
+        moneyFieldsConsistent: input.moneyFieldsConsistent,
+        expectedAmountCents: input.config.monthlyPriceCents,
+        expectedCurrency: input.config.currency,
+      });
+      if (moneyFailure) {
+        await auditUnknown(transaction, moneyFailure);
         return { status: "unknown" as const, creditsGranted: 0 };
       }
       if (!input.customerId) {
@@ -628,7 +674,7 @@ export async function settleSquareRenewal(input: {
           squareLocationId: input.config.locationId,
           squarePlanVariationId: input.config.monthlyPlanVariationId,
           amountCents: input.amountCents,
-          currency: input.currency ?? input.config.currency,
+          currency: input.currency,
           checkoutUrl: null,
           pendingKey: null,
           expiresAt: null,
