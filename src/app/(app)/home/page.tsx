@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { translate } from "@/lib/socialolla/i18n/translations";
 import { CreatePostForm } from "@/components/connections/add-destination-form";
 
-export const metadata = { title: "Home — SocialOlla" };
+export const metadata = { title: "Dashboard — SocialOlla" };
 
 const LOCALE = "en-US";
 
@@ -34,7 +34,7 @@ export default async function M2HomePage() {
 
   return (
     <section>
-      <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Home</h1>
+      <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Dashboard</h1>
       <p className="mt-2 text-white/70">Workspace <code>{workspace.id}</code> · {translate(LOCALE, "onboarding.sevenDayPlan")} overview</p>
 
       <div className="mt-6 grid gap-4 md:grid-cols-3">
