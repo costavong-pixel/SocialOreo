@@ -55,7 +55,7 @@ describe("renderAuditReportHtml", () => {
 
     expect(html).toContain("78/100");
     expect(html).toContain("Strong reach, weak conversion");
-    expect(html).toContain("SocialOreo expert campaign brief");
+    expect(html).toContain("SocialOlla expert campaign brief");
     expect(html).toContain("Expert diagnosis");
     expect(html).toContain("Next moves");
     expect(html).toContain("Austin, stop scrolling.");

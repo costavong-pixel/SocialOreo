@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { permanentRedirect, redirect } from "next/navigation";
 
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { ComparisonHookIdeas } from "@/components/report/comparison-hook-ideas";
 import { campaignBriefSchema, campaignGoalOptions } from "@/lib/campaign-brief/types";
 import { competitorLimitForPlan, selectedCompetitorIdsForPlan } from "@/lib/competitors/entitlements";
 import { prisma } from "@/lib/db/prisma";
 import { buildCompetitorComparison, type CompetitorReport } from "@/lib/reports/competitor-comparison";
 import { buildPublicMetrics } from "@/lib/reports/public-metrics";
-import { ProductFrame } from "@/components/layout/product-frame";
+import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -56,15 +57,18 @@ function toCompetitorReport(audit: {
   };
 }
 
-export default async function CompetitorComparisonPage({ params, searchParams }: PageProps) {
-  const user = await getSessionUser();
+export async function CompetitorComparisonPage({ params, searchParams }: PageProps) {
+  const sessionUser = await getVerifiedSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
   const { id } = await params;
   const requestedSearchParams = await searchParams;
 
-  if (!user) redirect("/auth/login");
+  if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
+  if (!sessionUser || !resolution) redirect("/auth/login");
+  await getOrCreatePersonalWorkspace(resolution.dbId);
 
   const account = await prisma.user.findUnique({
-    where: { authUserId: user.id },
+    where: { id: resolution.dbId },
     select: { accessPlan: true },
   });
   if (!account) redirect("/auth/login");
@@ -73,7 +77,7 @@ export default async function CompetitorComparisonPage({ params, searchParams }:
 
   const audits = await prisma.auditJob.findMany({
     where: {
-      user: { authUserId: user.id },
+      userId: resolution.dbId,
       status: "COMPLETED",
       auditReport: { isNot: null },
     },
@@ -83,7 +87,7 @@ export default async function CompetitorComparisonPage({ params, searchParams }:
   const current = audits.find((audit) => audit.id === id);
 
   if (!current) {
-    return <ProductFrame backHref="/dashboard" backLabel="Workspace" maxWidth="narrow"><section className="mt-6 rounded-xl border border-white/10 bg-[var(--social-surface)] p-6"><p>Report not found.</p></section></ProductFrame>;
+    return <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-6"><p>Analysis not found.</p></section>;
   }
 
   const competitors = audits.filter((audit) => audit.id !== id);
@@ -97,7 +101,6 @@ export default async function CompetitorComparisonPage({ params, searchParams }:
   const primary = comparisons[0];
 
   return (
-    <ProductFrame backHref={`/audits/${id}`} backLabel="Report">
       <section className="mt-6">
         <p className="text-xs font-bold uppercase text-orange-300">Competitor mode</p>
         <h1 className="mt-1 text-3xl font-black sm:text-4xl">Compare saved reports</h1>
@@ -121,8 +124,8 @@ export default async function CompetitorComparisonPage({ params, searchParams }:
         ) : (
           <section className="mt-7 rounded-lg border border-dashed border-white/20 bg-white/[0.025] p-6">
             <h2 className="text-xl font-black">Add one saved competitor report first</h2>
-            <p className="mt-3 max-w-2xl leading-7 text-white/65">Run a separate audit for a competitor only when you are ready. Once it is complete, return here to compare both reports. SocialOreo will not create that audit automatically.</p>
-            <Link className="mt-5 inline-block rounded-md bg-orange-400 px-5 py-3 text-sm font-bold text-black" href="/audits/new">Audit a competitor</Link>
+            <p className="mt-3 max-w-2xl leading-7 text-white/65">Run a separate profile analysis for a competitor only when you are ready. Once it is complete, return here to compare both reports. SocialOlla will not create that analysis automatically.</p>
+            <Link className="mt-5 inline-block rounded-md bg-orange-400 px-5 py-3 text-sm font-bold text-black" href="/analysis/new">Analyze a competitor</Link>
           </section>
         )}
 
@@ -134,7 +137,7 @@ export default async function CompetitorComparisonPage({ params, searchParams }:
               {comparisons.some(({ comparison }) => !comparison.scoreIsComparable) ? <p className="mt-4 rounded-md border border-amber-200/20 bg-amber-300/[0.08] p-3 text-sm leading-6 text-amber-50/85">One or more selected reports use a different campaign goal. Their scores are not directly comparable; use the public metrics and reel examples to study patterns instead.</p> : null}
               <p className="mt-4 text-xs leading-5 text-white/45">Public performance is an estimate based on available public data, not private Instagram Insights.</p>
             </section>
-            {primary ? <><section className="flex flex-col justify-between gap-4 rounded-lg border border-orange-300/20 bg-orange-400/[0.06] p-5 sm:flex-row sm:items-center sm:p-7"><div><p className="text-xs font-bold uppercase text-orange-200/70">Agency-ready export</p><h2 className="mt-1 text-xl font-black">Share the primary comparison</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-orange-50/70">Download the first selected public snapshot, content-gap tests, and original hook prompts as one branded PDF.</p></div><a className="shrink-0 rounded-md bg-orange-400 px-5 py-3 text-center text-sm font-bold text-black hover:bg-orange-300" href={`/audits/${current.id}/compare/pdf?competitor=${primary.competitor.id}`}>Download client PDF</a></section>
+            {primary ? <><section className="flex flex-col justify-between gap-4 rounded-lg border border-orange-300/20 bg-orange-400/[0.06] p-5 sm:flex-row sm:items-center sm:p-7"><div><p className="text-xs font-bold uppercase text-orange-200/70">Agency-ready export</p><h2 className="mt-1 text-xl font-black">Share the primary comparison</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-orange-50/70">Download the first selected public snapshot, content-gap tests, and original hook prompts as one branded PDF.</p></div><a className="shrink-0 rounded-md bg-orange-400 px-5 py-3 text-center text-sm font-bold text-black hover:bg-orange-300" href={`/analysis/${current.id}/compare/pdf?competitor=${primary.competitor.id}`}>Download client PDF</a></section>
             {primary.comparison.contentGaps.length ? <section className="rounded-lg border border-cyan-200/20 bg-cyan-300/[0.06] p-5 sm:p-7"><p className="text-xs font-bold uppercase text-cyan-100/70">Primary content gap report</p><h2 className="mt-1 text-2xl font-black">Three patterns to test next</h2><p className="mt-3 max-w-3xl text-sm leading-6 text-cyan-50/70">These are public-data test ideas from the first selected report, not a claim about private Instagram performance.</p><div className="mt-5 grid gap-3 md:grid-cols-3">{primary.comparison.contentGaps.map((gap) => <article className="rounded-md border border-cyan-100/10 bg-black/10 p-4" key={gap.category}><p className="text-xs font-bold uppercase text-cyan-200/70">{gap.category}</p><h3 className="mt-2 text-lg font-black">{gap.title}</h3><p className="mt-3 text-sm leading-6 text-cyan-50/70">{gap.evidence}</p><p className="mt-4 border-t border-cyan-100/10 pt-3 text-sm font-semibold leading-6 text-cyan-50">Test: {gap.test}</p></article>)}</div></section> : null}
             {primary.comparison.hookExtractions.length ? <ComparisonHookIdeas auditId={current.id} competitorId={primary.competitor.id} extractions={primary.comparison.hookExtractions} /> : null}
             <section className="rounded-lg border border-orange-300/20 bg-orange-400/[0.06] p-5 sm:p-7"><p className="text-xs font-bold uppercase text-orange-200/70">Simple next steps</p><h2 className="mt-1 text-2xl font-black">Pick one thing to try</h2><p className="mt-3 text-sm leading-6 text-orange-50/70">Do not change everything at once. Test one idea in one reel, then compare it with your normal format.</p><ol className="mt-5 grid gap-3">{primary.comparison.studyIdeas.map((idea, index) => <li className="grid grid-cols-[2rem_1fr] gap-3 rounded-md border border-orange-200/10 bg-black/10 p-3 text-sm leading-6 text-orange-50/85" key={idea}><span className="font-black text-orange-300">{String(index + 1).padStart(2, "0")}</span><span>{idea}</span></li>)}</ol></section>
@@ -142,6 +145,18 @@ export default async function CompetitorComparisonPage({ params, searchParams }:
           </div>
         ) : null}
       </section>
-    </ProductFrame>
   );
+}
+
+/** Compatibility route: historical comparison links resolve into /analysis. */
+export default async function LegacyCompetitorComparisonPage({ params, searchParams }: PageProps) {
+  const { id } = await params;
+  const requested = await searchParams;
+  const query = new URLSearchParams();
+  for (const key of ["competitor", "competitors"] as const) {
+    const value = requested[key];
+    for (const entry of Array.isArray(value) ? value : value ? [value] : []) query.append(key, entry);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  permanentRedirect(`/analysis/${id}/compare${suffix}`);
 }

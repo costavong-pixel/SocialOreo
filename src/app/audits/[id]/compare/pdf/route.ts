@@ -1,4 +1,4 @@
-import { getSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { campaignBriefSchema, campaignGoalOptions } from "@/lib/campaign-brief/types";
 import { prisma } from "@/lib/db/prisma";
 import { buildCompetitorComparison, type CompetitorReport } from "@/lib/reports/competitor-comparison";
@@ -42,14 +42,15 @@ function toCompetitorReport(audit: {
 }
 
 export async function GET(request: Request, context: RouteContext) {
-  const user = await getSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
   const { id } = await context.params;
   const competitorId = new URL(request.url).searchParams.get("competitor");
-  if (!user) return new Response("Authentication required.", { status: 401 });
+  if (hasDbSessionIdentityConflict(resolution)) return new Response("Account identity conflict.", { status: 409 });
+  if (!resolution) return new Response("Authentication required.", { status: 401 });
   if (!competitorId) return new Response("Choose a competitor report.", { status: 400 });
 
   const audits = await prisma.auditJob.findMany({
-    where: { user: { authUserId: user.id }, status: "COMPLETED", auditReport: { isNot: null } },
+    where: { userId: resolution.dbId, status: "COMPLETED", auditReport: { isNot: null } },
     include: { auditReport: true, socialProfiles: true, socialVideos: true },
   });
   const current = audits.find((audit) => audit.id === id);
@@ -66,5 +67,5 @@ export async function GET(request: Request, context: RouteContext) {
     comparison: buildCompetitorComparison(currentReport, competitorReport),
   });
 
-  return new Response(new Uint8Array(pdf), { headers: { "Content-Disposition": `attachment; filename="socialoreo-comparison-${id}-vs-${competitorId}.pdf"`, "Content-Type": "application/pdf" } });
+  return new Response(new Uint8Array(pdf), { headers: { "Content-Disposition": `attachment; filename="socialolla-comparison-${id}-vs-${competitorId}.pdf"`, "Content-Type": "application/pdf" } });
 }

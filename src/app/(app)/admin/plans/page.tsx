@@ -4,6 +4,7 @@ import { formatPriceCents, lifetimePlan } from "@/lib/socialolla/plans/plan-conf
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { AdminAdjustCreditsForm } from "@/components/admin/admin-adjust-credits-form";
 import { AdminSetLifetimePriceForm } from "@/components/admin/admin-set-lifetime-price-form";
+import Link from "next/link";
 
 export const metadata = { title: "Admin — Plans — SocialOlla" };
 
@@ -21,6 +22,13 @@ export default async function AdminPlansPage() {
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Admin — Plans &amp; entitlement</h1>
+
+      <nav aria-label="Admin" className="mt-4 flex flex-wrap gap-2 text-sm font-bold">
+        <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/plans">Plans</Link>
+        <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/angle-library">Angle Library</Link>
+        <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/contact">Contact</Link>
+        <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/feedback">Analysis feedback</Link>
+      </nav>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <p className="font-bold">{plan.name}</p>

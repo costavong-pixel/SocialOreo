@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { getSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 
 const feedbackSchema = z.object({
@@ -36,11 +36,11 @@ function serialize(feedback: {
   };
 }
 
-async function ownedAuditId(id: string, authUserId: string) {
+async function ownedAuditId(id: string, dbUserId: string) {
   const audit = await prisma.auditJob.findFirst({
     where: {
       id,
-      user: { authUserId },
+      userId: dbUserId,
     },
     select: {
       id: true,
@@ -53,14 +53,17 @@ async function ownedAuditId(id: string, authUserId: string) {
 }
 
 export async function GET(_request: Request, context: RouteContext) {
-  const user = await getSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
 
-  if (!user) {
+  if (hasDbSessionIdentityConflict(resolution)) {
+    return NextResponse.json({ error: "Account identity conflict." }, { status: 409 });
+  }
+  if (!resolution) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
   const { id } = await context.params;
-  const auditId = await ownedAuditId(id, user.id);
+  const auditId = await ownedAuditId(id, resolution.dbId);
 
   if (!auditId) {
     return NextResponse.json({ error: "Audit not found." }, { status: 404 });
@@ -74,9 +77,12 @@ export async function GET(_request: Request, context: RouteContext) {
 }
 
 export async function PUT(request: Request, context: RouteContext) {
-  const user = await getSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
 
-  if (!user) {
+  if (hasDbSessionIdentityConflict(resolution)) {
+    return NextResponse.json({ error: "Account identity conflict." }, { status: 409 });
+  }
+  if (!resolution) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
@@ -98,7 +104,7 @@ export async function PUT(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const auditId = await ownedAuditId(id, user.id);
+  const auditId = await ownedAuditId(id, resolution.dbId);
 
   if (!auditId) {
     return NextResponse.json({ error: "Audit not found." }, { status: 404 });

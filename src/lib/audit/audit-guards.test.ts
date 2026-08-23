@@ -19,7 +19,7 @@ describe("evaluateAuditGuards", () => {
     expect(result).toEqual({
       allowed: false,
       stage: "url_validation",
-      message: "SocialOreo currently supports Instagram and TikTok profile URLs.",
+      message: "SocialOlla currently supports Instagram and TikTok profile URLs.",
     });
   });
 

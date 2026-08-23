@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { toPublicSocialProfile } from "@/lib/providers/social/public-profile";
 
@@ -9,18 +9,21 @@ type RouteContext = {
 };
 
 export async function GET(_request: Request, context: RouteContext) {
-  const user = await getSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
 
-  if (!user) {
+  if (hasDbSessionIdentityConflict(resolution)) {
+    return NextResponse.json({ error: "Account identity conflict." }, { status: 409 });
+  }
+
+  if (!resolution) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
   const { id } = await context.params;
 
   const auditJob = await prisma.auditJob.findUnique({
-    where: { id },
+    where: { id, userId: resolution.dbId },
     include: {
-      user: true,
       socialProfiles: true,
       socialVideos: {
         orderBy: { postedAt: "desc" },
@@ -31,7 +34,7 @@ export async function GET(_request: Request, context: RouteContext) {
     },
   });
 
-  if (!auditJob || auditJob.user?.authUserId !== user.id) {
+  if (!auditJob) {
     return NextResponse.json({ error: "Audit not found." }, { status: 404 });
   }
 

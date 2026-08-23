@@ -48,7 +48,7 @@ describe("public session-aware navigation", () => {
 
     render(await HomePage());
 
-    expect((screen.getByRole("link", { name: "Dashboard" }) as HTMLAnchorElement).getAttribute("href")).toBe("/dashboard");
+    expect((screen.getByRole("link", { name: "Dashboard" }) as HTMLAnchorElement).getAttribute("href")).toBe("/home");
     expect((screen.getByRole("link", { name: "Sign out" }) as HTMLAnchorElement).getAttribute("href")).toBe("/auth/logout");
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
     expect(screen.getByTestId("assistant-auth").textContent).toBe("true");
@@ -67,7 +67,7 @@ describe("public session-aware navigation", () => {
 
     render(await PricingPage());
 
-    expect((screen.getByRole("link", { name: "Dashboard" }) as HTMLAnchorElement).getAttribute("href")).toBe("/dashboard");
+    expect((screen.getByRole("link", { name: "Dashboard" }) as HTMLAnchorElement).getAttribute("href")).toBe("/home");
     expect((screen.getByRole("link", { name: "Sign out" }) as HTMLAnchorElement).getAttribute("href")).toBe("/auth/logout");
     expect(screen.queryByRole("link", { name: "Sign in" })).toBeNull();
   });

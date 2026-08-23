@@ -9,13 +9,13 @@ export async function GET() {
   const authUser = await getVerifiedSessionUser();
   if (!authUser) return NextResponse.redirect(new URL("/auth/login", process.env.APP_URL));
   const config = getInstagramInsightsConfig();
-  if (!config) return NextResponse.redirect(new URL("/dashboard?instagram=unavailable", process.env.APP_URL));
+  if (!config) return NextResponse.redirect(new URL("/analysis?instagram=unavailable", process.env.APP_URL));
   let user: { id: string };
   try {
     user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
   } catch (error) {
     if (isAuthIdentityCollisionError(error)) {
-      return NextResponse.redirect(new URL("/dashboard?instagram=identity_conflict", process.env.APP_URL));
+      return NextResponse.redirect(new URL("/analysis?instagram=identity_conflict", process.env.APP_URL));
     }
 
     throw error;

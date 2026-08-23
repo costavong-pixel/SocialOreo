@@ -47,7 +47,7 @@ export function PurchaseButtons({ monthlyAvailable = false }: { monthlyAvailable
   }
 
   return (
-    <section aria-label="Purchase SocialOreo access or credits" className="mt-4 border-t border-black/10 pt-4">
+    <section aria-label="Purchase SocialOlla access or credits" className="mt-4 border-t border-black/10 pt-4">
       <p className="text-sm font-bold">Need competitor access or additional audit credits?</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {[...offers, ...(monthlyAvailable ? [{ product: "monthly" as const, title: "Monthly Competitor Board", detail: "Up to three saved competitors while the subscription is active." }] : [])].map((offer) => (

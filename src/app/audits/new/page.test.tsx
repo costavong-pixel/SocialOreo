@@ -1,19 +1,27 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetSessionUser, mockRequireAdminByAuthUserId, mockEvaluateServerMonthlyAvailability } = vi.hoisted(() => ({
-  mockGetSessionUser: vi.fn(),
+const { mockGetVerifiedSessionUser, mockResolveDbUserFromVerifiedSession, mockRequireAdminByAuthUserId, mockEvaluateServerMonthlyAvailability, mockWorkspace, mockRedirect } = vi.hoisted(() => ({
+  mockGetVerifiedSessionUser: vi.fn(),
+  mockResolveDbUserFromVerifiedSession: vi.fn(),
   mockRequireAdminByAuthUserId: vi.fn(),
   mockEvaluateServerMonthlyAvailability: vi.fn(),
+  mockWorkspace: vi.fn(),
+  mockRedirect: vi.fn((path: string): never => { throw new Error(`REDIRECT:${path}`); }),
 }));
 
-vi.mock("@/lib/auth/current-user", () => ({ getSessionUser: () => mockGetSessionUser() }));
+vi.mock("next/navigation", () => ({
+  redirect: (path: string) => mockRedirect(path),
+  permanentRedirect: (path: string) => mockRedirect(path),
+}));
+vi.mock("@/lib/auth/current-user", () => ({ getVerifiedSessionUser: () => mockGetVerifiedSessionUser() }));
+vi.mock("@/lib/auth/sync-user", () => ({
+  resolveDbUserFromVerifiedSession: () => mockResolveDbUserFromVerifiedSession(),
+  hasDbSessionIdentityConflict: (resolution: unknown) => Boolean(resolution && typeof resolution === "object" && "status" in resolution && (resolution as { status?: string }).status === "identity-conflict"),
+}));
 vi.mock("@/lib/auth/roles", () => ({ requireAdminByAuthUserId: (...args: unknown[]) => mockRequireAdminByAuthUserId(...args) }));
 vi.mock("@/lib/payments/square/monthly-availability", () => ({ evaluateServerMonthlyAvailability: (...args: unknown[]) => mockEvaluateServerMonthlyAvailability(...args) }));
-vi.mock("@/components/layout/product-frame", async () => {
-  const React = await import("react");
-  return { ProductFrame: ({ children }: { children: React.ReactNode }) => React.createElement("main", null, children) };
-});
+vi.mock("@/lib/socialolla/workspace", () => ({ getOrCreatePersonalWorkspace: (...args: unknown[]) => mockWorkspace(...args) }));
 vi.mock("@/components/audit/new-audit-form", async () => {
   const React = await import("react");
   return {
@@ -22,27 +30,27 @@ vi.mock("@/components/audit/new-audit-form", async () => {
   };
 });
 
-import NewAuditPage from "./page";
+import { AnalysisNewPage } from "./page";
 
 describe("NewAuditPage", () => {
   afterEach(() => vi.clearAllMocks());
 
   it("passes the server-computed Monthly availability to NewAuditForm", async () => {
-    mockGetSessionUser.mockResolvedValue({ id: "auth-owner", email: "owner@example.com", emailVerified: true });
+    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth-owner", email: "owner@example.com", emailVerified: true });
+    mockResolveDbUserFromVerifiedSession.mockResolvedValue({ dbId: "db-owner", authUserId: "auth-owner", email: "owner@example.com" });
     mockRequireAdminByAuthUserId.mockResolvedValue(true);
     mockEvaluateServerMonthlyAvailability.mockResolvedValue({ available: true, reason: "READY" });
 
-    render(await NewAuditPage());
+    render(await AnalysisNewPage());
 
     expect(screen.getByTestId("audit-form-props").textContent).toBe("true:true");
   });
 
   it("does not calculate Monthly availability for an unauthenticated page", async () => {
-    mockGetSessionUser.mockResolvedValue(null);
+    mockGetVerifiedSessionUser.mockResolvedValue(null);
+    mockResolveDbUserFromVerifiedSession.mockResolvedValue(null);
 
-    render(await NewAuditPage());
-
-    expect(mockEvaluateServerMonthlyAvailability).toHaveBeenCalledWith(null, false);
-    expect(screen.queryByTestId("audit-form-props")).toBeNull();
+    await expect(AnalysisNewPage()).rejects.toThrow("REDIRECT:/auth/login");
+    expect(mockEvaluateServerMonthlyAvailability).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ export type TranslationKey =
   | "nav.calendar"
   | "nav.connections"
   | "nav.credits"
+  | "nav.analysis"
   | "nav.assistant"
   | "nav.settings"
   | "onboarding.welcome"
@@ -27,6 +28,7 @@ const EN: Dictionary = {
   "nav.calendar": "Calendar",
   "nav.connections": "Connections",
   "nav.credits": "Credits",
+  "nav.analysis": "Analysis",
   "nav.assistant": "Assistant",
   "nav.settings": "Settings",
   "onboarding.welcome": "Welcome",
@@ -48,6 +50,7 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "Calendario",
     "nav.connections": "Conexiones",
     "nav.credits": "Créditos",
+    "nav.analysis": "Análisis",
     "nav.assistant": "Asistente",
     "nav.settings": "Ajustes",
     "onboarding.welcome": "Bienvenido",
@@ -66,6 +69,7 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "日历",
     "nav.connections": "连接",
     "nav.credits": "积分",
+    "nav.analysis": "分析",
     "nav.assistant": "助手",
     "nav.settings": "设置",
     "onboarding.welcome": "欢迎",
@@ -84,6 +88,7 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "التقويم",
     "nav.connections": "الاتصالات",
     "nav.credits": "الرصيد",
+    "nav.analysis": "التحليل",
     "nav.assistant": "المساعد",
     "nav.settings": "الإعدادات",
     "onboarding.welcome": "مرحباً",
@@ -102,6 +107,7 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "Calendrier",
     "nav.connections": "Connexions",
     "nav.credits": "Crédits",
+    "nav.analysis": "Analyse",
     "nav.assistant": "Assistant",
     "nav.settings": "Paramètres",
     "onboarding.welcome": "Bienvenue",
@@ -120,6 +126,7 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "Calendário",
     "nav.connections": "Conexões",
     "nav.credits": "Créditos",
+    "nav.analysis": "Análise",
     "nav.assistant": "Assistente",
     "nav.settings": "Configurações",
     "onboarding.welcome": "Bem-vindo",

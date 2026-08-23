@@ -134,9 +134,9 @@ function ReportPdf({ input }: { input: AuditReportPdfInput }) {
   const content = input.contentPack;
 
   return (
-    <Document title="SocialOreo campaign report" author="SocialOreo">
+    <Document title="SocialOlla profile analysis report" author="SocialOlla">
       <Page size="A4" style={styles.page}>
-        <Text style={styles.eyebrow}>SocialOreo expert campaign brief</Text>
+        <Text style={styles.eyebrow}>SocialOlla expert campaign brief</Text>
         <Text style={styles.title}>{input.summary.headline ?? "Campaign diagnosis"}</Text>
         <Text style={styles.profile}>{input.profileUrl}</Text>
 
@@ -202,7 +202,7 @@ function ReportPdf({ input }: { input: AuditReportPdfInput }) {
           </View>
         ) : null}
 
-        <Text fixed render={({ pageNumber, totalPages }) => `SocialOreo · ${pageNumber} / ${totalPages}`} style={styles.footer} />
+        <Text fixed render={({ pageNumber, totalPages }) => `SocialOlla · ${pageNumber} / ${totalPages}`} style={styles.footer} />
       </Page>
     </Document>
   );

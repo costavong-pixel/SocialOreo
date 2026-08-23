@@ -1,29 +1,32 @@
-import { redirect } from "next/navigation";
+import { permanentRedirect, redirect } from "next/navigation";
 
 import { AuditFeedbackCard } from "@/components/report/audit-feedback-card";
 import { AuditReportView, type AuditReportViewModel } from "@/components/report/audit-report-view";
 import { TranscriptEnrichmentRefresh } from "@/components/report/transcript-enrichment-refresh";
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { buildPublicMetrics } from "@/lib/reports/public-metrics";
-import { ProductFrame } from "@/components/layout/product-frame";
+import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 
 type PageProps = {
   params: Promise<{ id: string }>;
 };
 
-export default async function AuditReportPage({ params }: PageProps) {
-  const user = await getSessionUser();
+/** Canonical SocialOlla Profile Analysis report surface. */
+export async function AuditReportPage({ params }: PageProps) {
+  const sessionUser = await getVerifiedSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
   const { id } = await params;
 
-  if (!user) {
-    redirect("/auth/login");
-  }
+  if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
+  if (!sessionUser || !resolution) redirect("/auth/login");
+
+  await getOrCreatePersonalWorkspace(resolution.dbId);
 
   const auditJob = await prisma.auditJob.findUnique({
-    where: { id },
+    where: { id, userId: resolution.dbId },
     include: {
-      user: true,
       auditReport: true,
       feedback: true,
       transcriptEnrichment: true,
@@ -32,14 +35,12 @@ export default async function AuditReportPage({ params }: PageProps) {
     },
   });
 
-  if (!auditJob || auditJob.user?.authUserId !== user.id) {
+  if (!auditJob) {
     return (
-      <ProductFrame backHref="/dashboard" backLabel="Workspace" maxWidth="narrow">
-        <section className="mt-6 rounded-xl border border-white/10 bg-[var(--social-surface)] p-6 md:p-10">
-          <h1 className="text-3xl font-black">Audit not found</h1>
-          <p className="mt-4 text-white/70">This report does not exist or you do not have access.</p>
-        </section>
-      </ProductFrame>
+      <section className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-6 md:p-10">
+        <h1 className="font-display text-3xl font-black">Analysis not found</h1>
+        <p className="mt-4 text-white/70">This analysis does not exist or you do not have access.</p>
+      </section>
     );
   }
 
@@ -76,25 +77,29 @@ export default async function AuditReportPage({ params }: PageProps) {
   };
 
   return (
-    <ProductFrame backHref="/dashboard" backLabel="Workspace">
-      <section className="mt-6">
-        <div>
-          <TranscriptEnrichmentRefresh status={auditJob.transcriptEnrichment?.status} />
-          <AuditReportView audit={audit} />
-          {auditJob.status === "COMPLETED" && report ? (
-            <div className="mt-5">
-              <AuditFeedbackCard
-                auditId={auditJob.id}
-                initialFeedback={auditJob.feedback ? {
-                  rating: auditJob.feedback.rating,
-                  usefulSections: auditJob.feedback.usefulSections,
-                  comments: auditJob.feedback.comments,
-                } : null}
-              />
-            </div>
-          ) : null}
-        </div>
-      </section>
-    </ProductFrame>
+    <section className="mt-6">
+      <div>
+        <TranscriptEnrichmentRefresh status={auditJob.transcriptEnrichment?.status} />
+        <AuditReportView audit={audit} />
+        {auditJob.status === "COMPLETED" && report ? (
+          <div className="mt-5">
+            <AuditFeedbackCard
+              auditId={auditJob.id}
+              initialFeedback={auditJob.feedback ? {
+                rating: auditJob.feedback.rating,
+                usefulSections: auditJob.feedback.usefulSections,
+                comments: auditJob.feedback.comments,
+              } : null}
+            />
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
+}
+
+/** Compatibility route: historical audit links resolve into /analysis/[id]. */
+export default async function LegacyAuditReportPage({ params }: PageProps) {
+  const { id } = await params;
+  permanentRedirect(`/analysis/${id}`);
 }

@@ -112,7 +112,7 @@ export function validateSocialUrl(input: string): SocialUrlValidationResult {
   }
 
   if (!instagramHosts.has(host)) {
-    return { ok: false, error: "SocialOreo currently supports Instagram and TikTok profile URLs." };
+    return { ok: false, error: "SocialOlla currently supports Instagram and TikTok profile URLs." };
   }
 
   if (parts.length === 0) {

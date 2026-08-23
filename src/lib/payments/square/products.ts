@@ -19,9 +19,9 @@ export type SquareProduct = {
 export function getSquareProduct(config: SquareConfig, id: SquareProductId): SquareProduct {
   switch (id) {
     case "lifetime":
-      return { id, ledgerProduct: "LIFETIME", name: "SocialOreo Lifetime", kind: "one_time", credits: 0, catalogVariationId: config.lifetimeCatalogVariationId, priceCents: config.lifetimePriceCents };
+      return { id, ledgerProduct: "LIFETIME", name: "SocialOlla Lifetime", kind: "one_time", credits: 0, catalogVariationId: config.lifetimeCatalogVariationId, priceCents: config.lifetimePriceCents };
     case "monthly":
-      return { id, ledgerProduct: "MONTHLY", name: "SocialOreo Monthly", kind: "subscription", credits: 0, catalogVariationId: config.monthlyPlanVariationId, priceCents: config.monthlyPriceCents };
+      return { id, ledgerProduct: "MONTHLY", name: "SocialOlla Monthly", kind: "subscription", credits: 0, catalogVariationId: config.monthlyPlanVariationId, priceCents: config.monthlyPriceCents };
     case "single_audit":
       return { id, ledgerProduct: "SINGLE_AUDIT", name: "1 full audit credit", kind: "one_time", credits: 1, catalogVariationId: config.singleAuditCatalogVariationId, priceCents: config.singleAuditPriceCents };
     case "creator_pack":

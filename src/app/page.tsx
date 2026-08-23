@@ -20,7 +20,7 @@ export default async function HomePage() {
           <Link className="text-sm font-bold text-white/65 hover:text-white" href="/pricing">Pricing</Link>
           {sessionUser ? (
             <>
-              <Link className="text-sm font-bold text-white/65 hover:text-white" href="/dashboard">Dashboard</Link>
+              <Link className="text-sm font-bold text-white/65 hover:text-white" href="/home">Dashboard</Link>
               <Link className="rounded-full bg-[var(--social-blue)] px-4 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]" href="/auth/logout">Sign out</Link>
             </>
           ) : (

@@ -37,6 +37,19 @@ async function waitContent(page) {
   await page.waitForTimeout(500);
 }
 
+async function assertCanonicalSocialOllaShell(page) {
+  const nav = page.locator('nav[aria-label="Primary"]');
+  await expect(nav).toBeVisible();
+  for (const label of [/Dashboard/i, /Posts?/i, /Watch/i, /Calendar/i, /Connections/i, /Credits/i, /Analysis/i, /Assistant/i, /Settings/i]) {
+    await expect(nav.getByRole("link", { name: label })).toBeVisible();
+  }
+  const body = await page.locator("body").innerText();
+  expect(body).toContain("SocialOlla");
+  expect(body).not.toContain("SocialOreo");
+  expect(body).not.toContain("SOCIALOREO");
+  expect(body).not.toContain("Run your first audit to unlock the dashboard");
+}
+
 test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
   test("public landing: Post-first, canonical $79 offer", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -93,7 +106,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await addStagingSession(page, test.info());
     await page.goto("/home", { waitUntil: "domcontentloaded" });
     await waitContent(page);
-    await expect(page.locator("nav").first()).toBeVisible();
+    await assertCanonicalSocialOllaShell(page);
     await expect(page.getByText(/Dashboard|Welcome|Home/i).first()).toBeVisible({ timeout: 15000 });
     await shot(page, "shell-home");
 
@@ -102,6 +115,45 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await expect(page.getByText(/purpose|Set up your workspace/i).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("button", { name: /Create first post/i })).toBeVisible();
     await shot(page, "onboarding");
+  });
+
+  test("canonical routes reject the legacy shell and preserve Analysis entry points", async ({ page }) => {
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
+    await addStagingSession(page, test.info());
+
+    await page.goto("/dashboard", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/home(?:\?|$)/);
+    await waitContent(page);
+    await assertCanonicalSocialOllaShell(page);
+
+    await page.goto("/post", { waitUntil: "domcontentloaded" });
+    await expect(page).toHaveURL(/\/posts(?:\?|$)/);
+    await waitContent(page);
+    await assertCanonicalSocialOllaShell(page);
+
+    await page.goto("/analysis", { waitUntil: "domcontentloaded" });
+    await waitContent(page);
+    await assertCanonicalSocialOllaShell(page);
+    await expect(page.getByRole("heading", { name: /Profile Analysis/i })).toBeVisible();
+    await shot(page, "analysis");
+
+    await page.goto("/analysis/new", { waitUntil: "domcontentloaded" });
+    await waitContent(page);
+    await assertCanonicalSocialOllaShell(page);
+    await expect(page.getByRole("heading", { name: /Create a profile analysis/i })).toBeVisible();
+    await shot(page, "analysis-new");
+  });
+
+  test("visual canonical shell capture covers every customer route", async ({ page }) => {
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
+    await addStagingSession(page, test.info());
+    const routes = ["home", "posts", "watch", "calendar", "connections", "credits", "analysis", "assistant", "settings"];
+    for (const route of routes) {
+      await page.goto(`/${route}`, { waitUntil: "domcontentloaded" });
+      await waitContent(page);
+      await assertCanonicalSocialOllaShell(page);
+      await shot(page, `canonical-${route}`);
+    }
   });
 
   test("connections: sandbox destination form", async ({ page }) => {

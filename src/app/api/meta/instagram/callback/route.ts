@@ -8,8 +8,8 @@ import { getInstagramInsightsConfig } from "@/lib/instagram-insights/config";
 import { verifyInstagramOAuthState } from "@/lib/instagram-insights/oauth";
 import { encryptInstagramToken } from "@/lib/instagram-insights/token-crypto";
 
-function dashboardUrl(request: NextRequest, state: string) {
-  return new URL(`/dashboard?instagram=${state}`, request.url);
+function analysisUrl(request: NextRequest, state: string) {
+  return new URL(`/analysis?instagram=${state}`, request.url);
 }
 
 export async function GET(request: NextRequest) {
@@ -17,16 +17,16 @@ export async function GET(request: NextRequest) {
   const config = getInstagramInsightsConfig();
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
-  if (!authUser || !config || !code) return NextResponse.redirect(dashboardUrl(request, "failed"));
+  if (!authUser || !config || !code) return NextResponse.redirect(analysisUrl(request, "failed"));
   let user: { id: string };
   try {
     user = await syncUserFromAuth0({ id: authUser.id, email: authUser.email });
   } catch (error) {
-    if (isAuthIdentityCollisionError(error)) return NextResponse.redirect(dashboardUrl(request, "identity_conflict"));
+    if (isAuthIdentityCollisionError(error)) return NextResponse.redirect(analysisUrl(request, "identity_conflict"));
     throw error;
   }
   const validState = verifyInstagramOAuthState(request.cookies.get("socialoreo_meta_oauth")?.value, state, user.id);
-  if (!validState) return NextResponse.redirect(dashboardUrl(request, "invalid_state"));
+  if (!validState) return NextResponse.redirect(analysisUrl(request, "invalid_state"));
   try {
     const token = await exchangeInstagramAuthorizationCode(config, code);
     const profile = await getInstagramProfessionalProfile(config, token.access_token);
@@ -36,10 +36,10 @@ export async function GET(request: NextRequest) {
       update: { instagramUserId: profile.id, username: profile.username, accountType: profile.account_type, tokenCiphertext: encryptInstagramToken(token.access_token, config.tokenEncryptionKey), tokenExpiresAt, scopes: ["instagram_business_basic", "instagram_business_manage_insights"], status: "CONNECTED", lastError: null },
       create: { userId: user.id, instagramUserId: profile.id, username: profile.username, accountType: profile.account_type, tokenCiphertext: encryptInstagramToken(token.access_token, config.tokenEncryptionKey), tokenExpiresAt, scopes: ["instagram_business_basic", "instagram_business_manage_insights"] },
     });
-    const response = NextResponse.redirect(dashboardUrl(request, "connected"));
+    const response = NextResponse.redirect(analysisUrl(request, "connected"));
     response.cookies.delete("socialoreo_meta_oauth");
     return response;
   } catch {
-    return NextResponse.redirect(dashboardUrl(request, "failed"));
+    return NextResponse.redirect(analysisUrl(request, "failed"));
   }
 }

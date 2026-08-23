@@ -271,7 +271,7 @@ export function AuditReportView({ audit }: { audit: AuditReportViewModel }) {
     <div className="grid gap-5 text-white">
       <section className="overflow-hidden rounded-lg border border-white/10 bg-[#101318] shadow-2xl shadow-black/20">
         <div className="border-b border-white/10 px-5 py-4 sm:px-7">
-          <p className="text-xs font-bold uppercase text-orange-300">SocialOreo expert campaign brief</p>
+          <p className="text-xs font-bold uppercase text-orange-300">SocialOlla expert campaign brief</p>
           <p className="mt-1 break-all text-sm text-white/50">{audit.profileUrl}</p>
         </div>
         <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1.25fr_0.75fr]">
@@ -432,17 +432,17 @@ export function AuditReportView({ audit }: { audit: AuditReportViewModel }) {
       </section>
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Link className="rounded-md bg-orange-400 px-5 py-3 text-center text-sm font-bold text-black transition hover:bg-orange-300" href={`/audits/${audit.id}/export`} target="_blank">
+        <Link className="rounded-md bg-orange-400 px-5 py-3 text-center text-sm font-bold text-black transition hover:bg-orange-300" href={`/analysis/${audit.id}/export`} target="_blank">
           Open HTML report
         </Link>
-        <Link className="rounded-md border border-orange-300/70 px-5 py-3 text-center text-sm font-bold text-orange-100 transition hover:bg-orange-400/10" href={`/audits/${audit.id}/pdf`}>
+        <Link className="rounded-md border border-orange-300/70 px-5 py-3 text-center text-sm font-bold text-orange-100 transition hover:bg-orange-400/10" href={`/analysis/${audit.id}/pdf`}>
           Download PDF
         </Link>
-        <Link className="rounded-md border border-white/20 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10" href={`/audits/${audit.id}/compare`}>
+        <Link className="rounded-md border border-white/20 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10" href={`/analysis/${audit.id}/compare`}>
           Compare competitor
         </Link>
-        <Link className="rounded-md border border-white/20 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10" href="/audits/new">
-          Run another audit
+        <Link className="rounded-md border border-white/20 px-5 py-3 text-center text-sm font-bold text-white transition hover:bg-white/10" href="/analysis/new">
+          Run another analysis
         </Link>
       </div>
     </div>

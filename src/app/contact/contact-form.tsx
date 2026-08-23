@@ -37,7 +37,7 @@ export function ContactForm() {
   }
 
   if (state === "sent") {
-    return <div className="rounded-2xl border border-[var(--social-blue)]/55 bg-[#241b32] p-6 text-[var(--social-text)]"><p className="text-sm font-black uppercase tracking-[0.15em] text-[var(--social-blue)]">Message received</p><p className="mt-2 leading-7">Thanks — your message is in the SocialOreo support inbox. We will reply to the email you provided.</p></div>;
+    return <div className="rounded-2xl border border-[var(--social-blue)]/55 bg-[#241b32] p-6 text-[var(--social-text)]"><p className="text-sm font-black uppercase tracking-[0.15em] text-[var(--social-blue)]">Message received</p><p className="mt-2 leading-7">Thanks — your message is in the SocialOlla support inbox. We will reply to the email you provided.</p></div>;
   }
 
   return (

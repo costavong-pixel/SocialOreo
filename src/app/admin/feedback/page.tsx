@@ -1,35 +1,28 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/db/prisma";
-import { ProductFrame } from "@/components/layout/product-frame";
 
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(value);
 }
 
-export default async function FeedbackInboxPage() {
-  const user = await getSessionUser();
+export async function FeedbackInboxPageContent() {
+  const sessionUser = await getVerifiedSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
 
-  if (!user) {
+  if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
+  if (!sessionUser || !resolution) {
     redirect("/auth/login");
   }
 
-  const isAdmin = await requireAdminByAuthUserId(user.id);
+  const isAdmin = await requireAdminByAuthUserId(resolution.authUserId);
 
   if (!isAdmin) {
-    return (
-      <ProductFrame backHref="/dashboard" backLabel="Workspace" maxWidth="narrow">
-        <section className="so-admin mt-6">
-          <div className="mt-10 rounded-[2rem] border border-black/10 bg-white/70 p-6 shadow-sm md:p-10">
-            <h1 className="text-3xl font-black tracking-[-0.04em]">Admin access required</h1>
-            <p className="mt-4 text-black/70">The feedback inbox is restricted to SocialOreo admins.</p>
-          </div>
-        </section>
-      </ProductFrame>
-    );
+    redirect("/home");
   }
 
   const feedbackEntries = await prisma.auditFeedback.findMany({
@@ -53,7 +46,6 @@ export default async function FeedbackInboxPage() {
   const helpfulRate = feedbackEntries.length ? Math.round((helpfulCount / feedbackEntries.length) * 100) : 0;
 
   return (
-    <ProductFrame backHref="/dashboard" backLabel="Workspace">
       <section className="so-admin">
         <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -80,7 +72,7 @@ export default async function FeedbackInboxPage() {
                   <p className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${entry.rating === "HELPFUL" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
                     {entry.rating === "HELPFUL" ? "Helpful" : "Not yet"}
                   </p>
-                  <Link className="mt-3 block truncate text-lg font-black hover:underline" href={`/audits/${entry.auditJob.id}`}>
+                  <Link className="mt-3 block truncate text-lg font-black hover:underline" href={`/analysis/${entry.auditJob.id}`}>
                     {entry.auditJob.profileUrl}
                   </Link>
                   <p className="mt-1 text-sm text-black/55">
@@ -104,8 +96,11 @@ export default async function FeedbackInboxPage() {
           )}
         </div>
       </section>
-    </ProductFrame>
   );
+}
+
+export default function FeedbackInboxPage() {
+  return <FeedbackInboxPageContent />;
 }
 
 function SummaryCard({ label, value, detail }: { label: string; value: number | string; detail: string }) {
