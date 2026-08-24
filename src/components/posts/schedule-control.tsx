@@ -94,7 +94,7 @@ export function ScheduleControl({
     setResult(null);
     try {
       const outcome = await m2SchedulePost({ postRequestExternalId: postExternalId, scheduleAt: utcPreview.iso, timezone });
-      setResult(`Post scheduled (${outcome.status}). Your schedule is saved; live delivery is not enabled in staging.`);
+      setResult(`Post scheduled (${outcome.status}). Durable schedule persisted; live delivery is not enabled in staging.`);
       router.refresh();
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : "Could not schedule post");
@@ -144,7 +144,7 @@ export function ScheduleControl({
             const status = occurrence?.status ?? "SCHEDULED";
             return (
               <p key={slot.id} className="mt-1 text-xs text-white/60">
-                {slotDate(slot.scheduleAt).toISOString()} · {slot.timezone} · status <strong>{status}</strong>
+                {slotDate(slot.scheduleAt).toISOString()} · {slot.timezone} · status <strong>{status}</strong> · durable schedule persisted
               </p>
             );
           })}

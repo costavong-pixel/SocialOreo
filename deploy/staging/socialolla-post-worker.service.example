@@ -1,0 +1,18 @@
+[Unit]
+Description=SocialOlla staging Post publishing worker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/socialolla/staging/current
+
+[Service]
+Type=oneshot
+User=socialolla
+WorkingDirectory=/srv/socialolla/staging/current
+EnvironmentFile=/etc/socialolla/staging.env
+Environment=SOCIALOLLA_ENV=staging
+Environment=SOCIALOLLA_PROVIDER_DISABLED=false
+Environment=SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED=true
+ExecStart=/usr/bin/npm run post-worker:once
+
+[Install]
+WantedBy=multi-user.target
