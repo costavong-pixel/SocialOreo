@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the SocialOlla staging Post publishing worker
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=socialolla-post-worker.service
+
+[Install]
+WantedBy=timers.target

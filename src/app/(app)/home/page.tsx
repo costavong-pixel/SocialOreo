@@ -41,7 +41,7 @@ export default async function M2HomePage() {
         <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-5">
           <h2 className="font-display text-lg font-extrabold">Destinations</h2>
           <p className="mt-2 text-3xl font-black">{destinations.length}</p>
-          <p className="text-sm text-white/50">{destinations.length === 0 ? "No sandbox destinations yet." : "Provider-disabled sandbox connections."}</p>
+          <p className="text-sm text-white/50">{destinations.length === 0 ? "No Instagram publishing destination yet." : "OAuth-backed destination connections."}</p>
         </div>
         <div className="rounded-3xl border border-white/10 bg-white/[0.02] p-5">
           <h2 className="font-display text-lg font-extrabold">Posts</h2>
@@ -57,7 +57,7 @@ export default async function M2HomePage() {
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="font-display text-lg font-extrabold">Recent posts</h2>
-        {posts.length === 0 && <p className="mt-2 text-sm text-white/50">No posts yet. Create your first provider-disabled Post.</p>}
+        {posts.length === 0 && <p className="mt-2 text-sm text-white/50">No posts yet. Create your first Post from the canonical workspace shell.</p>}
         <div className="mt-3 space-y-2">
           {posts.map((p) => (
             <div key={p.id} className="flex items-center justify-between rounded-2xl border border-white/5 p-3">
@@ -72,7 +72,7 @@ export default async function M2HomePage() {
       </div>
 
       <div className="mt-6">
-        <CreatePostForm />
+        <CreatePostForm destinations={destinations} />
       </div>
     </section>
   );

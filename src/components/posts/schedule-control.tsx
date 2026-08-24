@@ -94,7 +94,7 @@ export function ScheduleControl({
     setResult(null);
     try {
       const outcome = await m2SchedulePost({ postRequestExternalId: postExternalId, scheduleAt: utcPreview.iso, timezone });
-      setResult(`Post scheduled (${outcome.status}). Slot persisted provider-disabled — no live transport.`);
+      setResult(`Post scheduled (${outcome.status}). Durable publish job persisted.`);
       router.refresh();
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : "Could not schedule post");
@@ -124,7 +124,7 @@ export function ScheduleControl({
       <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
         <p className="font-bold text-white/80">Preview</p>
         <p>Destination: {destination?.label ?? destinationRef} ({destination?.platform ?? "—"} · {destination?.status ?? "provider-disabled"})</p>
-        <p>Provider mode: {providerDisabled ? "provider-disabled (no live transport)" : "not configured"}</p>
+        <p>Provider mode: {providerDisabled ? "publishing disabled (no live transport)" : "publishing provider enabled"}</p>
         <p>{utcPreview ? <>Local wall time {utcPreview.wallTime} → stored UTC <code>{utcPreview.iso}</code></> : "Pick a date and timezone to see the UTC conversion."}</p>
         <p className="text-white/40">Scheduling requires an approved final variant. No credit is charged by scheduling.</p>
       </div>
@@ -144,7 +144,7 @@ export function ScheduleControl({
             const status = occurrence?.status ?? "SCHEDULED";
             return (
               <p key={slot.id} className="mt-1 text-xs text-white/60">
-                {slotDate(slot.scheduleAt).toISOString()} · {slot.timezone} · {slot.destinationRef} · status <strong>{status}</strong> · evidence: provider-disabled fixture
+                {slotDate(slot.scheduleAt).toISOString()} · {slot.timezone} · {slot.destinationRef} · status <strong>{status}</strong> · durable schedule persisted
               </p>
             );
           })}
