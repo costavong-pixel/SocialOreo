@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
+import { logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 import { normalizeLocale, localeIsRtl } from "@/lib/socialolla/i18n/locales";
 import { AppShellNav } from "@/components/nav/app-shell-nav";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
@@ -10,7 +11,17 @@ export default async function M2AppLayout({ children }: { children: React.ReactN
   // Server-side auth guard: unauthenticated and unverified users never reach
   // the app shell (no 500 — redirect to Auth0 login).
   const sessionUser = await getVerifiedSessionUser();
-  if (!sessionUser) redirect("/auth/login");
+  if (!sessionUser) {
+    logAuthSyncDiagnostic("authorization", { redirectResult: "auth-login" });
+    redirect("/auth/login");
+  }
+
+  logAuthSyncDiagnostic("authorization", {
+    subject: sessionUser.id,
+    email: sessionUser.email,
+    emailVerified: true,
+    redirectResult: "shell-allowed",
+  });
 
   const isAdmin = await requireAdminByAuthUserId(sessionUser.id);
 

@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
+import { logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 
 const EXTERNAL_PREFIX = "wsp_";
 
@@ -30,6 +31,7 @@ export async function getOrCreatePersonalWorkspace(
     where: { ownerUserId },
   });
   if (existing) {
+    logAuthSyncDiagnostic("workspace", { dbUserId: ownerUserId, workspaceResult: "existing" });
     return toWorkspace(existing);
   }
 
@@ -44,6 +46,7 @@ export async function getOrCreatePersonalWorkspace(
           provider: "PERSONAL",
         },
       });
+      logAuthSyncDiagnostic("workspace", { dbUserId: ownerUserId, workspaceResult: "created" });
       return toWorkspace(created);
     } catch (error) {
       const isUniqueConflict =
@@ -52,9 +55,13 @@ export async function getOrCreatePersonalWorkspace(
         (error as { code?: string }).code === "P2002";
       if (isUniqueConflict && attempt < 2) {
         const winner = await db.workspace.findUnique({ where: { ownerUserId } });
-        if (winner) return toWorkspace(winner);
+        if (winner) {
+          logAuthSyncDiagnostic("workspace", { dbUserId: ownerUserId, workspaceResult: "raced-existing" });
+          return toWorkspace(winner);
+        }
         continue;
       }
+      logAuthSyncDiagnostic("workspace", { dbUserId: ownerUserId, workspaceResult: "failed" });
       throw error;
     }
   }

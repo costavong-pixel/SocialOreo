@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
+import { logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 import { prisma } from "@/lib/db/prisma";
 import { translate } from "@/lib/socialolla/i18n/translations";
 import { CreatePostForm } from "@/components/connections/add-destination-form";
@@ -12,10 +13,23 @@ const LOCALE = "en-US";
 
 export default async function M2HomePage() {
   const sessionUser = await resolveDbUserFromVerifiedSession();
-  if (hasDbSessionIdentityConflict(sessionUser)) redirect("/account-conflict");
-  if (!sessionUser) redirect("/auth/login");
+  if (hasDbSessionIdentityConflict(sessionUser)) {
+    logAuthSyncDiagnostic("authorization", { redirectResult: "account-conflict" });
+    redirect("/account-conflict");
+  }
+  if (!sessionUser) {
+    logAuthSyncDiagnostic("authorization", { redirectResult: "auth-login" });
+    redirect("/auth/login");
+  }
 
   const workspace = await getOrCreatePersonalWorkspace(sessionUser.dbId);
+  logAuthSyncDiagnostic("authorization", {
+    subject: sessionUser.authUserId,
+    email: sessionUser.email,
+    dbUserId: sessionUser.dbId,
+    emailVerified: true,
+    redirectResult: "shell-allowed",
+  });
   const destinations = await prisma.destination.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { createdAt: "asc" },
