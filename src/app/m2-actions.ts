@@ -11,7 +11,10 @@ import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { proposeProfile, confirmProfile, addSandboxDestination, createFirstPostAndPlan } from "@/lib/socialolla/onboarding/onboarding-actions";
-import { createPostRequest, updatePostVariant, approveAndSchedulePost, listPostRequests } from "@/lib/socialolla/post/post-actions";
+import { createPostRequest, updatePostVariant, replacePostMedia, approveAndSchedulePost, listPostRequests, publishPostNow, cancelPostPublish, reschedulePostPublish } from "@/lib/socialolla/post/post-actions";
+import { detectMediaMimeType, type MediaKind } from "@/lib/socialolla/media/media";
+import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
+import { createOwnedMediaReadGrant, deleteOwnedMedia, storeOwnedMedia } from "@/lib/socialolla/media/media-service";
 import { createWatchService } from "@/lib/socialolla/watch/watch-service";
 import { runFreeDemo, type DemoResult } from "@/lib/socialolla/demo/demo-service";
 import { assistantRespond } from "@/lib/socialolla/assistant/assistant-api";
@@ -102,12 +105,12 @@ export async function m2FirstPostAndPlan(input: { destinationExternalId: string;
   return createFirstPostAndPlan({ authUserId: user.dbId, ...input });
 }
 
-export async function m2CreatePost(input: { destinationExternalId: string; language: string; requestedCount: number; contentIntent?: string }) {
+export async function m2CreatePost(input: { destinationExternalId: string; language: string; requestedCount: number; contentIntent?: string; mediaAssetIds?: string[] }) {
   const user = await requireUser();
   return createPostRequest({ authUserId: user.dbId, confirmed: true, ...input });
 }
 
-export async function m2UpdateVariant(input: { postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean }) {
+export async function m2UpdateVariant(input: { postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
   const user = await requireUser();
   return updatePostVariant({ authUserId: user.dbId, ...input });
 }
@@ -120,6 +123,48 @@ export async function m2SchedulePost(input: { postRequestExternalId: string; sch
 export async function m2ListPosts() {
   const user = await requireUser();
   return listPostRequests(user.dbId);
+}
+
+export async function m2PublishPost(input: { postRequestExternalId: string }) {
+  const user = await requireUser();
+  return publishPostNow({ authUserId: user.dbId, postRequestExternalId: input.postRequestExternalId, confirmed: true });
+}
+
+export async function m2CancelPublishJob(jobId: string) {
+  const user = await requireUser();
+  return cancelPostPublish({ authUserId: user.dbId, jobId });
+}
+
+export async function m2ReschedulePublishJob(input: { jobId: string; scheduledFor: string; timezone: string }) {
+  const user = await requireUser();
+  return reschedulePostPublish({ authUserId: user.dbId, jobId: input.jobId, scheduledFor: new Date(input.scheduledFor), timezone: input.timezone });
+}
+
+export async function m2UploadMedia(formData: FormData) {
+  const user = await requireUser();
+  const file = formData.get("file");
+  if (!(file instanceof File)) throw new Error("An image file is required");
+  const body = new Uint8Array(await file.arrayBuffer());
+  const detected = detectMediaMimeType(body);
+  if (!detected) throw new Error("Unsupported or invalid media bytes");
+  const kind: MediaKind = detected.startsWith("image/") ? "image" : "video";
+  return storeOwnedMedia({ authUserId: user.dbId, kind, mimeType: file.type, detectedMimeType: detected, sizeBytes: body.byteLength, originalName: file.name, body, storage: createLocalPrivateMediaStorage() });
+}
+
+export async function m2DeleteMedia(assetId: string) {
+  const user = await requireUser();
+  return deleteOwnedMedia({ authUserId: user.dbId, assetId });
+}
+
+export async function m2ReplacePostMedia(input: { postRequestExternalId: string; oldAssetId: string; newAssetId: string }) {
+  const user = await requireUser();
+  return replacePostMedia({ authUserId: user.dbId, ...input });
+}
+
+export async function m2MediaPreviewUrl(assetId: string) {
+  const user = await requireUser();
+  const grant = await createOwnedMediaReadGrant({ authUserId: user.dbId, assetId, expiresInSeconds: 120, storage: createLocalPrivateMediaStorage() });
+  return { url: grant.grant };
 }
 
 export async function m2WatchPreview() {

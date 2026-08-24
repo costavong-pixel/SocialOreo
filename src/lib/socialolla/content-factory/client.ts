@@ -21,6 +21,12 @@ export interface StagedCandidate {
   status: string;
 }
 
+export type ContentFactoryHealth = {
+  status: string;
+  contract: string;
+  data_reachable: boolean;
+};
+
 interface InternalApiRequestRow {
   external_id: string;
   workspace_external_id: string;
@@ -84,8 +90,8 @@ class StubContentFactoryClient {
     return row ? this.toContract(row) : null;
   }
 
-  async health(): Promise<{ status: string; contract: string }> {
-    return { status: "ok", contract: "v1" };
+  async health(): Promise<ContentFactoryHealth> {
+    return { status: "ok", contract: "v1", data_reachable: true };
   }
 
   private toContract(row: InternalApiRequestRow): PostRequestContract {
@@ -108,7 +114,7 @@ class StubContentFactoryClient {
 export interface ContentFactoryClient {
   createRequest(input: CreatePostRequestInput): Promise<PostRequestContract>;
   getRequest(id: string, workspaceExternalId: string): Promise<PostRequestContract | null>;
-  health(): Promise<{ status: string; contract: string }>;
+  health(): Promise<ContentFactoryHealth>;
 }
 
 function signRequest(
@@ -227,9 +233,13 @@ export class HttpContentFactoryClient implements ContentFactoryClient {
     return this.parseContract(await this.readJson(response));
   }
 
-  async health(): Promise<{ status: string; contract: string }> {
+  async health(): Promise<ContentFactoryHealth> {
     const response = await this.send("GET", "/internal/v1/health", "", null, 1);
-    return this.readJson(response);
+    const body = await this.readJson(response);
+    if (!body || typeof body.status !== "string" || typeof body.contract !== "string" || typeof body.data_reachable !== "boolean") {
+      throw new Error("Content Factory health response is invalid");
+    }
+    return { status: body.status, contract: body.contract, data_reachable: body.data_reachable };
   }
 
   private async readJson(response: Response): Promise<never | any> {
@@ -256,6 +266,20 @@ export class HttpContentFactoryClient implements ContentFactoryClient {
   }
 }
 
+class UnavailableContentFactoryClient implements ContentFactoryClient {
+  async createRequest(): Promise<PostRequestContract> {
+    throw new Error("Content Factory is not configured for this environment; no Post was created.");
+  }
+
+  async getRequest(): Promise<PostRequestContract | null> {
+    throw new Error("Content Factory is not configured for this environment.");
+  }
+
+  async health(): Promise<ContentFactoryHealth> {
+    return { status: "disabled", contract: "v1", data_reachable: false };
+  }
+}
+
 export function createContentFactoryClient(): ContentFactoryClient {
   const config = contentFactoryConfig();
   if (config.enabled) {
@@ -264,7 +288,11 @@ export function createContentFactoryClient(): ContentFactoryClient {
     }
     return new HttpContentFactoryClient(config.baseUrl, config.apiSecret);
   }
-  return new StubContentFactoryClient();
+  // The in-memory implementation is a unit-test fixture only. An unset
+  // staging configuration must be visibly unhealthy, never a fake successful
+  // Post path.
+  if (config.allowInMemoryStub) return new StubContentFactoryClient();
+  return new UnavailableContentFactoryClient();
 }
 
 export type { PostStatus };

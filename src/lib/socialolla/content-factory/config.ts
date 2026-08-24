@@ -1,7 +1,6 @@
-const CONTENT_FACTORY_ENABLED = process.env.CONTENT_FACTORY_ENABLED === "true";
-
 export interface ContentFactoryConfig {
   enabled: boolean;
+  allowInMemoryStub: boolean;
   baseUrl: string | null;
   apiSecret: string | null;
   requestTimeoutMs: number;
@@ -9,7 +8,8 @@ export interface ContentFactoryConfig {
 
 export function contentFactoryConfig(): ContentFactoryConfig {
   return {
-    enabled: CONTENT_FACTORY_ENABLED,
+    enabled: process.env.CONTENT_FACTORY_ENABLED === "true",
+    allowInMemoryStub: process.env.NODE_ENV === "test" && process.env.CONTENT_FACTORY_ALLOW_IN_MEMORY_STUB !== "false",
     baseUrl: process.env.CONTENT_FACTORY_API_URL || null,
     apiSecret: process.env.CONTENT_FACTORY_API_SECRET || null,
     requestTimeoutMs: 10_000,
