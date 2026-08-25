@@ -3,6 +3,7 @@
 import { createHmac } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
@@ -29,7 +30,12 @@ function signDemoVisitor(token: string): string {
 
 async function requireUser() {
   const sessionUser = await getVerifiedSessionUser();
-  if (!sessionUser) throw new Error("A verified account is required.");
+  // Server actions can be invoked during a client navigation after the app
+  // shell was rendered. If the Auth0 session is absent or no longer verified,
+  // re-enter the approved login flow instead of surfacing a generic Next.js
+  // error page. This remains fail-closed: no workspace action runs without a
+  // verified session.
+  if (!sessionUser) redirect("/auth/login?returnTo=%2Fhome");
   // Workspace.ownerUserId references User.id (DB primary key), NOT the Auth0
   // sub. Resolve the session user to the DB User row so every workspace-scoped
   // action satisfies the foreign key (the checkout path already does this via

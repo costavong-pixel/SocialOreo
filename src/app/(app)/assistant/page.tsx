@@ -1,14 +1,12 @@
-import { m2Workspace } from "@/app/m2-actions";
 import { AssistantPanel } from "@/components/assistant/assistant-panel";
 
 export const metadata = { title: "Assistant — SocialOlla" };
 
 export default async function AssistantPage() {
-  const workspace = await m2Workspace();
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Assistant</h1>
-      <p className="mt-2 text-white/70">Unified assistant for workspace {workspace.id}. Actions: Explain · Draft · Propose action · Execute.</p>
+      <p className="mt-2 text-white/70">Unified assistant for your workspace. Actions: Explain · Draft · Propose action · Execute.</p>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <AssistantPanel authenticated />

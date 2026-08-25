@@ -144,6 +144,34 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await shot(page, "analysis-new");
   });
 
+  test("canonical navigation reaches every route on the first click", async ({ page }) => {
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
+    await addStagingSession(page, test.info());
+
+    const links = [
+      ["Dashboard", "/home"],
+      ["Posts", "/posts"],
+      ["Watch", "/watch"],
+      ["Calendar", "/calendar"],
+      ["Connections", "/connections"],
+      ["Credits", "/credits"],
+      ["Analysis", "/analysis"],
+      ["Assistant", "/assistant"],
+      ["Settings", "/settings"],
+    ];
+
+    for (const [label, expectedPath] of links) {
+      await page.goto("/analysis", { waitUntil: "domcontentloaded" });
+      await waitContent(page);
+      const link = page.locator('nav[aria-label="Primary"]').getByRole("link", { name: label, exact: true });
+      await expect(link).toBeVisible();
+      await link.click();
+      await page.waitForURL((url) => url.pathname === expectedPath, { timeout: 15000 });
+      await waitContent(page);
+      await assertCanonicalSocialOllaShell(page);
+    }
+  });
+
   test("visual canonical shell capture covers every customer route", async ({ page }) => {
     test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
@@ -156,13 +184,14 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     }
   });
 
-  test("connections: sandbox destination form", async ({ page }) => {
+  test("connections: honest provider availability", async ({ page }) => {
     test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
     await addStagingSession(page, test.info());
     await page.goto("/connections", { waitUntil: "domcontentloaded" });
     await waitContent(page);
-    await expect(page.getByText(/sandbox/i).first()).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole("button", { name: /Add sandbox destination/i })).toBeVisible();
+    await expect(page.getByText(/Live social OAuth connections are not enabled/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "Instagram" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Add sandbox destination/i })).toHaveCount(0);
     await shot(page, "connections");
   });
 
@@ -172,7 +201,8 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await page.goto("/posts", { waitUntil: "domcontentloaded" });
     await waitContent(page);
     await expect(page.getByRole("heading", { name: /Posts/i })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole("button", { name: /Create Post/i })).toBeVisible();
+    await expect(page.getByText(/Connect an account to create your first Post|Connected account/i).first()).toBeVisible();
+    await expect(page.getByText(/Destination external id/i)).toHaveCount(0);
     await shot(page, "posts");
   });
 
@@ -181,6 +211,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await addStagingSession(page, test.info());
     await page.goto("/watch", { waitUntil: "domcontentloaded" });
     await waitContent(page);
+    await expect(page.getByText(/Something went wrong/i)).toHaveCount(0);
     await expect(page.getByText(/credit/i).first()).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("button", { name: /Preview Watch cost/i })).toBeVisible();
     await shot(page, "watch");
@@ -191,6 +222,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await addStagingSession(page, test.info());
     await page.goto("/credits", { waitUntil: "domcontentloaded" });
     await waitContent(page);
+    await expect(page.getByText(/Something went wrong/i)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Credits/i })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("button", { name: /Lifetime|Monthly/i }).first()).toBeVisible();
     await shot(page, "credits");
@@ -201,6 +233,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await addStagingSession(page, test.info());
     await page.goto("/assistant", { waitUntil: "domcontentloaded" });
     await waitContent(page);
+    await expect(page.getByText(/Something went wrong/i)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Assistant/i })).toBeVisible({ timeout: 15000 });
     await shot(page, "assistant");
   });
@@ -222,6 +255,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await page.goto("/calendar", { waitUntil: "domcontentloaded" });
     await waitContent(page);
     await expect(page.getByRole("heading", { name: /Calendar/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/provider-disabled/i)).toHaveCount(0);
     await shot(page, "calendar");
   });
 

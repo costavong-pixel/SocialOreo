@@ -10,7 +10,7 @@ export default async function M2AppLayout({ children }: { children: React.ReactN
   // Server-side auth guard: unauthenticated and unverified users never reach
   // the app shell (no 500 — redirect to Auth0 login).
   const sessionUser = await getVerifiedSessionUser();
-  if (!sessionUser) redirect("/auth/login");
+  if (!sessionUser) redirect("/auth/login?returnTo=%2Fhome");
 
   const isAdmin = await requireAdminByAuthUserId(sessionUser.id);
 

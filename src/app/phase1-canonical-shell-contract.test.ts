@@ -31,6 +31,26 @@ describe("Phase 1 canonical SocialOlla shell contract", () => {
     expect(source("src/app/(app)/home/page.tsx")).toContain(">Dashboard</h1>");
   });
 
+  it("sends successful sign-in into the authenticated shell", () => {
+    expect(source("src/lib/auth/auth0.ts")).toContain('signInReturnToPath: "/home"');
+    expect(source("src/app/sign-in/[[...sign-in]]/page.tsx")).toContain("/auth/login?returnTo=%2Fhome");
+    expect(source("src/app/(app)/layout.tsx")).toContain("/auth/login?returnTo=%2Fhome");
+  });
+
+  it("keeps customer routes free of the owner-reported internal controls", () => {
+    const customerSources = [
+      "src/app/(app)/posts/page.tsx",
+      "src/app/(app)/connections/page.tsx",
+      "src/app/(app)/calendar/page.tsx",
+      "src/app/(app)/settings/page.tsx",
+      "src/components/connections/add-destination-form.tsx",
+    ].map(source).join("\n");
+
+    expect(customerSources).not.toContain("Destination external id");
+    expect(customerSources).not.toContain("Add sandbox destination");
+    expect(customerSources).not.toContain("provider-disabled Post occurrences");
+  });
+
   it("requires the SocialOlla brand and rejects legacy customer copy in canonical runtime modules", () => {
     expect(source("src/components/brand/brand-mark.tsx")).toContain("SocialOlla");
     expect(source("src/components/brand/brand-mark.tsx")).not.toContain("SocialOreo");

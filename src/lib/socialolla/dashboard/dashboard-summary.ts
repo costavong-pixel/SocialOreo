@@ -205,14 +205,14 @@ export async function loadDashboardSummary(dbUserId: string, workspaceDbId: stri
   let recommendedAction: DashboardSummary["recommendedAction"];
   if (destinations.length === 0) {
     recommendedAction = {
-      title: "Connect a sandbox destination",
-      description: "Add a provider-disabled Instagram or TikTok destination before creating a Post.",
+      title: "Connect a social account",
+      description: "Connect an account to create your first Post.",
       href: "/connections",
     };
   } else if (posts.length === 0) {
     recommendedAction = {
       title: "Create your first Post draft",
-      description: "Build a destination-specific draft. Live publishing remains disabled in this environment.",
+      description: "Build and review a Post draft. Live delivery remains unavailable in this environment.",
       href: "/posts",
     };
   } else if (completedAnalyses.length === 0) {

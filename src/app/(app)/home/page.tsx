@@ -111,9 +111,9 @@ export default async function M2HomePage() {
             <StateBadge state={summary.connections.state} />
           </div>
           <p className="mt-3 text-3xl font-black">{summary.connections.connected}/{summary.connections.total}</p>
-          <p className="text-sm text-white/55">destinations connected · {summary.connections.reconnectRequired} need attention</p>
+          <p className="text-sm text-white/55">connections recorded · {summary.connections.reconnectRequired} need attention</p>
           {summary.connections.instagramInsights ? (
-            <p className="mt-4 text-sm text-white/70">Instagram Insights: {summary.connections.instagramInsights.status}{summary.connections.instagramInsights.username ? ` · @${summary.connections.instagramInsights.username}` : ""}</p>
+            <p className="mt-4 text-sm text-white/70">Instagram Profile Analysis: {summary.connections.instagramInsights.status}{summary.connections.instagramInsights.username ? ` · @${summary.connections.instagramInsights.username}` : ""}</p>
           ) : (
             <p className="mt-4 text-sm text-white/60">No Instagram Insights connection is recorded.</p>
           )}
@@ -126,9 +126,9 @@ export default async function M2HomePage() {
             <StateBadge state={summary.credits.state} />
           </div>
           <p className="mt-3 text-3xl font-black">{summary.credits.canonicalAvailable}</p>
-          <p className="text-sm text-white/55">canonical available credits</p>
+          <p className="text-sm text-white/55">available credits shown in this workspace</p>
           <p className="mt-4 text-sm text-white/70">Plan: <strong>{formatPlan(summary.credits.plan, summary.credits.planVersion)}</strong></p>
-          <p className="mt-2 text-xs text-white/45">Read-only summary. Legacy account balance {summary.credits.legacyBalance ?? "—"}; credit authorities are not reconciled.</p>
+          <p className="mt-2 text-xs text-white/45">Read-only summary while account credit records are being consolidated. Historical balance {summary.credits.legacyBalance ?? "—"}.</p>
           <Link className="mt-4 inline-flex text-sm font-bold text-[var(--social-blue)] hover:underline" href="/credits">Open Credits</Link>
         </article>
 
@@ -176,7 +176,7 @@ export default async function M2HomePage() {
           </div>
           <div className="mt-4 space-y-2 text-sm text-white/70">
             <p>Workspace: <strong>{workspace.label}</strong></p>
-            <p>Provider mode: <strong>{summary.providerDisabled ? "provider-disabled" : "live transport not proven"}</strong></p>
+            <p>Social delivery: <strong>{summary.providerDisabled ? "not enabled in staging" : "not yet verified"}</strong></p>
             <p>Active Watch monitors: <strong>{summary.watch.activeMonitors}</strong>{summary.watch.nextCaptureAt ? ` · next ${formatDate(summary.watch.nextCaptureAt)}` : ""}</p>
             <p>Recent credit activity: <strong>{summary.credits.recentActivity.length}</strong> entries</p>
           </div>

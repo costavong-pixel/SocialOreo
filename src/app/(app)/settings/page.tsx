@@ -25,8 +25,7 @@ export default async function M2SettingsPage() {
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="font-display text-lg font-extrabold">Workspace</h2>
         <dl className="mt-3 space-y-2 text-sm text-white/80">
-          <div><dt className="inline font-bold">Workspace:</dt> <dd className="inline"><code>{workspace.id}</code></dd></div>
-          <div><dt className="inline font-bold">Label:</dt> <dd className="inline">{workspace.label}</dd></div>
+          <div><dt className="inline font-bold">Workspace label:</dt> <dd className="inline">{workspace.label}</dd></div>
           <div><dt className="inline font-bold">Locale:</dt> <dd className="inline">{workspace.defaultLocale}</dd></div>
         </dl>
       </div>
