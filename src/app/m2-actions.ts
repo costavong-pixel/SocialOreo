@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { prisma } from "@/lib/db/prisma";
 import { getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
@@ -222,10 +223,17 @@ export async function m2AssistantRespond(input: {
 
 export async function m2AdminAdjust(targetAuthUserId: string, amount: number, reason: string) {
   const admin = await requireUser();
-  // Resolve the target session-style user to its DB User.id (the workspace FK
-  // references User.id, not the Auth0 sub). An unregistered sub is created
-  // lazily so the admin action always has a workspace to adjust.
-  const target = await syncUserFromAuth0({ id: targetAuthUserId, email: targetAuthUserId });
+  if (!(await requireAdminByAuthUserId(admin.authUserId))) throw new Error("Admin role required");
+
+  // An admin adjustment may target only an existing canonical identity. The
+  // target is action input, not a verified session, so it must never be passed
+  // to syncUserFromAuth0 or used as an email to synthesize a User row.
+  const target = await prisma.user.findUnique({
+    where: { authUserId: targetAuthUserId },
+    select: { id: true, authUserId: true },
+  });
+  if (!target) throw new Error("Target user must already have a canonical account.");
+
   return adminAdjustCredits({ adminAuthUserId: admin.authUserId, adminDbUserId: admin.dbId, targetAuthUserId, targetDbUserId: target.id, amount, reason });
 }
 

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { loadDashboardSummary, type DashboardCardState } from "@/lib/socialolla/dashboard/dashboard-summary";
+import { connectionProviderFromSubject, logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 
 export const metadata = { title: "Dashboard — SocialOlla" };
 
@@ -25,10 +26,24 @@ function formatPlan(plan: string, planVersion: string | null): string {
 
 export default async function M2HomePage() {
   const resolution = await resolveDbUserFromVerifiedSession();
-  if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
-  if (!resolution) redirect("/auth/login");
+  if (hasDbSessionIdentityConflict(resolution)) {
+    logAuthSyncDiagnostic("authorization", { redirectResult: "account-conflict" });
+    redirect("/account-conflict");
+  }
+  if (!resolution) {
+    logAuthSyncDiagnostic("authorization", { redirectResult: "auth-login" });
+    redirect("/auth/login");
+  }
 
   const workspace = await getOrCreatePersonalWorkspace(resolution.dbId);
+  logAuthSyncDiagnostic("authorization", {
+    subject: resolution.authUserId,
+    email: resolution.email,
+    dbUserId: resolution.dbId,
+    connectionProvider: connectionProviderFromSubject(resolution.authUserId),
+    emailVerified: true,
+    redirectResult: "shell-allowed",
+  });
   const summary = await loadDashboardSummary(resolution.dbId, workspace.dbId);
 
   return (

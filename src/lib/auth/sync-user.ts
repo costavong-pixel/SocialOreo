@@ -2,6 +2,7 @@ import { Prisma, UserRole } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { connectionProviderFromSubject, logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 
 type Auth0User = {
   id: string;
@@ -37,7 +38,7 @@ export async function syncUserFromAuth0(authUser: Auth0User) {
 
   for (let attempt = 0; attempt <= MAX_SERIALIZABLE_RETRIES; attempt += 1) {
     try {
-      return await prisma.$transaction(async (tx) => {
+      const synced = await prisma.$transaction(async (tx) => {
         // Auth0 subject is the account identity. An email match alone must never
         // inherit an existing account's role, credits, workspace, or purchases.
         const existingUser = await tx.user.findUnique({
@@ -64,11 +65,14 @@ export async function syncUserFromAuth0(authUser: Auth0User) {
             if (emailOwner) throw new AuthIdentityCollisionError();
           }
 
-          return tx.user.update({
-            where: { authUserId: authUser.id },
-            data: { email },
-            include: { creditAccount: true },
-          });
+          return {
+            user: await tx.user.update({
+              where: { authUserId: authUser.id },
+              data: { email },
+              include: { creditAccount: true },
+            }),
+            result: "existing" as const,
+          };
         }
 
         const emailOwner = await tx.user.findFirst({
@@ -83,27 +87,45 @@ export async function syncUserFromAuth0(authUser: Auth0User) {
 
         if (emailOwner) throw new AuthIdentityCollisionError();
 
-        return tx.user.create({
-          data: {
-            authUserId: authUser.id,
-            email,
-            role: UserRole.USER,
-            creditAccount: {
-              create: {
-                balance: 0,
+        return {
+          user: await tx.user.create({
+            data: {
+              authUserId: authUser.id,
+              email,
+              role: UserRole.USER,
+              creditAccount: {
+                create: {
+                  balance: 0,
+                },
               },
             },
-          },
-          include: {
-            creditAccount: true,
-          },
-        });
+            include: {
+              creditAccount: true,
+            },
+          }),
+          result: "created" as const,
+        };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+      logAuthSyncDiagnostic("sync", {
+        subject: authUser.id,
+        email,
+        connectionProvider: connectionProviderFromSubject(authUser.id),
+        syncResult: synced.result,
+      });
+      return synced.user;
     } catch (error) {
       if (isSerializableTransactionError(error) && attempt < MAX_SERIALIZABLE_RETRIES) {
         continue;
       }
 
+      logAuthSyncDiagnostic("sync", {
+        subject: authUser.id,
+        email,
+        connectionProvider: connectionProviderFromSubject(authUser.id),
+        syncResult: isAuthIdentityCollisionError(error) ? "conflict" : "failed",
+        errorKind: error instanceof Prisma.PrismaClientKnownRequestError ? error.code : "unknown",
+      });
       throw error;
     }
   }
@@ -136,7 +158,10 @@ export function hasDbSessionIdentityConflict(
  */
 export async function resolveDbUserFromVerifiedSession(): Promise<DbSessionResolution> {
   const sessionUser = await getVerifiedSessionUser();
-  if (!sessionUser) return null;
+  if (!sessionUser) {
+    logAuthSyncDiagnostic("sync", { syncResult: "skipped-unverified" });
+    return null;
+  }
 
   try {
     const dbUser = await syncUserFromAuth0({ id: sessionUser.id, email: sessionUser.email });
