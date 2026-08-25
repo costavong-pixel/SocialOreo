@@ -48,6 +48,7 @@ async function assertCanonicalSocialOllaShell(page) {
   expect(body).not.toContain("SocialOreo");
   expect(body).not.toContain("SOCIALOREO");
   expect(body).not.toContain("Run your first audit to unlock the dashboard");
+  await expect(page.locator('summary[aria-label="Account menu"]')).toBeVisible();
 }
 
 test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
@@ -170,6 +171,31 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
       await waitContent(page);
       await assertCanonicalSocialOllaShell(page);
     }
+  });
+
+  test("profile: active account context is visible and role-gated", async ({ page }) => {
+    test.skip(!hasApprovedAuthState, "requires PLAYWRIGHT_STORAGE_STATE or the legacy staging cookie fallback");
+    await addStagingSession(page, test.info());
+    await page.goto("/profile", { waitUntil: "domcontentloaded" });
+    await waitContent(page);
+    await assertCanonicalSocialOllaShell(page);
+    await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId("profile-email")).toBeVisible();
+    await expect(page.getByTestId("profile-role")).toBeVisible();
+    await expect(page.getByTestId("profile-email-verified")).toBeVisible();
+    await expect(page.getByTestId("profile-workspace-label")).toBeVisible();
+    await expect(page.getByTestId("profile-plan")).toBeVisible();
+    await expect(page.getByTestId("profile-credit-balance")).toBeVisible();
+    await expect(page.getByTestId("profile-environment")).toContainText("Staging");
+    const role = await page.getByTestId("profile-role").innerText();
+    const body = await page.locator("body").innerText();
+    expect(body).not.toMatch(/auth0|access token|refresh token|session cookie|workspace ID|wsp_/i);
+    if (role === "Admin") {
+      await expect(page.locator('nav[aria-label="Primary"]').getByRole("link", { name: "Admin", exact: true })).toBeVisible();
+    } else {
+      await expect(page.locator('nav[aria-label="Primary"]').getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
+    }
+    await shot(page, "profile-account-context");
   });
 
   test("visual canonical shell capture covers every customer route", async ({ page }) => {

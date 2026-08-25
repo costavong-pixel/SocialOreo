@@ -4,6 +4,7 @@ export type SessionUser = {
   id: string;
   email: string | null;
   emailVerified: boolean;
+  displayName?: string | null;
 };
 
 export type VerifiedSessionUser = SessionUser & {
@@ -23,6 +24,10 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     id,
     email: typeof claims?.email === "string" ? claims.email : null,
     emailVerified: claims?.email_verified === true,
+    displayName:
+      (typeof claims?.name === "string" && claims.name.trim()) ||
+      (typeof claims?.nickname === "string" && claims.nickname.trim()) ||
+      null,
   };
 }
 

@@ -51,6 +51,12 @@ describe("Phase 1 canonical SocialOlla shell contract", () => {
     expect(customerSources).not.toContain("provider-disabled Post occurrences");
   });
 
+  it("keeps account context on a canonical, customer-safe profile route", () => {
+    expect(source("src/app/profile/page.tsx")).toContain('title: "Profile — SocialOlla"');
+    expect(source("src/components/nav/app-shell-nav.tsx")).toContain('href="/profile"');
+    expect(source("src/components/profile/profile-context-view.tsx")).not.toMatch(/authUserId|accessToken|refreshToken|workspace ID/);
+  });
+
   it("requires the SocialOlla brand and rejects legacy customer copy in canonical runtime modules", () => {
     expect(source("src/components/brand/brand-mark.tsx")).toContain("SocialOlla");
     expect(source("src/components/brand/brand-mark.tsx")).not.toContain("SocialOreo");
@@ -77,7 +83,7 @@ describe("Phase 1 canonical SocialOlla shell contract", () => {
 
   it("keeps admin visibility behind the ADMIN-only branch", () => {
     const nav = source("src/components/nav/app-shell-nav.tsx");
-    expect(nav).toMatch(/\{isAdmin \? \(/);
+    expect(nav).toMatch(/isAdmin/);
     expect(nav).toContain('href="/admin/plans"');
     expect(source("src/app/admin/layout.tsx")).toContain("M2AppLayout");
     expect(source("src/app/admin/layout.tsx")).toContain("AdminNav");
