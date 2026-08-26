@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db/prisma";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { holdCredits, finalizeCredits, refundCredits, intentKey } from "@/lib/socialolla/credits/batch-service";
 import { fetchSocialAudit } from "@/lib/providers/social/provider-router";
-import { assertProviderDisabledMode } from "@/lib/providers/social/provider-guard";
+import { liveSocialAuditRuntimeAllowed, providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { socialProviderForPlatform } from "@/lib/providers/social/audit-provider-config";
 import type { NormalizedSocialAuditResult } from "@/lib/providers/social/types";
 
 export interface WatchCostPreview {
@@ -23,13 +24,12 @@ function newWatchReportExternalId(): string {
 }
 
 /**
- * Watch customer flow (Slice D) — credit-gated and provider-disabled.
+ * Watch customer flow — credit-gated and provider-boundary protected.
  * - exact credit cost preview + explicit confirmation;
- * - HOLD credits, run the provider-disabled fixture, FINALIZE on usable
- *   success, REFUND on failure;
+ * - HOLD credits, run the guarded provider, FINALIZE on usable success,
+ *   REFUND on failure;
  * - persist a WatchReport;
- * - the live worker stays unwired and the provider chokepoint refuses live
- *   calls unless provider-disabled mode.
+ * - live provider calls remain staging-only and are disabled by default.
  */
 export function createWatchService() {
   async function preview(authUserId: string): Promise<WatchCostPreview> {
@@ -46,7 +46,9 @@ export function createWatchService() {
 
   async function run(input: WatchRunInput) {
     if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
-    assertProviderDisabledMode();
+    if (!providerDisabledEnabled() && !liveSocialAuditRuntimeAllowed()) {
+      throw new Error("Live provider calls are disabled outside the exact staging runtime.");
+    }
 
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
     const entitlement = await prisma.entitlementSnapshot.findFirst({
@@ -81,7 +83,7 @@ export function createWatchService() {
           profileUrl: input.profileUrl,
           platform: input.platform,
           status: "RUNNING",
-          provider: "provider-disabled",
+          provider: providerDisabledEnabled() ? "provider-disabled" : socialProviderForPlatform(input.platform),
           creditCost: cost,
         },
       });

@@ -13,6 +13,16 @@ export function providerDisabledEnabled(): boolean {
   return process.env.SOCIALOLLA_PROVIDER_DISABLED === "true";
 }
 
+/**
+ * Live social providers are a staging-only capability. The explicit
+ * environment check is intentionally separate from the provider-disabled
+ * fixture flag so a missing or false flag can never make production or an
+ * unrecognised environment provider-capable.
+ */
+export function liveSocialAuditRuntimeAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV !== "production" && env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging";
+}
+
 export function assertProviderDisabledMode(): void {
   if (!providerDisabledEnabled()) {
     throw new Error("Live provider calls are disabled in Milestone 2 (set SOCIALOLLA_PROVIDER_DISABLED=true).");

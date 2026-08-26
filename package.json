@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:mutation-post": "node scripts/post-mutation-contract.mjs",
+    "test:mutation-social-provider": "node scripts/social-provider-mutation-contract.mjs",
     "post-worker:once": "tsx scripts/run-post-worker.ts",
     "staging:ensure-normal-user": "tsx scripts/ensure-staging-normal-user.ts"
   },
