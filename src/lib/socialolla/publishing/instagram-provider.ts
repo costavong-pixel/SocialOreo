@@ -6,7 +6,7 @@ import { publishInstagramImage } from "@/lib/instagram-publishing/publish-client
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
 import { platformCapabilities } from "./platform-adaptation";
-import { PublishingProviderDisabledError, type PublishProvider, type PublishProviderInput } from "./provider";
+import { livePublishingRuntimeAllowed, PublishingProviderDisabledError, type PublishProvider, type PublishProviderInput } from "./provider";
 
 export function createInstagramPublishingProvider(storage: PrivateMediaStorage): PublishProvider {
   const capabilities = platformCapabilities("instagram");
@@ -16,7 +16,7 @@ export function createInstagramPublishingProvider(storage: PrivateMediaStorage):
     capabilities,
     enabled: true,
     async publish(input: PublishProviderInput) {
-      if (providerDisabledEnabled() || process.env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED !== "true") throw new PublishingProviderDisabledError("instagram");
+      if (!livePublishingRuntimeAllowed() || providerDisabledEnabled() || process.env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED !== "true") throw new PublishingProviderDisabledError("instagram");
       const config = getInstagramPublishingConfig();
       if (!config) throw new Error("Instagram publishing configuration is unavailable");
       const destination = await prisma.destination.findFirst({
