@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
-import { claimDuePublishJob, markPublishFailure, markPublishProviderStarted, markPublishSuccess } from "./job-service";
+import { claimDuePublishJob, markPublishFailure, markPublishProviderStarted, markPublishReconciliationRequired, markPublishSuccess } from "./job-service";
 import { createPublishingProvider } from "./provider";
 import { InstagramPublishError } from "@/lib/instagram-publishing/publish-client";
 import type { PublishingPlatform } from "./platform-adaptation";
@@ -36,6 +36,7 @@ export async function processDuePublishJobs(input: { now?: Date; workerId?: stri
     } catch (error) {
       const errorText = message(error);
       if (providerCallStarted && providerEnabled && error instanceof InstagramPublishError && error.reconciliationRequired) {
+        await markPublishReconciliationRequired({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error });
         outcomes.push({ status: "RECONCILIATION_REQUIRED", jobId: claimed.job.id, error: errorText });
         continue;
       }
