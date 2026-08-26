@@ -68,8 +68,6 @@ export function AppShellNav({
             </p>
             {!account.emailVerified ? <p className="mt-1 text-xs text-amber-200">Email not verified</p> : null}
             <div className="mt-3 grid gap-1 border-t border-white/10 pt-2">
-              <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/10" href="/profile">Profile</Link>
-              <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/10" href="/settings">Settings</Link>
               <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/10" href="/auth/logout">Sign out</Link>
             </div>
           </div>

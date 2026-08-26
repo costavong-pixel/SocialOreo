@@ -16,6 +16,7 @@ export const SHELL_NAV: ReadonlyArray<{ href: string; labelKey: TranslationKey }
   { href: "/analysis", labelKey: "nav.analysis" },
   { href: "/assistant", labelKey: "nav.assistant" },
   { href: "/settings", labelKey: "nav.settings" },
+  { href: "/profile", labelKey: "nav.profile" },
 ];
 
 export type ShellStateKind = "loading" | "empty" | "error" | "offline" | "partial-success";

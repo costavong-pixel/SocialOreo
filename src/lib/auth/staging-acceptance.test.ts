@@ -41,7 +41,7 @@ const session = {
   emailVerified: false,
 };
 
-const stagingEnvironment = {
+const stagingEnvironment: NodeJS.ProcessEnv = {
   NODE_ENV: "production",
   SOCIALOLLA_ENV: "staging",
   APP_BASE_URL: "https://staging.socialolla.com",
@@ -146,7 +146,7 @@ describe("staging acceptance bootstrap guard", () => {
   });
 
   it("fails closed when the flag, environment, or allowlist is invalid", async () => {
-    const withoutFlag = { ...stagingEnvironment };
+    const withoutFlag: NodeJS.ProcessEnv = { ...stagingEnvironment };
     delete withoutFlag.SOCIALOLLA_STAGING_ACCEPTANCE_AUTH_BYPASS;
     expect(isStagingAcceptanceConfigured(session.email, withoutFlag)).toBe(false);
     vi.stubEnv("SOCIALOLLA_STAGING_ACCEPTANCE_AUTH_BYPASS", "false");

@@ -159,6 +159,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
       ["Analysis", "/analysis"],
       ["Assistant", "/assistant"],
       ["Settings", "/settings"],
+      ["Profile", "/profile"],
     ];
 
     for (const [label, expectedPath] of links) {
