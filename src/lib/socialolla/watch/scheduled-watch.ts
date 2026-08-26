@@ -4,7 +4,9 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { fetchSocialAudit } from "@/lib/providers/social/provider-router";
+import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { socialProviderForPlatform } from "@/lib/providers/social/audit-provider-config";
+import { sanitizeSocialAuditResult } from "@/lib/providers/social/sanitize-audit-result";
 import type { NormalizedSocialAuditResult, SocialPlatform } from "@/lib/providers/social/types";
 import { intentKey, holdCredits, finalizeCredits, refundCredits } from "@/lib/socialolla/credits/batch-service";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
@@ -110,6 +112,13 @@ export type ScheduledWatchSummary = {
   skipped: number;
 };
 
+class WatchClaimLostError extends Error {
+  constructor() {
+    super("Watch capture lease was lost.");
+    this.name = "WatchClaimLostError";
+  }
+}
+
 export function assertWatchWorkerStagingRuntime(env: Record<string, string | undefined> = process.env): void {
   const nodeEnvironment = (env.NODE_ENV ?? "").trim().toLowerCase();
   const appEnvironment = (env.SOCIALOLLA_ENV ?? "").trim().toLowerCase();
@@ -172,6 +181,7 @@ export async function configureWatchMonitor(input: {
   if (!cadenceHours) throw new Error("Choose a weekly or fortnightly cadence");
   const normalizedUrl = profileInput(input.profileUrl, input.platform);
   await getOrCreatePersonalWorkspace(input.userId);
+  const configuredProvider = providerDisabledEnabled() ? "provider-disabled" : socialProviderForPlatform(input.platform);
 
   const monitor = await prisma.publicProfileMonitor.upsert({
     where: { userId_profileUrl: { userId: input.userId, profileUrl: normalizedUrl } },
@@ -179,7 +189,7 @@ export async function configureWatchMonitor(input: {
       userId: input.userId,
       profileUrl: normalizedUrl,
       platform: input.platform,
-      provider: socialProviderForPlatform(input.platform),
+      provider: configuredProvider,
       reelLimit: 30,
       enabled: true,
       cadenceHours,
@@ -190,7 +200,7 @@ export async function configureWatchMonitor(input: {
     },
     update: {
       platform: input.platform,
-      provider: socialProviderForPlatform(input.platform),
+      provider: configuredProvider,
       enabled: true,
       cadenceHours,
       providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, 30)),
@@ -221,9 +231,9 @@ export async function pauseWatchMonitor(input: { userId: string; profileUrl: str
   return { paused: result.count > 0 };
 }
 
-async function watchCreditCost(userId: string): Promise<number> {
+async function watchCreditCost(workspaceId: string): Promise<number> {
   const entitlement = await prisma.entitlementSnapshot.findFirst({
-    where: { workspace: { ownerUserId: userId } },
+    where: { workspaceId },
     orderBy: { validFrom: "desc" },
     select: { watchCreditsPerRequest: true },
   });
@@ -239,7 +249,7 @@ async function captureReportForMonitor(monitor: WatchMonitorRow, now: Date): Pro
   if (existing) return existing as WatchReportRow;
 
   const workspace = await getOrCreatePersonalWorkspace(monitor.userId);
-  const cost = await watchCreditCost(monitor.userId);
+  const cost = await watchCreditCost(workspace.dbId);
   const reportData = {
     externalId: externalId("wpr"),
     intentKey: intentKey(workspace.id, captureKey, "watch-capture"),
@@ -278,7 +288,35 @@ async function claimReport(report: WatchReportRow, now: Date): Promise<WatchRepo
   });
   if (claimed.count !== 1) return null;
   const current = await prisma.watchReport.findUnique({ where: { id: report.id } });
-  return (current as WatchReportRow | null) ?? null;
+  if (!current || current.claimToken !== token) return null;
+  return current as WatchReportRow;
+}
+
+function activeClaimWhere(report: WatchReportRow, now = new Date()) {
+  if (!report.claimToken) return null;
+  return {
+    id: report.id,
+    status: "RUNNING" as const,
+    claimToken: report.claimToken,
+    claimedAt: { gte: new Date(now.getTime() - WATCH_CLAIM_LEASE_MS) },
+  };
+}
+
+async function renewClaim(report: WatchReportRow): Promise<boolean> {
+  const now = new Date();
+  const where = activeClaimWhere(report, now);
+  if (!where) return false;
+  const renewed = await prisma.watchReport.updateMany({ where, data: { claimedAt: now } });
+  return renewed.count === 1;
+}
+
+function skipped(report: WatchReportRow, reason: string): ScheduledWatchResult {
+  return {
+    status: "SKIPPED",
+    reportExternalId: report.externalId,
+    captureKey: report.captureKey ?? "unknown",
+    reason,
+  };
 }
 
 function metricValue(metrics: SnapshotMetricSource, key: keyof SnapshotMetrics): number | null {
@@ -304,14 +342,6 @@ function buildDelta(previous: ({ capturedAt: Date } & SnapshotMetricSource) | nu
     return [key, { previous: before, current: after, delta: before === null || after === null ? null : after - before }];
   }));
   return { baselineCapturedAt: previous.capturedAt.toISOString(), capturedAt: capturedAt.toISOString(), metrics };
-}
-
-function publicAudit(auditData: NormalizedSocialAuditResult) {
-  const { rawProviderPayload: _profilePayload, ...profile } = auditData.profile;
-  return {
-    profile,
-    videos: auditData.videos.map(({ rawProviderPayload: _videoPayload, ...video }) => video),
-  };
 }
 
 function watchEvidence(input: {
@@ -344,18 +374,23 @@ async function stillEnabled(monitor: WatchMonitorRow): Promise<boolean> {
 
 async function scheduleRetry(report: WatchReportRow, monitor: WatchMonitorRow, now: Date, reason: string, delayMs = watchRetryDelayMs(report.attemptCount)) {
   const nextAttempt = new Date(now.getTime() + delayMs);
-  await prisma.watchReport.update({
-    where: { id: report.id },
+  if (!(await renewClaim(report))) return skipped(report, "Watch capture lease was lost.");
+  const where = activeClaimWhere(report);
+  if (!where) return skipped(report, "Watch capture lease is not held.");
+  const released = await prisma.watchReport.updateMany({
+    where,
     data: { nextAttemptAt: nextAttempt, lastError: reason, claimToken: null, claimedAt: null },
   });
-  await prisma.publicProfileMonitor.update({
-    where: { id: monitor.id },
+  if (released.count !== 1) return skipped(report, "Watch capture lease was lost.");
+  await prisma.publicProfileMonitor.updateMany({
+    where: { id: monitor.id, userId: monitor.userId },
     data: { lastAttemptAt: now, retryCount: report.attemptCount, lastError: reason },
   });
   return { status: "RETRY_SCHEDULED" as const, reportExternalId: report.externalId, captureKey: report.captureKey ?? "unknown", nextAttemptAt: nextAttempt.toISOString(), reason };
 }
 
 async function terminalFailure(report: WatchReportRow, monitor: WatchMonitorRow, now: Date, reason: string, shouldRefund: boolean) {
+  if (!(await renewClaim(report))) return skipped(report, "Watch capture lease was lost.");
   let refunded = false;
   if (shouldRefund && report.intentKey) {
     try {
@@ -366,19 +401,24 @@ async function terminalFailure(report: WatchReportRow, monitor: WatchMonitorRow,
       // auditable failure and the settlement state is preserved for review.
     }
   }
-  await prisma.watchReport.update({
-    where: { id: report.id },
+  const where = activeClaimWhere(report);
+  if (!where) return skipped(report, "Watch capture lease is not held.");
+  const failed = await prisma.watchReport.updateMany({
+    where,
     data: { status: "FAILED", lastError: reason, completedAt: now, nextAttemptAt: null, claimToken: null, claimedAt: null },
   });
-  await prisma.publicProfileMonitor.update({
-    where: { id: monitor.id },
+  if (failed.count !== 1) return skipped(report, "Watch capture lease was lost.");
+  await prisma.publicProfileMonitor.updateMany({
+    where: { id: monitor.id, userId: monitor.userId },
     data: { lastAttemptAt: now, retryCount: report.attemptCount, lastError: reason, nextCaptureAt: new Date(now.getTime() + TERMINAL_RETRY_MS) },
   });
   return { status: "FAILED" as const, reportExternalId: report.externalId, captureKey: report.captureKey ?? "unknown", refunded, reason };
 }
 
 async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonitorRow, now: Date): Promise<ScheduledWatchResult> {
+  if (!(await renewClaim(report))) return skipped(report, "Watch capture lease was lost.");
   if (!report.intentKey || !report.captureKey) return terminalFailure(report, monitor, now, "Watch capture identity is incomplete.", false);
+  const captureKey = report.captureKey;
   if (!(await stillEnabled(monitor))) return terminalFailure(report, monitor, now, "Watch was paused before capture started.", false);
 
   const reference = `watch:${report.profileUrl}`;
@@ -405,9 +445,11 @@ async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonito
 
   if (!(await stillEnabled(monitor))) return terminalFailure(report, monitor, now, "Watch was paused before capture completed.", true);
 
+  if (!(await renewClaim(report))) return skipped(report, "Watch capture lease was lost.");
+
   try {
     await finalizeCredits({ amount: report.creditCost, reference, intent: report.intentKey, actorAuthUserId: monitor.userId });
-  } catch {
+  } catch (error) {
     // Keep the HOLD in place for a later idempotent settlement retry. A
     // successful provider read must never be silently refunded as if it did
     // not happen.
@@ -416,20 +458,21 @@ async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonito
 
   const metrics = buildPublicSnapshotMetrics(auditData);
   const previous = await prisma.publicProfileSnapshot.findFirst({
-    where: { monitorId: monitor.id, captureKey: { not: report.captureKey } },
+    where: { monitorId: monitor.id, captureKey: { not: captureKey } },
     orderBy: { capturedAt: "desc" },
     select: { capturedAt: true, followerCount: true, followingCount: true, postCount: true, reelsCollected: true, totalViews: true, medianViews: true, visibleInteractions: true, visibleInteractionRate: true },
   });
   const delta = buildDelta(previous, metrics, now);
   const evidence = watchEvidence({ report, capturedAt: now, auditData, metrics, previous });
-  const safeAudit = publicAudit(auditData);
+  const safeAudit = sanitizeSocialAuditResult(auditData);
+  if (!(await renewClaim(report))) return skipped(report, "Watch capture lease was lost.");
   try {
-    await prisma.$transaction([
-      prisma.publicProfileSnapshot.upsert({
-        where: { captureKey: report.captureKey },
+    await prisma.$transaction(async (tx) => {
+      await tx.publicProfileSnapshot.upsert({
+        where: { captureKey },
         create: {
           monitorId: monitor.id,
-          captureKey: report.captureKey,
+          captureKey,
           capturedAt: now,
           provider: auditData.profile.provider,
           providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(report.platform, monitor.reelLimit)),
@@ -443,9 +486,11 @@ async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonito
           sourceUrls: evidence.sourceUrls,
           ...metrics,
         },
-      }),
-      prisma.watchReport.update({
-        where: { id: report.id },
+      });
+      const reportWhere = activeClaimWhere(report);
+      if (!reportWhere) throw new WatchClaimLostError();
+      const completed = await tx.watchReport.updateMany({
+        where: reportWhere,
         data: {
           status: "COMPLETED",
           reportJson: { type: "WATCH_CAPTURE", audit: safeAudit, metrics, delta, evidence } as Prisma.InputJsonObject,
@@ -458,9 +503,10 @@ async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonito
           claimToken: null,
           claimedAt: null,
         },
-      }),
-      prisma.publicProfileMonitor.update({
-        where: { id: monitor.id },
+      });
+      if (completed.count !== 1) throw new WatchClaimLostError();
+      const monitorUpdated = await tx.publicProfileMonitor.updateMany({
+        where: { id: monitor.id, userId: monitor.userId },
         data: {
           provider: auditData.profile.provider,
           providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(report.platform, monitor.reelLimit)),
@@ -470,16 +516,20 @@ async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonito
           retryCount: 0,
           lastError: null,
         },
-      }),
-    ]);
+      });
+      if (monitorUpdated.count !== 1) throw new Error("Watch monitor no longer exists.");
+    });
   } catch {
+    if (await prisma.watchReport.findUnique({ where: { id: report.id } }).then((current) => current?.status === "COMPLETED").catch(() => false)) {
+      return { status: "COMPLETED", reportExternalId: report.externalId, captureKey: report.captureKey ?? "unknown", provider: auditData.profile.provider, delta };
+    }
     // FINALIZE is already idempotently recorded. Retain the settled hold and
     // retry persistence/reconciliation rather than refunding a successful
     // provider operation or creating a second charge.
     return scheduleRetry(report, monitor, now, "Watch result persistence unavailable.", WATCH_SETTLEMENT_RECOVERY_MS);
   }
 
-  return { status: "COMPLETED", reportExternalId: report.externalId, captureKey: report.captureKey, provider: auditData.profile.provider, delta };
+  return { status: "COMPLETED", reportExternalId: report.externalId, captureKey: report.captureKey ?? "unknown", provider: auditData.profile.provider, delta };
 }
 
 export async function processDueWatchCaptures(now = new Date(), limit = 10): Promise<ScheduledWatchSummary> {
@@ -491,26 +541,46 @@ export async function processDueWatchCaptures(now = new Date(), limit = 10): Pro
   const summary: ScheduledWatchSummary = { inspected: monitors.length, completed: 0, retried: 0, failed: 0, skipped: 0 };
 
   for (const monitor of monitors as WatchMonitorRow[]) {
+    let claimedReport: WatchReportRow | null = null;
     try {
       const active = await prisma.watchReport.findFirst({
         where: { monitorId: monitor.id, status: "RUNNING" },
         orderBy: { createdAt: "desc" },
       });
       const report = (active as WatchReportRow | null) ?? await captureReportForMonitor(monitor, now);
-      const claimed = await claimReport(report, now);
-      if (!claimed) {
+      claimedReport = await claimReport(report, now);
+      if (!claimedReport) {
         summary.skipped += 1;
         continue;
       }
-      const outcome = await executeClaimedReport(claimed, monitor, now);
+      const outcome = await executeClaimedReport(claimedReport, monitor, now);
       if (outcome.status === "COMPLETED") summary.completed += 1;
       else if (outcome.status === "RETRY_SCHEDULED") summary.retried += 1;
       else if (outcome.status === "FAILED") summary.failed += 1;
       else summary.skipped += 1;
     } catch {
+      if (claimedReport) {
+        const where = activeClaimWhere(claimedReport);
+        const released = where
+          ? await prisma.watchReport.updateMany({
+            where,
+            data: { nextAttemptAt: new Date(now.getTime() + RETRY_BASE_MS), lastError: "Watch worker failed.", claimToken: null, claimedAt: null },
+          }).catch(() => ({ count: 0 }))
+          : { count: 0 };
+        if (released.count === 1) {
+          summary.retried += 1;
+          await prisma.publicProfileMonitor.updateMany({
+            where: { id: monitor.id, userId: monitor.userId },
+            data: { lastAttemptAt: now, lastError: "Watch worker failed." },
+          }).catch(() => undefined);
+        } else {
+          summary.skipped += 1;
+        }
+        continue;
+      }
       summary.failed += 1;
-      await prisma.publicProfileMonitor.update({
-        where: { id: monitor.id },
+      await prisma.publicProfileMonitor.updateMany({
+        where: { id: monitor.id, userId: monitor.userId },
         data: { lastAttemptAt: now, lastError: "Watch worker failed.", nextCaptureAt: new Date(now.getTime() + RETRY_BASE_MS) },
       }).catch(() => undefined);
     }

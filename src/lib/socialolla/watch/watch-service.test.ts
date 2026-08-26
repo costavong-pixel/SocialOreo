@@ -98,6 +98,18 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     expect(mocks.prisma.watchReport.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: "COMPLETED" }) }),
     );
+    const finalizeCreateOrder = mocks.prisma.creditTransaction.create.mock.invocationCallOrder.find((order, index) => mocks.prisma.creditTransaction.create.mock.calls[index]?.[0]?.data?.kind === "FINALIZE");
+    const reportUpdateOrder = mocks.prisma.watchReport.update.mock.invocationCallOrder[0];
+    expect(finalizeCreateOrder).toBeDefined();
+    expect(reportUpdateOrder).toBeGreaterThan(finalizeCreateOrder ?? 0);
+  });
+
+  it("uses the exact workspace for entitlement pricing", async () => {
+    const { createWatchService } = await import("./watch-service");
+    await createWatchService().preview("user-1");
+    expect(mocks.prisma.entitlementSnapshot.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { workspaceId: "ws-1" } }));
+    await createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.instagram.com/pricing/", platform: "instagram", confirmed: true });
+    expect(mocks.prisma.entitlementSnapshot.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: { workspaceId: "ws-1" } }));
   });
 
   it("refunds on failure and marks the report failed", async () => {
@@ -131,6 +143,27 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     expect(result).toMatchObject({ reportExternalId: "wpr_existing00000000", status: "COMPLETED", duplicate: true });
     expect(mocks.prisma.watchReport.create).not.toHaveBeenCalled();
     expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it("does not persist or return raw provider payloads", async () => {
+    const { fetchSocialAudit } = await import("@/lib/providers/social/provider-router");
+    (fetchSocialAudit as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      profile: { platform: "instagram", provider: "apify", profileUrl: "https://www.instagram.com/raw/", rawProviderPayload: { token: "must-not-leak" } },
+      videos: [{ platform: "instagram", provider: "apify", url: "https://www.instagram.com/raw/p/1", hashtags: [], mentions: [], rawProviderPayload: { secret: "must-not-leak" } }],
+    });
+    const { createWatchService } = await import("./watch-service");
+    const result = await createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.instagram.com/raw/", platform: "instagram", confirmed: true });
+    expect(JSON.stringify(result)).not.toContain("must-not-leak");
+    expect(JSON.stringify(mocks.prisma.watchReport.update.mock.calls[0]?.[0]?.data?.reportJson)).not.toContain("must-not-leak");
+  });
+
+  it("lists only safe report metadata", async () => {
+    mocks.prisma.watchReport.findMany.mockResolvedValue([]);
+    const { createWatchService } = await import("./watch-service");
+    await createWatchService().list("user-1");
+    expect(mocks.prisma.watchReport.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.not.objectContaining({ reportJson: true }),
+    }));
   });
 
   it("provider guard returns a deterministic fixture and respects the flag", () => {

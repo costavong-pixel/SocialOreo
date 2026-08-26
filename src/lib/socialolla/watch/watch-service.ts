@@ -1,11 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
-import { holdCredits, finalizeCredits, refundCredits, intentKey } from "@/lib/socialolla/credits/batch-service";
+import { holdCredits, finalizeCredits, refundCredits, intentKey, finalizeKey } from "@/lib/socialolla/credits/batch-service";
 import { fetchSocialAudit } from "@/lib/providers/social/provider-router";
 import { liveSocialAuditRuntimeAllowed, providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { socialProviderForPlatform } from "@/lib/providers/social/audit-provider-config";
 import type { NormalizedSocialAuditResult } from "@/lib/providers/social/types";
+import { sanitizeSocialAuditResult } from "@/lib/providers/social/sanitize-audit-result";
 
 export interface WatchCostPreview {
   estimatedCredits: number;
@@ -32,10 +33,17 @@ function newWatchReportExternalId(): string {
  * - live provider calls remain staging-only and are disabled by default.
  */
 export function createWatchService() {
+  function safeStoredAnalysis(value: unknown): NormalizedSocialAuditResult | null {
+    if (!value || typeof value !== "object") return null;
+    const candidate = value as Partial<NormalizedSocialAuditResult>;
+    if (!candidate.profile || !Array.isArray(candidate.videos)) return null;
+    return sanitizeSocialAuditResult(candidate as NormalizedSocialAuditResult);
+  }
+
   async function preview(authUserId: string): Promise<WatchCostPreview> {
     const workspace = await getOrCreatePersonalWorkspace(authUserId);
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspace: { ownerUserId: authUserId } },
+      where: { workspaceId: workspace.dbId },
       orderBy: { validFrom: "desc" },
     });
     const estimatedCredits = entitlement?.watchCreditsPerRequest ?? 1;
@@ -52,7 +60,7 @@ export function createWatchService() {
 
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspace: { ownerUserId: input.authUserId } },
+      where: { workspaceId: workspace.dbId },
       orderBy: { validFrom: "desc" },
     });
     const cost = entitlement?.watchCreditsPerRequest ?? 1;
@@ -65,10 +73,11 @@ export function createWatchService() {
       select: { id: true, externalId: true, status: true, reportJson: true },
     });
     if (replay) {
+      const analysis = replay.status === "COMPLETED" ? safeStoredAnalysis(replay.reportJson) : null;
       return {
         reportExternalId: replay.externalId,
         status: replay.status,
-        ...(replay.status === "COMPLETED" && replay.reportJson ? { analysis: replay.reportJson as unknown as NormalizedSocialAuditResult } : {}),
+        ...(analysis ? { analysis } : {}),
         duplicate: true as const,
       };
     }
@@ -95,10 +104,11 @@ export function createWatchService() {
         select: { id: true, externalId: true, status: true, reportJson: true },
       });
       if (!concurrent) throw error;
+      const analysis = concurrent.status === "COMPLETED" ? safeStoredAnalysis(concurrent.reportJson) : null;
       return {
         reportExternalId: concurrent.externalId,
         status: concurrent.status,
-        ...(concurrent.status === "COMPLETED" && concurrent.reportJson ? { analysis: concurrent.reportJson as unknown as NormalizedSocialAuditResult } : {}),
+        ...(analysis ? { analysis } : {}),
         duplicate: true as const,
       };
     }
@@ -118,23 +128,31 @@ export function createWatchService() {
       // crashed predecessor must still be settled if this attempt fails.
       holdAcquired = true;
 
-      const analysis = await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 });
+      const analysis = sanitizeSocialAuditResult(await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 }));
+      await finalizeCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId });
       await prisma.watchReport.update({
         where: { id: report.id },
-        data: { status: "COMPLETED", reportJson: analysis as object, completedAt: new Date() },
+        data: { status: "COMPLETED", reportJson: analysis as object, completedAt: new Date(), lastError: null },
       });
-      await finalizeCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId });
       return { reportExternalId: report.externalId, status: "COMPLETED", analysis };
     } catch (error) {
-      if (report && report.id) {
-        await prisma.watchReport
-          .updateMany({
-            where: { id: report.id, status: "RUNNING" },
-            data: { status: "FAILED", completedAt: new Date() },
-          })
-          .catch(() => undefined);
+      const finalizationState = await Promise.resolve(prisma.creditTransaction.findUnique({ where: { idempotencyKey: finalizeKey(intent) } }))
+        .then((transaction) => transaction ? true : false)
+        .catch(() => null);
+      if (finalizationState === true) {
+        // The credit settlement is durable, but the report write failed. Keep
+        // the report retryable and never refund a completed settlement.
+        await prisma.watchReport.updateMany({
+          where: { id: report.id, status: "RUNNING" },
+          data: { lastError: "Watch result persistence unavailable." },
+        }).catch(() => undefined);
+      } else if (finalizationState === false) {
+        await prisma.watchReport.updateMany({
+          where: { id: report.id, status: "RUNNING" },
+          data: { status: "FAILED", completedAt: new Date(), lastError: "Watch capture failed." },
+        }).catch(() => undefined);
+        if (holdAcquired) await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId }).catch(() => undefined);
       }
-      if (holdAcquired) await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId }).catch(() => undefined);
       throw error;
     }
   }
@@ -143,6 +161,17 @@ export function createWatchService() {
     const workspace = await getOrCreatePersonalWorkspace(authUserId);
     return prisma.watchReport.findMany({
       where: { workspaceId: workspace.dbId },
+      select: {
+        id: true,
+        externalId: true,
+        profileUrl: true,
+        platform: true,
+        status: true,
+        provider: true,
+        creditCost: true,
+        createdAt: true,
+        completedAt: true,
+      },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
