@@ -8,6 +8,7 @@ import { VariantEditor, type VariantShape } from "@/components/posts/variant-edi
 import { ScheduleControl, type DestinationShape, type OccurrenceShape, type SlotShape } from "@/components/posts/schedule-control";
 import { PublishButton } from "@/components/posts/publish-button";
 import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
+import { toDestinationView } from "@/lib/socialolla/publishing/destination-view";
 
 export const metadata = { title: "Posts — SocialOlla" };
 
@@ -26,10 +27,15 @@ export default async function PostsPage() {
       // unavailable when local development has not configured it.
     }
   }
-  const destinations = (await prisma.destination.findMany({
+  const destinationRows = await prisma.destination.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { createdAt: "asc" },
-  })) as unknown as DestinationShape[];
+    // Never pass a full Prisma Destination row to a client component. In
+    // particular, accessTokenCiphertext, scopes, and platformUserId are
+    // server-only provider fields.
+    select: { externalId: true, label: true, platform: true, status: true, providerDisabled: true },
+  });
+  const destinations: DestinationShape[] = destinationRows.map(toDestinationView);
   const slots = (await prisma.scheduleSlot.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { scheduleAt: "desc" },

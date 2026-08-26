@@ -29,6 +29,12 @@ const mutations = [
     mutate: (text) => text.replace("postRequest: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, destination: { workspaceId: workspace.dbId }", "postRequest: { externalId: input.postRequestExternalId }, destination: {}"),
     control: (text) => text.includes("postRequest: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }") && text.includes("destination: { workspaceId: workspace.dbId }"),
   },
+  {
+    name: "drop ambiguous publish reconciliation",
+    file: "src/lib/socialolla/publishing/publish-worker.ts",
+    mutate: (text) => text.replace("markPublishReconciliationRequired({", "markPublishReconciliationRequired_REMOVED({"),
+    control: (text) => text.includes("markPublishReconciliationRequired({") && text.includes('status: "RECONCILIATION_REQUIRED"'),
+  },
 ];
 
 const failures = [];

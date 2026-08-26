@@ -114,6 +114,25 @@ export async function markPublishFailure(input: { jobId: string; claimToken: str
   });
 }
 
+/**
+ * A provider transport error after the request boundary is ambiguous. Persist
+ * that state immediately while the worker still owns the lease; leaving the
+ * job PROCESSING would make the worker outcome disagree with durable state and
+ * delay reconciliation until stale-lease recovery.
+ */
+export async function markPublishReconciliationRequired(input: { jobId: string; claimToken: string; postDestinationId: string; attemptNumber: number; now: Date; error: unknown }) {
+  return prisma.$transaction(async (tx) => {
+    const error = safeError(input.error);
+    const updated = await tx.publishJob.updateMany({ where: { id: input.jobId, status: "PROCESSING", claimToken: input.claimToken }, data: { status: "RECONCILIATION_REQUIRED", claimToken: null, claimedAt: null, providerCallStartedAt: null, nextAttemptAt: null, lastError: error } });
+    if (updated.count !== 1) return { accepted: false, replayed: true };
+    await tx.publishAttempt.updateMany({ where: { publishJobId: input.jobId, attemptNumber: input.attemptNumber, status: "PROCESSING" }, data: { status: "FAILED", finishedAt: input.now, error } });
+    await tx.postDestination.updateMany({ where: { id: input.postDestinationId, status: "PROCESSING" }, data: { status: "RECONCILIATION_REQUIRED" } });
+    const destination = await tx.postDestination.findUnique({ where: { id: input.postDestinationId }, select: { postRequest: { select: { workspaceId: true } } } });
+    if (destination) await tx.auditEvent.create({ data: { externalId: `evt_${randomUUID().replace(/-/g, "")}`, workspaceId: destination.postRequest.workspaceId, eventType: "post.publish.reconciliation_required", payload: { jobId: input.jobId, error } } });
+    return { accepted: true, replayed: false };
+  });
+}
+
 export async function cancelPublishJob(input: { authUserId: string; jobId: string }): Promise<boolean> {
   const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
   const job = await prisma.publishJob.findFirst({ where: { id: input.jobId, status: "QUEUED", postDestination: { postRequest: { workspaceId: workspace.dbId } } }, select: { id: true, postDestinationId: true } });
