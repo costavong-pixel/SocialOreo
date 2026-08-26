@@ -258,10 +258,20 @@ describe("scheduled Watch execution", () => {
       if (typeof data.claimToken === "string") current = { ...current, attemptCount: Number(current.attemptCount ?? 0) + 1 };
       return { count: 1 };
     });
+    mocks.fetchSocialAudit.mockResolvedValueOnce({
+      profile: {
+        platform: "instagram",
+        provider: "apify",
+        profileUrl: monitor.profileUrl,
+        rawProviderPayload: { secret: "must-not-persist-before-settlement" },
+      },
+      videos: [],
+    });
     mocks.finalizeCredits.mockRejectedValueOnce(new Error("settlement unavailable")).mockResolvedValue({ finalized: true });
 
     const { processDueWatchCaptures } = await import("./scheduled-watch");
     await expect(processDueWatchCaptures(now)).resolves.toMatchObject({ retried: 1, completed: 0 });
+    expect(JSON.stringify(current.reportJson)).not.toContain("must-not-persist-before-settlement");
     await expect(processDueWatchCaptures(now)).resolves.toMatchObject({ completed: 1, retried: 0 });
     expect(mocks.fetchSocialAudit).toHaveBeenCalledTimes(1);
     expect(current.status).toBe("COMPLETED");
