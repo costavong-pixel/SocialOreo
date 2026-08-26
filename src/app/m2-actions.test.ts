@@ -22,6 +22,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 vi.mock("@/lib/auth/current-user", () => ({
   getSessionUser: vi.fn(),
+  getAcceptedSessionUser: () => mockGetVerifiedSessionUser(),
   getVerifiedSessionUser: () => mockGetVerifiedSessionUser(),
 }));
 vi.mock("@/lib/auth/sync-user", () => ({

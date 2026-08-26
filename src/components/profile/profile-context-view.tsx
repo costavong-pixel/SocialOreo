@@ -8,6 +8,12 @@ function roleLabel(role: ProfileContext["role"]): string {
   return "Unavailable";
 }
 
+function acceptanceLabel(state: ProfileContext["acceptanceBootstrapState"]): string {
+  if (state === "active") return "Approved";
+  if (state === "recorded-disabled") return "Recorded (override disabled)";
+  return "Not active";
+}
+
 function Detail({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
     <div className="flex flex-col gap-1 border-b border-white/10 py-3 last:border-b-0 sm:grid sm:grid-cols-[minmax(10rem,0.8fr)_1fr] sm:items-center sm:gap-4">
@@ -35,7 +41,8 @@ export function ProfileContextView({ context }: { context: ProfileContext }) {
           <dl className="mt-3">
             <Detail label="Display name" value={displayName} testId="profile-display-name" />
             <Detail label="Email" value={context.email ?? "Email unavailable"} testId="profile-email" />
-            <Detail label="Email verified" value={context.emailVerified ? "Yes" : "No"} testId="profile-email-verified" />
+            <Detail label="Auth provider" value={context.authProvider} testId="profile-auth-provider" />
+            <Detail label="Provider email verified" value={context.emailVerified ? "Yes" : "No"} testId="profile-email-verified" />
             <Detail label="Role" value={roleLabel(context.role)} testId="profile-role" />
             <Detail label="Account reference" value={context.supportReference} testId="profile-support-reference" />
           </dl>
@@ -74,6 +81,8 @@ export function ProfileContextView({ context }: { context: ProfileContext }) {
           <dl className="mt-3">
             <Detail label="Environment" value="Staging" testId="profile-environment" />
             <Detail label="Provider mode" value={context.providerMode} testId="profile-provider-mode" />
+            <Detail label="Staging acceptance" value={acceptanceLabel(context.acceptanceBootstrapState)} testId="profile-staging-acceptance" />
+            <Detail label="Staging acceptance override" value={context.acceptanceBootstrapState === "active" ? "Active" : "Not active"} testId="profile-staging-override" />
           </dl>
         </section>
       ) : null}

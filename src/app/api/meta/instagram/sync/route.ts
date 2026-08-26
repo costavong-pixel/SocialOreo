@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { fetchInstagramAccountInsights } from "@/lib/instagram-insights/client";
@@ -12,7 +12,7 @@ function redirectToAnalysis(request: NextRequest, state: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const authUser = await getVerifiedSessionUser();
+  const authUser = await getAcceptedSessionUser();
   const config = getInstagramInsightsConfig();
   if (!authUser || !config) return redirectToAnalysis(request, "unavailable");
   let user: { id: string };

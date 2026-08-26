@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({
+  getAcceptedSessionUser: mocks.getVerifiedSessionUser,
   getVerifiedSessionUser: mocks.getVerifiedSessionUser,
 }));
 

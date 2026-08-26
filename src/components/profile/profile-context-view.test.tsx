@@ -17,6 +17,8 @@ const baseContext = {
   displayName: "Costa Vong",
   email: "costavong@gmail.com",
   emailVerified: true,
+  authProvider: "Auth0" as const,
+  acceptanceBootstrapState: "active" as const,
   role: UserRole.ADMIN,
   supportReference: "ABC1234DEF",
   workspaceLabel: "Personal workspace",
@@ -39,6 +41,8 @@ describe("profile account context", () => {
     expect(screen.getByTestId("profile-email").textContent).toBe("costavong@gmail.com");
     expect(screen.getByTestId("profile-role").textContent).toBe("Admin");
     expect(screen.getByTestId("profile-email-verified").textContent).toBe("Yes");
+    expect(screen.getByTestId("profile-auth-provider").textContent).toBe("Auth0");
+    expect(screen.getByTestId("profile-staging-override").textContent).toBe("Active");
     expect(screen.getByTestId("profile-workspace-label").textContent).toBe("Personal workspace");
     expect(screen.getByTestId("profile-environment").textContent).toBe("Staging");
     expect(screen.getByTestId("profile-provider-mode").textContent).toBe("Disabled");

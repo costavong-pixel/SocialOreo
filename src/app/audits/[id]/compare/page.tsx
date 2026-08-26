@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { permanentRedirect, redirect } from "next/navigation";
 
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { ComparisonHookIdeas } from "@/components/report/comparison-hook-ideas";
 import { campaignBriefSchema, campaignGoalOptions } from "@/lib/campaign-brief/types";
@@ -58,7 +58,7 @@ function toCompetitorReport(audit: {
 }
 
 export async function CompetitorComparisonPage({ params, searchParams }: PageProps) {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   const resolution = await resolveDbUserFromVerifiedSession();
   const { id } = await params;
   const requestedSearchParams = await searchParams;

@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/db/prisma";
-import { getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser, getSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
@@ -30,12 +30,12 @@ function signDemoVisitor(token: string): string {
 }
 
 async function requireUser() {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   // Server actions can be invoked during a client navigation after the app
   // shell was rendered. If the Auth0 session is absent or no longer verified,
   // re-enter the approved login flow instead of surfacing a generic Next.js
   // error page. This remains fail-closed: no workspace action runs without a
-  // verified session.
+  // provider-verified session or the explicit staging acceptance cohort.
   if (!sessionUser) redirect("/auth/login?returnTo=%2Fhome");
   // Workspace.ownerUserId references User.id (DB primary key), NOT the Auth0
   // sub. Resolve the session user to the DB User row so every workspace-scoped
@@ -217,8 +217,8 @@ export async function m2AssistantRespond(input: {
 }) {
   // authenticated is always derived from the verified session server-side;
   // a guest (not signed in / unverified) is never treated as authenticated.
-  const verified = await getVerifiedSessionUser();
-  return assistantRespond({ ...input, authenticated: verified !== null });
+  const accepted = await getAcceptedSessionUser();
+  return assistantRespond({ ...input, authenticated: accepted !== null });
 }
 
 export async function m2AdminAdjust(targetAuthUserId: string, amount: number, reason: string) {

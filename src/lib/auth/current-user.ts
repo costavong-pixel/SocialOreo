@@ -1,5 +1,6 @@
 import { auth0 } from "@/lib/auth/auth0";
 import { connectionProviderFromSubject, logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
+import { bootstrapStagingAcceptance } from "@/lib/auth/staging-acceptance";
 
 export type SessionUser = {
   id: string;
@@ -10,6 +11,10 @@ export type SessionUser = {
 
 export type VerifiedSessionUser = SessionUser & {
   email: string;
+};
+
+export type AcceptedSessionUser = VerifiedSessionUser & {
+  acceptance: "provider-verified" | "staging-bootstrap";
 };
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -51,4 +56,32 @@ export async function getVerifiedSessionUser(): Promise<VerifiedSessionUser | nu
   }
 
   return { ...user, email: user.email };
+}
+
+/**
+ * Application authorization boundary. Provider-verified sessions are accepted
+ * normally. The only unverified exception is the explicit, auditable staging
+ * acceptance cohort; production callers continue to use the strict helper.
+ */
+export async function getAcceptedSessionUser(): Promise<AcceptedSessionUser | null> {
+  const user = await getSessionUser();
+  if (!user || !user.email) return null;
+
+  if (user.emailVerified) {
+    return { ...user, email: user.email, acceptance: "provider-verified" };
+  }
+
+  const bootstrap = await bootstrapStagingAcceptance(user);
+  if (bootstrap.status !== "accepted") {
+    logAuthSyncDiagnostic("authorization", {
+      subject: user.id,
+      email: user.email,
+      connectionProvider: connectionProviderFromSubject(user.id),
+      emailVerified: false,
+      redirectResult: "auth-login",
+    });
+    return null;
+  }
+
+  return { ...user, email: user.email, acceptance: bootstrap.acceptance };
 }

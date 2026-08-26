@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 
 import { createAuditSchema } from "@/lib/audit/create-audit-schema";
 import { createAndRunAudit } from "@/lib/audit/run-audit";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 
 export async function POST(request: Request) {
-  const user = await getVerifiedSessionUser();
+  const user = await getAcceptedSessionUser();
 
   if (!user) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });

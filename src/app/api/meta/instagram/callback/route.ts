@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { exchangeInstagramAuthorizationCode, getInstagramProfessionalProfile } from "@/lib/instagram-insights/client";
@@ -13,7 +13,7 @@ function analysisUrl(request: NextRequest, state: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const authUser = await getVerifiedSessionUser();
+  const authUser = await getAcceptedSessionUser();
   const config = getInstagramInsightsConfig();
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");

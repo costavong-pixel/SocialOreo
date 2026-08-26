@@ -1,15 +1,15 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { connectionProviderFromSubject, logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 import { normalizeLocale, localeIsRtl } from "@/lib/socialolla/i18n/locales";
 import { SocialOllaShell } from "@/components/layout/socialolla-shell";
 
 export default async function M2AppLayout({ children }: { children: React.ReactNode }) {
-  // Server-side auth guard: unauthenticated and unverified users never reach
-  // the app shell (no 500 — redirect to Auth0 login).
-  const sessionUser = await getVerifiedSessionUser();
+  // Server-side auth guard: only provider-verified sessions or the explicit,
+  // auditable staging acceptance cohort reach the app shell.
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser) {
     logAuthSyncDiagnostic("authorization", { redirectResult: "auth-login" });
     redirect("/auth/login?returnTo=%2Fhome");
@@ -20,7 +20,7 @@ export default async function M2AppLayout({ children }: { children: React.ReactN
     subject: sessionUser.id,
     email: sessionUser.email,
     connectionProvider: connectionProviderFromSubject(sessionUser.id),
-    emailVerified: true,
+    emailVerified: sessionUser.emailVerified,
     redirectResult: "shell-allowed",
   });
 

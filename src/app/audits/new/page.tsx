@@ -1,5 +1,5 @@
 import { NewAuditForm } from "@/components/audit/new-audit-form";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { evaluateServerMonthlyAvailability } from "@/lib/payments/square/monthly-availability";
 import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
@@ -8,7 +8,7 @@ import { permanentRedirect, redirect } from "next/navigation";
 
 /** Canonical SocialOlla Profile Analysis creation surface. */
 export async function AnalysisNewPage() {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   const resolution = await resolveDbUserFromVerifiedSession();
   if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
   if (!sessionUser || !resolution) redirect("/auth/login");

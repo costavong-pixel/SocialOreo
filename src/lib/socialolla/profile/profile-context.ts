@@ -3,6 +3,7 @@ import { AccessPlan, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { accountSupportReference } from "@/lib/auth/support-reference";
+import { loadStagingAcceptanceProfileState, type StagingAcceptanceProfileState } from "@/lib/auth/staging-acceptance";
 
 export type ProfileSession = {
   id: string;
@@ -20,6 +21,8 @@ export type ProfileContext = {
   displayName: string | null;
   email: string | null;
   emailVerified: boolean;
+  authProvider: "Auth0";
+  acceptanceBootstrapState: StagingAcceptanceProfileState;
   role: UserRole | null;
   supportReference: string;
   workspaceLabel: string | null;
@@ -92,6 +95,7 @@ export async function loadProfileContext(session: ProfileSession, dbUserId?: str
   });
 
   const workspace = user?.workspaces[0] ?? null;
+  const acceptanceBootstrapState = await loadStagingAcceptanceProfileState(session.id, session.email);
   const now = new Date();
   const currentPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   const creditBalance = workspace?.creditBatches.reduce((total, batch) => {
@@ -112,6 +116,8 @@ export async function loadProfileContext(session: ProfileSession, dbUserId?: str
     displayName: session.displayName ?? null,
     email: session.email,
     emailVerified: session.emailVerified,
+    authProvider: "Auth0",
+    acceptanceBootstrapState,
     role: user?.role ?? null,
     supportReference: accountSupportReference(user?.id ?? session.id),
     workspaceLabel: workspace?.label ?? null,

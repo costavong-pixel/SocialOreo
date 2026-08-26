@@ -4,6 +4,7 @@ const mockGetVerifiedSessionUser = vi.fn();
 const mockCreateAndRunAudit = vi.fn();
 
 vi.mock("@/lib/auth/current-user", () => ({
+  getAcceptedSessionUser: () => mockGetVerifiedSessionUser(),
   getVerifiedSessionUser: () => mockGetVerifiedSessionUser(),
 }));
 

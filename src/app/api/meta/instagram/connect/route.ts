@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getInstagramInsightsConfig } from "@/lib/instagram-insights/config";
 import { createInstagramOAuthState } from "@/lib/instagram-insights/oauth";
 
 export async function GET() {
-  const authUser = await getVerifiedSessionUser();
+  const authUser = await getAcceptedSessionUser();
   if (!authUser) return NextResponse.redirect(new URL("/auth/login", process.env.APP_URL));
   const config = getInstagramInsightsConfig();
   if (!config) return NextResponse.redirect(new URL("/analysis?instagram=unavailable", process.env.APP_URL));

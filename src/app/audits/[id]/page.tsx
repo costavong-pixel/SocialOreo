@@ -3,7 +3,7 @@ import { permanentRedirect, redirect } from "next/navigation";
 import { AuditFeedbackCard } from "@/components/report/audit-feedback-card";
 import { AuditReportView, type AuditReportViewModel } from "@/components/report/audit-report-view";
 import { TranscriptEnrichmentRefresh } from "@/components/report/transcript-enrichment-refresh";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { buildPublicMetrics } from "@/lib/reports/public-metrics";
@@ -15,7 +15,7 @@ type PageProps = {
 
 /** Canonical SocialOlla Profile Analysis report surface. */
 export async function AuditReportPage({ params }: PageProps) {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   const resolution = await resolveDbUserFromVerifiedSession();
   const { id } = await params;
 

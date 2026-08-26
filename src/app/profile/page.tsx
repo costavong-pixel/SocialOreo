@@ -17,15 +17,14 @@ export default async function ProfilePage() {
   if (!sessionUser?.email) redirect("/auth/login?returnTo=%2Fprofile");
 
   let dbUserId: string | undefined;
-  if (sessionUser.emailVerified) {
-    const resolution = await resolveDbUserFromVerifiedSession();
-    if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
-    dbUserId = resolution?.dbId;
-    if (dbUserId) await getOrCreatePersonalWorkspace(dbUserId);
-  }
+  const resolution = await resolveDbUserFromVerifiedSession();
+  if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
+  dbUserId = resolution?.dbId;
+  if (dbUserId) await getOrCreatePersonalWorkspace(dbUserId);
 
   const context = await loadProfileContext(sessionUser, dbUserId);
   const isAdmin = sessionUser.emailVerified && context.role === UserRole.ADMIN;
+  const acceptedForApp = Boolean(resolution);
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get("so_locale")?.value);
   const dir = localeIsRtl(locale) ? "rtl" : "ltr";
@@ -37,8 +36,8 @@ export default async function ProfilePage() {
       sessionUser={{ ...sessionUser, email: sessionUser.email }}
       isAdmin={isAdmin}
       accountRole={context.role === UserRole.ADMIN ? "ADMIN" : "USER"}
-      showPrimaryNav={sessionUser.emailVerified}
-      assistantAuthenticated={sessionUser.emailVerified}
+      showPrimaryNav={acceptedForApp}
+      assistantAuthenticated={acceptedForApp}
     >
       <ProfileContextView context={context} />
     </SocialOllaShell>

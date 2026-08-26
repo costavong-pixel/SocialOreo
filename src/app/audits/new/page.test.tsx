@@ -14,7 +14,10 @@ vi.mock("next/navigation", () => ({
   redirect: (path: string) => mockRedirect(path),
   permanentRedirect: (path: string) => mockRedirect(path),
 }));
-vi.mock("@/lib/auth/current-user", () => ({ getVerifiedSessionUser: () => mockGetVerifiedSessionUser() }));
+vi.mock("@/lib/auth/current-user", () => ({
+  getAcceptedSessionUser: () => mockGetVerifiedSessionUser(),
+  getVerifiedSessionUser: () => mockGetVerifiedSessionUser(),
+}));
 vi.mock("@/lib/auth/sync-user", () => ({
   resolveDbUserFromVerifiedSession: () => mockResolveDbUserFromVerifiedSession(),
   hasDbSessionIdentityConflict: (resolution: unknown) => Boolean(resolution && typeof resolution === "object" && "status" in resolution && (resolution as { status?: string }).status === "identity-conflict"),

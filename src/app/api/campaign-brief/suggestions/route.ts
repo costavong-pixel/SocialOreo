@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { campaignBriefSuggestionInputSchema, suggestCampaignBrief } from "@/lib/campaign-brief/suggestions";
 import { checkRateLimit } from "@/lib/rate-limit/rate-limit";
 
 export async function POST(request: Request) {
-  const user = await getVerifiedSessionUser();
+  const user = await getAcceptedSessionUser();
   if (!user) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
   const limit = checkRateLimit(`campaign-brief-suggestion:${user.id}`, { maxRequests: 6, windowMs: 60_000 });

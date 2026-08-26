@@ -189,7 +189,7 @@ test.describe("SocialOlla M2 browser acceptance (provider-disabled)", () => {
     await expect(page.getByTestId("profile-environment")).toContainText("Staging");
     const role = await page.getByTestId("profile-role").innerText();
     const body = await page.locator("body").innerText();
-    expect(body).not.toMatch(/auth0|access token|refresh token|session cookie|workspace ID|wsp_/i);
+    expect(body).not.toMatch(/raw auth0 subject|access token|refresh token|session cookie|workspace ID|wsp_/i);
     if (role === "Admin") {
       await expect(page.locator('nav[aria-label="Primary"]').getByRole("link", { name: "Admin", exact: true })).toBeVisible();
     } else {

@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  findUniqueAudit: vi.fn(),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
-  prisma: { user: { findUnique: mocks.findUnique } },
+  prisma: { user: { findUnique: mocks.findUnique }, auditEvent: { findUnique: mocks.findUniqueAudit } },
 }));
 vi.mock("@/lib/providers/social/provider-guard", () => ({
   providerDisabledEnabled: () => true,
@@ -39,6 +40,7 @@ describe("profile context read model", () => {
     });
     vi.stubEnv("SOCIALOLLA_ENV", "staging");
     vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "true");
+    mocks.findUniqueAudit.mockResolvedValue(null);
   });
 
   it("uses DB role, workspace-owned canonical credits, and connection status", async () => {
@@ -59,6 +61,8 @@ describe("profile context read model", () => {
     ]);
     expect(context.environment).toBe("Staging");
     expect(context.providerMode).toBe("Disabled");
+    expect(context.authProvider).toBe("Auth0");
+    expect(context.acceptanceBootstrapState).toBe("not-active");
   });
 
   it("reads an unverified session by its own subject without creating account state", async () => {

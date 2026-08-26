@@ -1,7 +1,7 @@
 import { Prisma, UserRole } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { connectionProviderFromSubject, logAuthSyncDiagnostic } from "@/lib/auth/auth-sync-diagnostics";
 
 type Auth0User = {
@@ -148,7 +148,7 @@ export function hasDbSessionIdentityConflict(
 }
 
 /**
- * Resolve a verified session to the DB User row. Workspace.ownerUserId
+ * Resolve a provider-verified or explicitly staging-accepted session to the DB User row. Workspace.ownerUserId
  * references User.id (the DB primary key), NOT the Auth0 sub, so every
  * workspace-scoped page/action must use dbUserId for ownership keys.
  *
@@ -157,7 +157,7 @@ export function hasDbSessionIdentityConflict(
  * Auth0 or creating a second account row.
  */
 export async function resolveDbUserFromVerifiedSession(): Promise<DbSessionResolution> {
-  const sessionUser = await getVerifiedSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser) {
     logAuthSyncDiagnostic("sync", { syncResult: "skipped-unverified" });
     return null;
