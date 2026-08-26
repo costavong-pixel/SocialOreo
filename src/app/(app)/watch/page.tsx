@@ -1,5 +1,6 @@
 import { m2WatchReports, m2WatchPreview } from "@/app/m2-actions";
 import { WatchForm } from "@/components/connections/add-destination-form";
+import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { shellStateLabel } from "@/lib/socialolla/shell/shell";
 
 export const metadata = { title: "Watch — SocialOlla" };
@@ -7,11 +8,12 @@ export const metadata = { title: "Watch — SocialOlla" };
 export default async function WatchPage() {
   const preview = await m2WatchPreview();
   const reports = await m2WatchReports();
+  const providerDisabled = providerDisabledEnabled();
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Watch</h1>
-      <p className="mt-2 text-white/70">Monitor a public competitor profile with an exact credit preview. Live monitoring is not enabled in this staging environment.</p>
-      <WatchForm cost={preview.estimatedCredits} batchAvailable={preview.batchAvailable} />
+      <p className="mt-2 text-white/70">Monitor a public competitor profile with an exact credit preview. {providerDisabled ? "Live monitoring is disabled in this staging environment." : "Live monitoring is available only through the configured staging provider."}</p>
+      <WatchForm cost={preview.estimatedCredits} batchAvailable={preview.batchAvailable} providerDisabled={providerDisabled} />
       <div className="mt-6 space-y-3">
         {reports.length === 0 && <p className="text-sm text-white/50">{shellStateLabel("empty")} — no Watch reports yet.</p>}
         {reports.map((r) => (

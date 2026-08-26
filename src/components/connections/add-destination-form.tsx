@@ -86,7 +86,7 @@ export function CreatePostForm({ destinations = [] }: { destinations?: Array<{ e
   );
 }
 
-export function WatchForm({ cost = 1, batchAvailable = true }: { cost?: number; batchAvailable?: boolean }) {
+export function WatchForm({ cost = 1, batchAvailable = true, providerDisabled = true }: { cost?: number; batchAvailable?: boolean; providerDisabled?: boolean }) {
   const [profileUrl, setProfileUrl] = useState("");
   const [step, setStep] = useState<"input" | "confirm">("input");
   const [confirmed, setConfirmed] = useState(false);
@@ -97,7 +97,9 @@ export function WatchForm({ cost = 1, batchAvailable = true }: { cost?: number; 
     setBusy(true);
     try {
       const report = await m2RunWatch(profileUrl, "instagram", true);
-          setResult(`Watch ${report.status}. The staging result is not a live provider observation.`);
+      const providerName = String(report.analysis?.profile?.provider ?? "provider-disabled");
+      const liveObservation = providerName !== "provider-disabled";
+      setResult(`Watch ${report.status}. ${liveObservation ? "Live provider observation recorded." : "Provider-disabled staging fixture recorded."}`);
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : "Failed to run Watch");
     } finally {
@@ -123,10 +125,10 @@ export function WatchForm({ cost = 1, batchAvailable = true }: { cost?: number; 
       {step === "confirm" ? (
         <div className="rounded-2xl border border-[var(--social-blue)]/40 bg-[var(--social-blue)]/10 p-4">
           <p className="text-sm font-bold">Confirm exact cost</p>
-          <p className="mt-1 text-sm text-white/75">One Basic Profile Analysis for <strong>{profileUrl}</strong> uses <strong>{cost} credit{cost === 1 ? "" : "s"}</strong>{batchAvailable ? "" : " — no spendable batch is currently available."} Credits are held, then finalized on success or refunded on failure. Staging does not call a live monitoring provider.</p>
+          <p className="mt-1 text-sm text-white/75">One Basic Profile Analysis for <strong>{profileUrl}</strong> uses <strong>{cost} credit{cost === 1 ? "" : "s"}</strong>{batchAvailable ? "" : " — no spendable batch is currently available."} Credits are held, then finalized on success or refunded on failure. {providerDisabled ? "This staging environment uses a deterministic provider-disabled fixture." : "This staging environment may call the configured live provider."}</p>
           <label className="mt-3 flex items-center gap-2 text-sm text-white/80">
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-            I confirm the exact credit cost and understand that staging does not call a live monitoring provider.
+            I confirm the exact credit cost and understand the staging provider mode shown above.
           </label>
           <div className="mt-3 flex gap-2">
             <button type="submit" disabled={!confirmed || busy} className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff] disabled:opacity-50">Confirm and run Watch</button>
