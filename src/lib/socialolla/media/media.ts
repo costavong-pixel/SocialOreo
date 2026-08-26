@@ -94,3 +94,7 @@ export interface PrivateMediaStorage {
 }
 
 export const mediaLimits = Object.freeze({ imageBytes: MAX_IMAGE_BYTES, videoBytes: MAX_VIDEO_BYTES, filenameLength: MAX_FILENAME_LENGTH });
+
+export function mediaSizeLimitForMime(mimeType: string): number {
+  return mimeType.trim().toLowerCase().startsWith("image/") ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+}

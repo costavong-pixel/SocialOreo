@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createPublishingProvider, livePublishingEnabled, livePublishingRuntimeAllowed } from "./provider";
+import { createPublishingProvider, instagramPublishingOAuthEnabled, livePublishingEnabled, livePublishingRuntimeAllowed } from "./provider";
 
 describe("publishing runtime boundary", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -60,5 +60,14 @@ describe("publishing runtime boundary", () => {
       SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "true",
       SOCIALOLLA_PROVIDER_DISABLED: "false",
     }, true)).toBe(true);
+  });
+
+  it("guards OAuth code exchange with the same staging and provider boundaries", () => {
+    const allowed = { NODE_ENV: "staging", SOCIALOLLA_ENV: "staging", SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "true", SOCIALOLLA_PROVIDER_DISABLED: "false" };
+    expect(instagramPublishingOAuthEnabled(allowed)).toBe(true);
+    expect(instagramPublishingOAuthEnabled({ ...allowed, NODE_ENV: "production" })).toBe(false);
+    expect(instagramPublishingOAuthEnabled({ ...allowed, SOCIALOLLA_ENV: "production" })).toBe(false);
+    expect(instagramPublishingOAuthEnabled({ ...allowed, SOCIALOLLA_PROVIDER_DISABLED: "true" })).toBe(false);
+    expect(instagramPublishingOAuthEnabled({ ...allowed, SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "false" })).toBe(false);
   });
 });

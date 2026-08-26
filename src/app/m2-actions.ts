@@ -12,7 +12,7 @@ import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { proposeProfile, confirmProfile, addSandboxDestination, createFirstPostAndPlan } from "@/lib/socialolla/onboarding/onboarding-actions";
 import { createPostRequest, updatePostVariant, replacePostMedia, approveAndSchedulePost, listPostRequests, publishPostNow, cancelPostPublish, reschedulePostPublish } from "@/lib/socialolla/post/post-actions";
-import { detectMediaMimeType, type MediaKind } from "@/lib/socialolla/media/media";
+import { detectMediaMimeType, mediaSizeLimitForMime, type MediaKind } from "@/lib/socialolla/media/media";
 import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
 import { createOwnedMediaReadGrant, deleteOwnedMedia, storeOwnedMedia } from "@/lib/socialolla/media/media-service";
 import { createWatchService } from "@/lib/socialolla/watch/watch-service";
@@ -145,6 +145,7 @@ export async function m2UploadMedia(formData: FormData) {
   const user = await requireUser();
   const file = formData.get("file");
   if (!(file instanceof File)) throw new Error("An image file is required");
+  if (!Number.isSafeInteger(file.size) || file.size <= 0 || file.size > mediaSizeLimitForMime(file.type)) throw new Error("Media exceeds the size limit");
   const body = new Uint8Array(await file.arrayBuffer());
   const detected = detectMediaMimeType(body);
   if (!detected) throw new Error("Unsupported or invalid media bytes");
