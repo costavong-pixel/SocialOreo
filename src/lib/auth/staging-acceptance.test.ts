@@ -42,7 +42,7 @@ const session = {
 };
 
 const stagingEnvironment: NodeJS.ProcessEnv = {
-  NODE_ENV: "production",
+  NODE_ENV: "test",
   SOCIALOLLA_ENV: "staging",
   APP_BASE_URL: "https://staging.socialolla.com",
   SOCIALOLLA_STAGING_ACCEPTANCE_AUTH_BYPASS: "true",
@@ -77,6 +77,9 @@ describe("staging acceptance bootstrap guard", () => {
 
   it("allows an unverified session only in the exact staging runtime", () => {
     expect(isStagingAcceptanceConfigured(session.email)).toBe(true);
+    vi.stubEnv("NODE_ENV", "production");
+    expect(isStagingAcceptanceConfigured(session.email)).toBe(false);
+    vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("SOCIALOLLA_ENV", "production");
     expect(isStagingAcceptanceConfigured(session.email)).toBe(false);
     vi.stubEnv("SOCIALOLLA_ENV", "staging");

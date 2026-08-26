@@ -9,6 +9,10 @@ const original = fs.readFileSync(targetPath, "utf8");
 
 const mutations = [
   {
+    id: "node-production-boundary",
+    mutate: (value) => value.replace('configuredValue(env, "NODE_ENV").toLowerCase() === "production"', 'configuredValue(env, "NODE_ENV").toLowerCase() !== "production"'),
+  },
+  {
     id: "staging-environment-boundary",
     mutate: (value) => value.replace("configuredEnvironment === STAGING_ENVIRONMENT", "configuredEnvironment === \"production\""),
   },
