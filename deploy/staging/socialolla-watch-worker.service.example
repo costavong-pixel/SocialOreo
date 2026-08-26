@@ -1,0 +1,13 @@
+[Unit]
+Description=SocialOlla staging Watch capture worker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/socialolla/staging
+
+[Service]
+Type=oneshot
+User=socialolla
+WorkingDirectory=/srv/socialolla/staging
+EnvironmentFile=/srv/socialolla/config/socialolla-staging.env
+Environment=SOCIALOLLA_ENV=staging
+ExecStart=/usr/bin/npm run watch-worker:once

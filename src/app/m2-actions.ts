@@ -16,6 +16,7 @@ import { detectMediaMimeType, type MediaKind } from "@/lib/socialolla/media/medi
 import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
 import { createOwnedMediaReadGrant, deleteOwnedMedia, storeOwnedMedia } from "@/lib/socialolla/media/media-service";
 import { createWatchService } from "@/lib/socialolla/watch/watch-service";
+import { configureWatchMonitor, listWatchMonitors, pauseWatchMonitor } from "@/lib/socialolla/watch/scheduled-watch";
 import { runFreeDemo, type DemoResult } from "@/lib/socialolla/demo/demo-service";
 import { assistantRespond } from "@/lib/socialolla/assistant/assistant-api";
 import type { AssistantDomain } from "@/lib/socialolla/assistant/assistant";
@@ -175,6 +176,21 @@ export async function m2WatchPreview() {
 export async function m2RunWatch(profileUrl: string, platform: "instagram" | "tiktok", confirmed = false) {
   const user = await requireUser();
   return createWatchService().run({ authUserId: user.dbId, profileUrl, platform, confirmed });
+}
+
+export async function m2ConfigureWatch(input: { profileUrl: string; platform: "instagram" | "tiktok"; cadenceHours: number; confirmed: boolean }) {
+  const user = await requireUser();
+  return configureWatchMonitor({ ...input, userId: user.dbId });
+}
+
+export async function m2WatchMonitors() {
+  const user = await requireUser();
+  return listWatchMonitors(user.dbId);
+}
+
+export async function m2PauseWatch(profileUrl: string) {
+  const user = await requireUser();
+  return pauseWatchMonitor({ userId: user.dbId, profileUrl });
 }
 
 export async function m2WatchReports() {
