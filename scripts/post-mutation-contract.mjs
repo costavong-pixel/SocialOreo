@@ -14,8 +14,8 @@ const mutations = [
   {
     name: "enable provider in production factory",
     file: "src/lib/socialolla/publishing/provider.ts",
-    mutate: (text) => text.replace("options.mediaStorage && livePublishingRuntimeAllowed() &&", "options.mediaStorage &&"),
-    control: (text) => text.includes("options.mediaStorage && livePublishingRuntimeAllowed() &&") && text.includes('env.NODE_ENV?.trim().toLowerCase() !== "production"'),
+    mutate: (text) => text.replace("if (options.mediaStorage && livePublishingEnabled(process.env, true)) {", "if (options.mediaStorage) {"),
+    control: (text) => text.includes("if (options.mediaStorage && livePublishingEnabled(process.env, true)) {") && text.includes('env.NODE_ENV?.trim().toLowerCase() === "staging"'),
   },
   {
     name: "enable direct Instagram provider in production",
@@ -52,6 +52,12 @@ const mutations = [
     file: "src/lib/socialolla/publishing/publish-worker.ts",
     mutate: (text) => text.replace("markPublishReconciliationRequired({", "markPublishReconciliationRequired_REMOVED({"),
     control: (text) => text.includes("markPublishReconciliationRequired({") && text.includes('status: "RECONCILIATION_REQUIRED"'),
+  },
+  {
+    name: "allow stale publish failure transition",
+    file: "src/lib/socialolla/publishing/job-service.ts",
+    mutate: (text) => text.replace("const claimed = await tx.publishJob.updateMany({ where: { id: input.jobId, status: \"PROCESSING\", claimToken: input.claimToken }, data: { status: retryScheduled", "const claimed = await tx.publishJob.updateMany({ where: { id: input.jobId }, data: { status: retryScheduled"),
+    control: (text) => text.includes("const claimed = await tx.publishJob.updateMany({ where: { id: input.jobId, status: \"PROCESSING\", claimToken: input.claimToken }, data: { status: retryScheduled") && text.includes("if (claimed.count !== 1) return { accepted: false, replayed: true, retryScheduled: false };"),
   },
 ];
 

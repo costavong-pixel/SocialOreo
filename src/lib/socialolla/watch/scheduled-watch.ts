@@ -122,7 +122,7 @@ class WatchClaimLostError extends Error {
 export function assertWatchWorkerStagingRuntime(env: Record<string, string | undefined> = process.env): void {
   const nodeEnvironment = (env.NODE_ENV ?? "").trim().toLowerCase();
   const appEnvironment = (env.SOCIALOLLA_ENV ?? "").trim().toLowerCase();
-  if (nodeEnvironment === "production" || appEnvironment !== "staging") {
+  if (nodeEnvironment !== "staging" || appEnvironment !== "staging") {
     throw new Error("The Watch worker is staging-only.");
   }
 }

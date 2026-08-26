@@ -105,8 +105,9 @@ export async function markPublishFailure(input: { jobId: string; claimToken: str
     if (!job) return { accepted: false, replayed: true, retryScheduled: false };
     const retryScheduled = input.retryable && job.attemptCount < MAX_PUBLISH_ATTEMPTS;
     const error = safeError(input.error);
+    const claimed = await tx.publishJob.updateMany({ where: { id: input.jobId, status: "PROCESSING", claimToken: input.claimToken }, data: { status: retryScheduled ? "QUEUED" : "FAILED", claimToken: null, claimedAt: null, providerCallStartedAt: null, nextAttemptAt: retryScheduled ? publishRetryAt(input.now, job.attemptCount) : null, lastError: error } });
+    if (claimed.count !== 1) return { accepted: false, replayed: true, retryScheduled: false };
     await tx.publishAttempt.updateMany({ where: { publishJobId: input.jobId, attemptNumber: input.attemptNumber, status: "PROCESSING" }, data: { status: "FAILED", finishedAt: input.now, error } });
-    await tx.publishJob.update({ where: { id: input.jobId }, data: { status: retryScheduled ? "QUEUED" : "FAILED", claimToken: null, claimedAt: null, providerCallStartedAt: null, nextAttemptAt: retryScheduled ? publishRetryAt(input.now, job.attemptCount) : null, lastError: error } });
     await tx.postDestination.updateMany({ where: { id: input.postDestinationId, status: "PROCESSING" }, data: { status: retryScheduled ? "QUEUED" : "FAILED" } });
     const destination = await tx.postDestination.findUnique({ where: { id: input.postDestinationId }, select: { postRequest: { select: { workspaceId: true } } } });
     if (destination) await tx.auditEvent.create({ data: { externalId: `evt_${randomUUID().replace(/-/g, "")}`, workspaceId: destination.postRequest.workspaceId, eventType: "post.publish.provider_failure", payload: { jobId: input.jobId, retryScheduled, error } } });
