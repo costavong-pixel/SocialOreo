@@ -6,6 +6,24 @@ const source = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 
 const mutations = [
   {
+    name: "publish unapproved first variant",
+    file: "src/lib/socialolla/post/post-actions.ts",
+    mutate: (text) => text.replace("const variant = post.variants.find((candidate) => candidate.isFinal);", "const variant = post.variants.find((candidate) => candidate.isFinal) ?? post.variants[0];"),
+    control: (text) => text.includes("const variant = post.variants.find((candidate) => candidate.isFinal);") && text.includes('throw new Error("No approved final variant")'),
+  },
+  {
+    name: "enable provider in production factory",
+    file: "src/lib/socialolla/publishing/provider.ts",
+    mutate: (text) => text.replace("options.mediaStorage && livePublishingRuntimeAllowed() &&", "options.mediaStorage &&"),
+    control: (text) => text.includes("options.mediaStorage && livePublishingRuntimeAllowed() &&") && text.includes('env.NODE_ENV?.trim().toLowerCase() !== "production"'),
+  },
+  {
+    name: "enable direct Instagram provider in production",
+    file: "src/lib/socialolla/publishing/instagram-provider.ts",
+    mutate: (text) => text.replace("!livePublishingRuntimeAllowed() || ", ""),
+    control: (text) => text.includes("!livePublishingRuntimeAllowed() ||") && text.includes("PublishingProviderDisabledError"),
+  },
+  {
     name: "remove DB Post write",
     file: "src/lib/socialolla/post/post-actions.ts",
     mutate: (text) => text.replace("tx.postRequest.create({", "tx.postRequest.create_REMOVED({"),

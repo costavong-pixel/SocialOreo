@@ -18,10 +18,19 @@ export class PublishingProviderDisabledError extends Error {
   }
 }
 
+/**
+ * The recovered publishing slice is a staging acceptance surface. Keep the
+ * production runtime as an unconditional deny boundary until production
+ * publishing is separately approved and implemented.
+ */
+export function livePublishingRuntimeAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV?.trim().toLowerCase() !== "production" && env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging";
+}
+
 export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {
   const capabilities = platformCapabilities(platform);
   if (!capabilities || platform !== "instagram") throw new Error(`No publishing provider contract exists for ${platform}`);
-  if (options.mediaStorage && process.env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && process.env.SOCIALOLLA_PROVIDER_DISABLED !== "true") {
+  if (options.mediaStorage && livePublishingRuntimeAllowed() && process.env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && process.env.SOCIALOLLA_PROVIDER_DISABLED !== "true") {
     const { createInstagramPublishingProvider } = require("./instagram-provider") as typeof import("./instagram-provider");
     return createInstagramPublishingProvider(options.mediaStorage);
   }

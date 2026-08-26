@@ -95,8 +95,8 @@ export async function publishPostNow(input: { authUserId: string; postRequestExt
   const workspace = await ownedWorkspace(input.authUserId);
   const post = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { variants: true, destinations: { include: { destination: true, publishJobs: true } } } });
   if (!post) throw new Error("Post request not found");
-  const variant = post.variants.find((candidate) => candidate.isFinal) ?? post.variants[0];
-  if (!variant) throw new Error("Post has no variant");
+  const variant = post.variants.find((candidate) => candidate.isFinal);
+  if (!variant) throw new Error("No approved final variant");
   if (variant.platform === "instagram" && (!variant.mediaAssetIds.length || variant.mediaAssetIds.length > 1)) throw new Error("Instagram image publishing requires exactly one image asset");
   const targets = post.destinations.filter((target) => target.destination.status === "CONNECTED");
   if (!targets.length) throw new Error("Connect a publishing-eligible Instagram destination first");
