@@ -39,7 +39,7 @@ describe("WatchForm", () => {
     expect(m2RunWatchMock).toHaveBeenCalledWith("https://www.instagram.com/example/", "instagram", true);
   });
 
-  it("shows the provider-disabled batch unavailability when no spendable batch exists", () => {
+  it("shows batch unavailability when no spendable batch exists", () => {
     render(<WatchForm cost={1} batchAvailable={false} />);
 
     fireEvent.change(screen.getByLabelText("Public profile URL"), { target: { value: "https://www.instagram.com/example/" } });
