@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { providerDisabledEnabled } from "./provider-guard";
 
 const mocks = vi.hoisted(() => ({
   instagram: vi.fn(),
@@ -30,9 +31,24 @@ describe("social provider router", () => {
     expect(mocks.instagram).not.toHaveBeenCalled();
   });
 
+  it("keeps the fixture when the provider-disabled flag is absent or malformed", async () => {
+    vi.stubEnv("NODE_ENV", "staging");
+    vi.stubEnv("SOCIALOLLA_ENV", "staging");
+    expect(providerDisabledEnabled({ NODE_ENV: "staging", SOCIALOLLA_ENV: "staging" })).toBe(true);
+    expect(providerDisabledEnabled({ SOCIALOLLA_PROVIDER_DISABLED: "unexpected" })).toBe(true);
+
+    const { fetchSocialAudit } = await import("./provider-router");
+    const result = await fetchSocialAudit("instagram", { url: "https://www.instagram.com/example/", limit: 30 });
+
+    expect(result.profile.provider).toBe("provider-disabled");
+    expect(mocks.instagram).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["production", "staging"],
     ["staging", "preview"],
+    ["development", "staging"],
+    ["test", "staging"],
   ])("refuses live providers outside the exact staging runtime (%s/%s)", async (nodeEnv, socialollaEnv) => {
     vi.stubEnv("NODE_ENV", nodeEnv);
     vi.stubEnv("SOCIALOLLA_ENV", socialollaEnv);
