@@ -33,8 +33,8 @@ const mutations = [
     id: "remove-one-off-payload-sanitizer",
     file: targets.service,
     mutate: (value) => value.replace(
-      "const analysis = sanitizeSocialAuditResult(await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 }));",
-      "const analysis = await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 });",
+      "const analysis = sanitizeSocialAuditResult(await fetchSocialAudit(input.platform, { url: profileUrl, limit: 30 }));",
+      "const analysis = await fetchSocialAudit(input.platform, { url: profileUrl, limit: 30 });",
     ),
   },
   {
