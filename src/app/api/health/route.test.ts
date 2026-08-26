@@ -27,12 +27,27 @@ describe("GET /api/health", () => {
   it("fails safe when a release has no explicit identity", async () => {
     vi.stubEnv("SOCIALOLLA_ENV", "");
     vi.stubEnv("SOCIALOLLA_REVISION", "");
+    vi.stubEnv("RELEASE_GIT_SHA", "");
     vi.stubEnv("SOCIALOLLA_BUILD_TIMESTAMP", "");
+    vi.stubEnv("RELEASE_BUILD_TIMESTAMP", "");
 
     const body = await GET().json();
 
     expect(body.service).toBe("socialolla");
     expect(body.revision).toBe("unknown");
     expect(body.buildTimestamp).toBeNull();
+  });
+
+  it("accepts the existing immutable release markers", async () => {
+    vi.stubEnv("SOCIALOLLA_ENV", "staging");
+    vi.stubEnv("SOCIALOLLA_REVISION", "");
+    vi.stubEnv("RELEASE_GIT_SHA", "dc2ab99fd493d3c91d26b60f74b354127bd1bc70");
+    vi.stubEnv("SOCIALOLLA_BUILD_TIMESTAMP", "");
+    vi.stubEnv("RELEASE_BUILD_TIMESTAMP", "2026-08-25T17:00:00.000Z");
+
+    const body = await GET().json();
+
+    expect(body.revision).toBe("dc2ab99fd493d3c91d26b60f74b354127bd1bc70");
+    expect(body.buildTimestamp).toBe("2026-08-25T17:00:00.000Z");
   });
 });

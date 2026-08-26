@@ -6,6 +6,15 @@ export type ReleaseIdentity = {
   buildTimestamp: string | null;
 };
 
+function firstConfigured(...names: string[]): string | null {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+
+  return null;
+}
+
 function getEnvironment(): ReleaseEnvironment {
   const configured = process.env.SOCIALOLLA_ENV?.trim().toLowerCase();
 
@@ -26,7 +35,7 @@ function getEnvironment(): ReleaseEnvironment {
 export function getReleaseIdentity(): ReleaseIdentity {
   return {
     environment: getEnvironment(),
-    revision: process.env.SOCIALOLLA_REVISION?.trim() || "unknown",
-    buildTimestamp: process.env.SOCIALOLLA_BUILD_TIMESTAMP?.trim() || null,
+    revision: firstConfigured("SOCIALOLLA_REVISION", "RELEASE_GIT_SHA") ?? "unknown",
+    buildTimestamp: firstConfigured("SOCIALOLLA_BUILD_TIMESTAMP", "RELEASE_BUILD_TIMESTAMP"),
   };
 }
