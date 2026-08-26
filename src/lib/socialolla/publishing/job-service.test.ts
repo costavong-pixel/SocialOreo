@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
-    publishJob: { updateMany: vi.fn(), findUnique: vi.fn() },
+    publishJob: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     publishAttempt: { updateMany: vi.fn() },
     postDestination: { updateMany: vi.fn(), findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -21,6 +21,7 @@ describe("publish job reconciliation state", () => {
         callback(mocks.prisma),
     );
     mocks.prisma.publishJob.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.publishJob.findFirst.mockResolvedValue({ attemptCount: 1 });
     mocks.prisma.publishAttempt.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.postDestination.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.postDestination.findUnique.mockResolvedValue({
@@ -97,6 +98,48 @@ describe("publish job reconciliation state", () => {
       }),
     ).resolves.toEqual({ accepted: false, replayed: true });
     expect(mocks.prisma.publishAttempt.updateMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps a publish failure transition claim-bound", async () => {
+    const { markPublishFailure } = await import("./job-service");
+    const now = new Date("2026-08-26T10:00:00.000Z");
+
+    await expect(markPublishFailure({
+      jobId: "job-1",
+      claimToken: "worker-1:claim-1",
+      postDestinationId: "post-destination-1",
+      attemptNumber: 1,
+      now,
+      error: new Error("provider failed"),
+      retryable: true,
+    })).resolves.toEqual({ accepted: true, replayed: false, retryScheduled: true });
+
+    expect(mocks.prisma.publishJob.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "job-1", status: "PROCESSING", claimToken: "worker-1:claim-1" },
+      data: expect.objectContaining({ status: "QUEUED", claimToken: null, lastError: "provider failed" }),
+    }));
+    expect(mocks.prisma.publishAttempt.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { publishJobId: "job-1", attemptNumber: 1, status: "PROCESSING" },
+      data: expect.objectContaining({ status: "FAILED", finishedAt: now }),
+    }));
+  });
+
+  it("does not finalize attempts when the claim is lost after the initial read", async () => {
+    mocks.prisma.publishJob.updateMany.mockResolvedValueOnce({ count: 0 });
+    const { markPublishFailure } = await import("./job-service");
+
+    await expect(markPublishFailure({
+      jobId: "job-1",
+      claimToken: "stale-claim",
+      postDestinationId: "post-destination-1",
+      attemptNumber: 1,
+      now: new Date(),
+      error: new Error("provider failed"),
+      retryable: true,
+    })).resolves.toEqual({ accepted: false, replayed: true, retryScheduled: false });
+    expect(mocks.prisma.publishAttempt.updateMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.postDestination.updateMany).not.toHaveBeenCalled();
     expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
   });
 });

@@ -112,6 +112,7 @@ describe("scheduled Watch execution", () => {
   it("requires confirmation and configures one normalized monitor", async () => {
     const { assertWatchWorkerStagingRuntime, configureWatchMonitor } = await import("./scheduled-watch");
     expect(() => assertWatchWorkerStagingRuntime({ NODE_ENV: "production", SOCIALOLLA_ENV: "staging" })).toThrow("staging-only");
+    expect(() => assertWatchWorkerStagingRuntime({ NODE_ENV: "development", SOCIALOLLA_ENV: "staging" })).toThrow("staging-only");
     expect(() => assertWatchWorkerStagingRuntime({ NODE_ENV: "staging", SOCIALOLLA_ENV: "production" })).toThrow("staging-only");
     expect(() => assertWatchWorkerStagingRuntime({ NODE_ENV: "staging", SOCIALOLLA_ENV: "staging" })).not.toThrow();
     await expect(configureWatchMonitor({ userId: "user-1", profileUrl: "https://www.instagram.com/example/", platform: "instagram", cadenceHours: 168, confirmed: false })).rejects.toThrow("confirmation");

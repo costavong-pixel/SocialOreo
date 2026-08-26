@@ -12,7 +12,7 @@ const mutations = [
   {
     id: "remove-staging-worker-guard",
     file: targets.scheduled,
-    mutate: (value) => value.replace('if (nodeEnvironment === "production" || appEnvironment !== "staging")', "if (false)"),
+    mutate: (value) => value.replace('if (nodeEnvironment !== "staging" || appEnvironment !== "staging")', "if (false)"),
   },
   {
     id: "remove-scheduled-confirmation",

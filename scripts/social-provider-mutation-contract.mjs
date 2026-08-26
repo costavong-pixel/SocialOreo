@@ -6,6 +6,7 @@ const root = process.cwd();
 const targets = {
   guard: "src/lib/providers/social/provider-guard.ts",
   router: "src/lib/providers/social/provider-router.ts",
+  publishing: "src/lib/socialolla/publishing/provider.ts",
 };
 
 const mutations = [
@@ -34,6 +35,16 @@ const mutations = [
     file: targets.router,
     mutate: (value) => value.replace('if (!liveSocialAuditRuntimeAllowed()) {', 'if (false) {'),
   },
+  {
+    id: "allow-publishing-outside-exact-staging",
+    file: targets.publishing,
+    mutate: (value) => value.replace('env.NODE_ENV?.trim().toLowerCase() === "staging"', 'env.NODE_ENV?.trim().toLowerCase() !== "staging"'),
+  },
+  {
+    id: "allow-publishing-with-disabled-default",
+    file: targets.publishing,
+    mutate: (value) => value.replace("!providerDisabledEnabled(env)", "providerDisabledEnabled(env)"),
+  },
 ];
 
 const testArgs = [
@@ -41,6 +52,7 @@ const testArgs = [
   "run",
   "src/lib/providers/social/provider-router.test.ts",
   "src/lib/socialolla/watch/watch-service.test.ts",
+  "src/lib/socialolla/publishing/provider.test.ts",
   "--pool=threads",
   "--maxWorkers=1",
   "--no-file-parallelism",
