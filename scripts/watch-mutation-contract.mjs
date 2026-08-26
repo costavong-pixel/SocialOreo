@@ -27,7 +27,10 @@ const mutations = [
   {
     id: "remove-scheduled-payload-sanitizer",
     file: targets.scheduled,
-    mutate: (value) => value.replace("const safeAudit = sanitizeSocialAuditResult(auditData);", "const safeAudit = auditData;"),
+    mutate: (value) => value.replace(
+      "auditData = sanitizeSocialAuditResult(await fetchSocialAudit(platform(report.platform) as SocialPlatform, { url: report.profileUrl, limit: monitor.reelLimit }));",
+      "auditData = await fetchSocialAudit(platform(report.platform) as SocialPlatform, { url: report.profileUrl, limit: monitor.reelLimit });",
+    ),
   },
   {
     id: "remove-one-off-payload-sanitizer",
