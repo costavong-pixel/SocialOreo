@@ -68,7 +68,7 @@ export async function m2SetLocale(locale: string) {
     sameSite: "lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" || ["staging", "production"].includes(process.env.SOCIALOLLA_ENV?.trim().toLowerCase() ?? ""),
   });
   revalidatePath("/", "layout");
   return { locale: normalized };
