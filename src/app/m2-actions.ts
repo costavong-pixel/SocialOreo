@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { prisma } from "@/lib/db/prisma";
-import { getAcceptedSessionUser, getSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser, getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
@@ -202,7 +202,7 @@ export async function m2Demo(topic: string): Promise<M2DemoResponse> {
 }
 
 export async function m2RequireAdmin() {
-  const user = await getSessionUser();
+  const user = await getVerifiedSessionUser();
   if (!user) return { admin: false };
   const ok = await requireAdminByAuthUserId(user.id);
   return { admin: ok };

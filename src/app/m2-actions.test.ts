@@ -36,7 +36,26 @@ vi.mock("@/lib/socialolla/admin/admin-actions", () => ({
   adminAdjustCredits: (...args: unknown[]) => mockAdminAdjustCredits(...args),
 }));
 
-import { m2AdminAdjust } from "./m2-actions";
+import { m2AdminAdjust, m2RequireAdmin } from "./m2-actions";
+
+describe("m2RequireAdmin verification boundary", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("rejects an unverified session before checking the DB role", async () => {
+    mockGetVerifiedSessionUser.mockResolvedValue(null);
+
+    await expect(m2RequireAdmin()).resolves.toEqual({ admin: false });
+    expect(mockRequireAdminByAuthUserId).not.toHaveBeenCalled();
+  });
+
+  it("checks the DB role only for a provider-verified session", async () => {
+    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-admin", email: "admin@example.com", emailVerified: true });
+    mockRequireAdminByAuthUserId.mockResolvedValue(true);
+
+    await expect(m2RequireAdmin()).resolves.toEqual({ admin: true });
+    expect(mockRequireAdminByAuthUserId).toHaveBeenCalledWith("auth0-admin");
+  });
+});
 
 describe("m2AdminAdjust target identity boundary", () => {
   afterEach(() => vi.clearAllMocks());
