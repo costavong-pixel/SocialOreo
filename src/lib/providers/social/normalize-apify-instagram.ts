@@ -4,6 +4,7 @@ import {
   type NormalizedSocialProfile,
   type NormalizedSocialVideo,
 } from "./types";
+import { safeHttpsUrl } from "@/lib/validators/external-url";
 
 type ApifyInstagramItem = Record<string, unknown>;
 
@@ -119,8 +120,8 @@ function normalizeVideo(item: ApifyInstagramItem, profileUrl: string): Normalize
   const providerVideoId =
     asString(item.id) ?? asString(item.shortCode) ?? asString(item.code) ?? asString(item.postId);
   const url =
-    asString(item.url) ??
-    (providerVideoId ? `https://www.instagram.com/p/${providerVideoId}/` : profileUrl);
+    safeHttpsUrl(asString(item.url)) ??
+    (providerVideoId ? `https://www.instagram.com/p/${providerVideoId}/` : safeHttpsUrl(profileUrl) ?? "https://www.instagram.com/");
 
   return {
     platform: "instagram",
@@ -139,9 +140,8 @@ function normalizeVideo(item: ApifyInstagramItem, profileUrl: string): Normalize
     shareCount: asNumber(item.sharesCount) ?? asNumber(item.shareCount),
     saveCount: asNumber(item.savesCount) ?? asNumber(item.saveCount),
     postedAt: asString(item.timestamp) ?? asString(item.takenAt) ?? asString(item.publishedAt),
-    thumbnailUrl:
-      asString(item.displayUrl) ?? asString(item.thumbnailUrl) ?? asString(item.imageUrl),
-    videoUrlIfAvailable: asString(item.videoUrl) ?? asString(item.video),
+    thumbnailUrl: safeHttpsUrl(asString(item.displayUrl) ?? asString(item.thumbnailUrl) ?? asString(item.imageUrl)),
+    videoUrlIfAvailable: safeHttpsUrl(asString(item.videoUrl) ?? asString(item.video)),
     transcriptIfAvailable: asString(item.transcript),
     rawProviderPayload: item,
   };

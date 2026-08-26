@@ -41,9 +41,9 @@ export async function startApifyActor(options: Pick<RunApifyActorOptions, "token
   const normalizedActorId = normalizeApifyActorId(options.actorId);
   const encodedActorId = encodeURIComponent(normalizedActorId);
 
-  const runResponse = await fetch(`${APIFY_BASE_URL}/acts/${encodedActorId}/runs?token=${options.token}`, {
+  const runResponse = await fetch(`${APIFY_BASE_URL}/acts/${encodedActorId}/runs`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${options.token}` },
     body: JSON.stringify(options.input),
   });
 
@@ -66,7 +66,9 @@ export async function startApifyActor(options: Pick<RunApifyActorOptions, "token
 }
 
 export async function getApifyRunStatus(options: Pick<RunApifyActorOptions, "token"> & { runId: string }): Promise<ApifyRunStatus> {
-  const statusResponse = await fetch(`${APIFY_BASE_URL}/actor-runs/${options.runId}?token=${options.token}`);
+  const statusResponse = await fetch(`${APIFY_BASE_URL}/actor-runs/${options.runId}`, {
+    headers: { Authorization: `Bearer ${options.token}` },
+  });
 
   if (!statusResponse.ok) {
     throw new ApifyClientError(`Apify status check failed with status ${statusResponse.status}.`, statusResponse.status);
@@ -80,7 +82,9 @@ export async function getApifyRunStatus(options: Pick<RunApifyActorOptions, "tok
 }
 
 export async function getApifyDatasetItems(options: Pick<RunApifyActorOptions, "token"> & { datasetId: string }): Promise<Record<string, unknown>[]> {
-  const datasetResponse = await fetch(`${APIFY_BASE_URL}/datasets/${options.datasetId}/items?token=${options.token}`);
+  const datasetResponse = await fetch(`${APIFY_BASE_URL}/datasets/${options.datasetId}/items`, {
+    headers: { Authorization: `Bearer ${options.token}` },
+  });
 
   if (!datasetResponse.ok) {
     throw new ApifyClientError(`Apify dataset fetch failed with status ${datasetResponse.status}.`, datasetResponse.status);

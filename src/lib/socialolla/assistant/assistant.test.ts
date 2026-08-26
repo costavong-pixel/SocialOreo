@@ -69,6 +69,31 @@ describe("Slice G — unified assistant contract", () => {
     expect(right.ok).toBe(true);
   });
 
+  it("does not accept two attacker-controlled matching client tokens", () => {
+    const result = confirmExecute({
+      domain: "post_assistance",
+      action: "Execute",
+      preview: "Publish caption X",
+      confirmationToken: "attacker-controlled",
+      providedToken: "attacker-controlled",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("binds confirmation to the original intent and canonical actor", () => {
+    const intent = "publish the first post";
+    const token = runAssistantStep(intent, "post_assistance", "auth0|owner").confirmationToken!;
+    const base = {
+      domain: "post_assistance" as const,
+      action: "Execute" as const,
+      preview: "Publish caption X",
+      providedToken: token,
+    };
+    expect(confirmExecute({ ...base, intent: "publish a different post", actorAuthUserId: "auth0|owner" }).ok).toBe(false);
+    expect(confirmExecute({ ...base, intent, actorAuthUserId: "auth0|other" }).ok).toBe(false);
+    expect(confirmExecute({ ...base, intent, actorAuthUserId: "auth0|owner" }).ok).toBe(true);
+  });
+
   it("never invents prices or amounts in cost explanations", () => {
     const text = costExplanation({ estimatedCredits: 1, batchAvailable: true, remainingAfter: 19 });
     expect(text).toContain("1 credit");

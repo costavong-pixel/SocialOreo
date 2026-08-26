@@ -746,6 +746,7 @@ enum PublishAttemptStatus {
 model WatchReport {
   id          String            @id @default(cuid())
   externalId  String            @unique
+  intentKey   String?           @unique
   workspaceId String
   profileUrl  String
   platform    String

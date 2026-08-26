@@ -10,11 +10,14 @@ export function assistantRespond(input: {
   intent: string;
   domain: AssistantDomain;
   authenticated: boolean;
+  /** Derived by the authenticated server action; never accepted from browser input. */
+  actorAuthUserId?: string;
   providedToken?: string;
+  /** @deprecated Kept for wire compatibility; confirmExecute ignores it. */
   expectedToken?: string;
   preview?: string;
 }) {
-  const step = runAssistantStep(input.intent, input.domain);
+  const step = runAssistantStep(input.intent, input.domain, input.actorAuthUserId);
   const sanitizedIntent = sanitizeTranscript(input.intent);
 
   if (step.action === "Execute") {
@@ -26,7 +29,7 @@ export function assistantRespond(input: {
         transcript: sanitizedIntent,
       };
     }
-    if (!input.expectedToken || !input.providedToken || !input.preview) {
+    if (!input.providedToken || !input.preview) {
       return {
         action: step.action,
         summary: "Exact preview and confirmation are required.",
@@ -41,6 +44,8 @@ export function assistantRespond(input: {
       preview: input.preview,
       confirmationToken: input.expectedToken,
       providedToken: input.providedToken,
+      intent: input.intent,
+      actorAuthUserId: input.actorAuthUserId,
     });
     return {
       action: step.action,

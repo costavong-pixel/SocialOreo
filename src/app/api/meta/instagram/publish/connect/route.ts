@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { getInstagramPublishingConfig, INSTAGRAM_PUBLISHING_SCOPES } from "@/lib/instagram-publishing/config";
 import { createInstagramOAuthState } from "@/lib/instagram-insights/oauth";
 
 export async function GET(request: NextRequest) {
-  const authUser = await getVerifiedSessionUser();
+  const authUser = await getAcceptedSessionUser();
   if (!authUser) return NextResponse.redirect(new URL("/auth/login", request.url));
   const config = getInstagramPublishingConfig();
   if (!config) return NextResponse.redirect(new URL("/connections?instagram=unavailable", request.url));

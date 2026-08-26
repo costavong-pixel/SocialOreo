@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => {
     creditBatch: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
     creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
     auditEvent: { create: vi.fn() },
-    watchReport: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
+    watchReport: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
     $transaction: vi.fn(),
   };
   return { prisma };
@@ -62,6 +62,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     mocks.prisma.watchReport.create.mockResolvedValue({ id: "wr-1", externalId: "wpr_report000000000" });
     mocks.prisma.watchReport.update.mockResolvedValue({ id: "wr-1" });
     mocks.prisma.watchReport.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.watchReport.findUnique.mockResolvedValue(null);
     mocks.prisma.watchReport.findMany.mockResolvedValue([]);
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
       if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
@@ -116,6 +117,20 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     );
     const kinds = mocks.prisma.creditTransaction.create.mock.calls.map((call) => call[0].data.kind);
     expect(kinds).toContain("REFUND");
+  });
+
+  it("replays an identical Watch operation instead of creating another report", async () => {
+    mocks.prisma.watchReport.findUnique.mockResolvedValue({
+      id: "wr-existing",
+      externalId: "wpr_existing00000000",
+      status: "COMPLETED",
+      reportJson: { profile: { provider: "provider-disabled" } },
+    });
+    const { createWatchService } = await import("./watch-service");
+    const result = await createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.instagram.com/test/", platform: "instagram", confirmed: true });
+    expect(result).toMatchObject({ reportExternalId: "wpr_existing00000000", status: "COMPLETED", duplicate: true });
+    expect(mocks.prisma.watchReport.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
   });
 
   it("provider guard returns a deterministic fixture and respects the flag", () => {

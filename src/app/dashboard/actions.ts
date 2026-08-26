@@ -3,7 +3,7 @@
 import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { competitorLimitForPlan } from "@/lib/competitors/entitlements";
 import { prisma } from "@/lib/db/prisma";
@@ -15,7 +15,7 @@ import { normalizeTrendWatchlistInput } from "@/lib/trends/watchlist";
 
 export async function addCompetitorToBoard(formData: FormData) {
   const auditJobId = String(formData.get("auditJobId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !auditJobId) return;
 
   const account = await prisma.user.findUnique({
@@ -53,7 +53,7 @@ export async function addCompetitorToBoard(formData: FormData) {
 
 export async function removeCompetitorFromBoard(formData: FormData) {
   const auditJobId = String(formData.get("auditJobId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !auditJobId) return;
 
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
@@ -77,7 +77,7 @@ export async function removeCompetitorFromBoard(formData: FormData) {
 
 export async function startPublicSnapshotHistory(formData: FormData) {
   const auditJobId = String(formData.get("auditJobId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !auditJobId) return;
 
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
@@ -88,7 +88,7 @@ export async function startPublicSnapshotHistory(formData: FormData) {
 
 export async function pausePublicSnapshotHistory(formData: FormData) {
   const monitorId = String(formData.get("monitorId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !monitorId) return;
 
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
@@ -100,7 +100,7 @@ export async function pausePublicSnapshotHistory(formData: FormData) {
 export async function startCompetitorWatch(formData: FormData) {
   const auditJobId = String(formData.get("auditJobId") ?? "");
   const cadenceHours = normalizeWatchCadence(formData.get("cadenceHours"));
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !auditJobId || !cadenceHours) return;
 
   const account = await prisma.user.findUnique({
@@ -167,7 +167,7 @@ export async function startCompetitorWatch(formData: FormData) {
 
 export async function pauseCompetitorWatch(formData: FormData) {
   const monitorId = String(formData.get("monitorId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !monitorId) return;
 
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
@@ -182,7 +182,7 @@ export async function pauseCompetitorWatch(formData: FormData) {
 
 export async function addTrendWatchlist(formData: FormData) {
   const source = normalizeTrendWatchlistInput(formData);
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !source) return;
 
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
@@ -198,7 +198,7 @@ export async function addTrendWatchlist(formData: FormData) {
 
 export async function removeTrendWatchlist(formData: FormData) {
   const watchlistId = String(formData.get("watchlistId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getAcceptedSessionUser();
   if (!sessionUser || !watchlistId) return;
 
   const account = await prisma.user.findUnique({ where: { authUserId: sessionUser.id }, select: { id: true } });
@@ -210,7 +210,7 @@ export async function removeTrendWatchlist(formData: FormData) {
 
 export async function startInstagramTrendScan(formData: FormData) {
   const watchlistId = String(formData.get("watchlistId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getVerifiedSessionUser();
   if (!sessionUser || !watchlistId) return;
   if (!await requireAdminByAuthUserId(sessionUser.id)) return;
 
@@ -230,7 +230,7 @@ export async function startInstagramTrendScan(formData: FormData) {
 
 export async function startTikTokTrendScan(formData: FormData) {
   const watchlistId = String(formData.get("watchlistId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getVerifiedSessionUser();
   if (!sessionUser || !watchlistId) return;
   if (!await requireAdminByAuthUserId(sessionUser.id)) return;
 
@@ -250,7 +250,7 @@ export async function startTikTokTrendScan(formData: FormData) {
 
 export async function startYouTubeTrendScan(formData: FormData) {
   const watchlistId = String(formData.get("watchlistId") ?? "");
-  const sessionUser = await getSessionUser();
+  const sessionUser = await getVerifiedSessionUser();
   if (!sessionUser || !watchlistId) return;
   if (!await requireAdminByAuthUserId(sessionUser.id)) return;
 

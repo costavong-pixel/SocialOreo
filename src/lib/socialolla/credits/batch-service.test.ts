@@ -161,6 +161,38 @@ describe("Slice E — canonical credit engine", () => {
     expect(event?.[0].data.actorAuthUserId).toBe("admin-1");
   });
 
+  it("does not double-mint a positive adjustment into a new batch", async () => {
+    const { adjustCredits } = await import("./batch-service");
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([]);
+    mocks.prisma.creditBatch.create.mockResolvedValue({
+      id: "cb-adjustment",
+      externalId: "cbt_adjustment000000",
+      workspaceId: "ws-1",
+      kind: "PURCHASED",
+      amount: 0,
+      remaining: 0,
+      expiresAt: new Date("2027-08-04T00:00:00Z"),
+      periodKey: null,
+      createdAt: new Date("2026-08-04T00:00:00Z"),
+    });
+
+    await adjustCredits({
+      internalWorkspaceId: "ws-1",
+      amount: 5,
+      reference: "admin-gift-new-batch",
+      reason: "promo grant",
+      actorAuthUserId: "admin-1",
+      idempotencyKey: "so:wsp_abc:dst_abc:admin-gift-new-batch",
+    });
+
+    expect(mocks.prisma.creditBatch.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ amount: 0, remaining: 0 }),
+    }));
+    expect(mocks.prisma.creditBatch.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: { remaining: { increment: 5 }, amount: { increment: 5 } },
+    }));
+  });
+
   it("refuses to hold expired-only credits", async () => {
     const { holdCredits } = await import("./batch-service");
     const expired = { ...PURCHASED_ROW, expiresAt: new Date("2026-01-01T00:00:00Z"), remaining: 10 };

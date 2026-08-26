@@ -4,6 +4,7 @@ import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { holdCredits, finalizeCredits, refundCredits, intentKey } from "@/lib/socialolla/credits/batch-service";
 import { fetchSocialAudit } from "@/lib/providers/social/provider-router";
 import { assertProviderDisabledMode } from "@/lib/providers/social/provider-guard";
+import type { NormalizedSocialAuditResult } from "@/lib/providers/social/types";
 
 export interface WatchCostPreview {
   estimatedCredits: number;
@@ -57,21 +58,25 @@ export function createWatchService() {
     const intent = intentKey(workspace.id, `watch:${input.profileUrl}`, "basic-profile-analysis");
     const reference = `watch:${input.profileUrl}`;
 
-    let report: { id: string; externalId: string } | undefined;
-    try {
-      // Hold inside the try so a report-creation failure refunds the hold.
-      const hold = await holdCredits({
-        internalWorkspaceId: workspace.dbId,
-        amount: cost,
-        reference,
-        idempotencyKey: `${intent}:hold`,
-        actorAuthUserId: input.authUserId,
-      });
-      if (!hold.held) throw new Error("Failed to hold credits");
+    const replay = await prisma.watchReport.findUnique({
+      where: { intentKey: intent },
+      select: { id: true, externalId: true, status: true, reportJson: true },
+    });
+    if (replay) {
+      return {
+        reportExternalId: replay.externalId,
+        status: replay.status,
+        ...(replay.status === "COMPLETED" && replay.reportJson ? { analysis: replay.reportJson as unknown as NormalizedSocialAuditResult } : {}),
+        duplicate: true as const,
+      };
+    }
 
+    let report: { id: string; externalId: string };
+    try {
       report = await prisma.watchReport.create({
         data: {
           externalId: newWatchReportExternalId(),
+          intentKey: intent,
           workspaceId: workspace.dbId,
           profileUrl: input.profileUrl,
           platform: input.platform,
@@ -80,6 +85,36 @@ export function createWatchService() {
           creditCost: cost,
         },
       });
+    } catch (error) {
+      const isUniqueConflict = error instanceof Error && "code" in error && (error as { code?: string }).code === "P2002";
+      if (!isUniqueConflict) throw error;
+      const concurrent = await prisma.watchReport.findUnique({
+        where: { intentKey: intent },
+        select: { id: true, externalId: true, status: true, reportJson: true },
+      });
+      if (!concurrent) throw error;
+      return {
+        reportExternalId: concurrent.externalId,
+        status: concurrent.status,
+        ...(concurrent.status === "COMPLETED" && concurrent.reportJson ? { analysis: concurrent.reportJson as unknown as NormalizedSocialAuditResult } : {}),
+        duplicate: true as const,
+      };
+    }
+
+    let holdAcquired = false;
+    try {
+      // Hold inside the try so any failed report operation can release its hold.
+      const hold = await holdCredits({
+        internalWorkspaceId: workspace.dbId,
+        amount: cost,
+        reference,
+        idempotencyKey: `${intent}:hold`,
+        actorAuthUserId: input.authUserId,
+      });
+      if (!hold.held) throw new Error("Failed to hold credits");
+      // This request owns the newly-created report, so a replayed HOLD from a
+      // crashed predecessor must still be settled if this attempt fails.
+      holdAcquired = true;
 
       const analysis = await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 });
       await prisma.watchReport.update({
@@ -97,7 +132,7 @@ export function createWatchService() {
           })
           .catch(() => undefined);
       }
-      await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId }).catch(() => undefined);
+      if (holdAcquired) await refundCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId }).catch(() => undefined);
       throw error;
     }
   }
