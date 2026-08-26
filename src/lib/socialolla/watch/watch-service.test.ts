@@ -108,8 +108,8 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     const { createWatchService } = await import("./watch-service");
     await expect(createWatchService().run({ authUserId: "user-1", profileUrl: "http://127.0.0.1/profile", platform: "instagram", confirmed: true })).rejects.toThrow("Internal or local");
     await expect(createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.tiktok.com/@creator", platform: "instagram", confirmed: true })).rejects.toThrow("platform");
-    expect(mocks.fetchSocialAudit).not.toHaveBeenCalled();
-    expect(mocks.holdCredits).not.toHaveBeenCalled();
+    expect(mocks.prisma.workspace.findUnique).not.toHaveBeenCalled();
+    expect(mocks.prisma.watchReport.create).not.toHaveBeenCalled();
   });
 
   it("uses the exact workspace for entitlement pricing", async () => {
