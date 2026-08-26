@@ -10,7 +10,7 @@ export default async function WatchPage() {
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Watch</h1>
-      <p className="mt-2 text-white/70">Basic Profile Analysis (provider-disabled). Exact cost preview: {preview.estimatedCredits} credit(s).</p>
+      <p className="mt-2 text-white/70">Monitor a public competitor profile with an exact credit preview. Live monitoring is not enabled in this staging environment.</p>
       <WatchForm cost={preview.estimatedCredits} batchAvailable={preview.batchAvailable} />
       <div className="mt-6 space-y-3">
         {reports.length === 0 && <p className="text-sm text-white/50">{shellStateLabel("empty")} — no Watch reports yet.</p>}

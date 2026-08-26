@@ -7,8 +7,10 @@ export type TranslationKey =
   | "nav.calendar"
   | "nav.connections"
   | "nav.credits"
+  | "nav.analysis"
   | "nav.assistant"
   | "nav.settings"
+  | "nav.profile"
   | "onboarding.welcome"
   | "onboarding.firstPost"
   | "onboarding.sevenDayPlan"
@@ -27,8 +29,10 @@ const EN: Dictionary = {
   "nav.calendar": "Calendar",
   "nav.connections": "Connections",
   "nav.credits": "Credits",
+  "nav.analysis": "Analysis",
   "nav.assistant": "Assistant",
   "nav.settings": "Settings",
+  "nav.profile": "Profile",
   "onboarding.welcome": "Welcome",
   "onboarding.firstPost": "First post",
   "onboarding.sevenDayPlan": "7-day plan",
@@ -48,8 +52,10 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "Calendario",
     "nav.connections": "Conexiones",
     "nav.credits": "Créditos",
+    "nav.analysis": "Análisis",
     "nav.assistant": "Asistente",
     "nav.settings": "Ajustes",
+    "nav.profile": "Perfil",
     "onboarding.welcome": "Bienvenido",
     "onboarding.firstPost": "Primera publicación",
     "onboarding.sevenDayPlan": "Plan de 7 días",
@@ -66,8 +72,10 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "日历",
     "nav.connections": "连接",
     "nav.credits": "积分",
+    "nav.analysis": "分析",
     "nav.assistant": "助手",
     "nav.settings": "设置",
+    "nav.profile": "个人资料",
     "onboarding.welcome": "欢迎",
     "onboarding.firstPost": "第一条帖子",
     "onboarding.sevenDayPlan": "七天计划",
@@ -84,8 +92,10 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "التقويم",
     "nav.connections": "الاتصالات",
     "nav.credits": "الرصيد",
+    "nav.analysis": "التحليل",
     "nav.assistant": "المساعد",
     "nav.settings": "الإعدادات",
+    "nav.profile": "الملف الشخصي",
     "onboarding.welcome": "مرحباً",
     "onboarding.firstPost": "أول منشور",
     "onboarding.sevenDayPlan": "خطة ٧ أيام",
@@ -102,8 +112,10 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "Calendrier",
     "nav.connections": "Connexions",
     "nav.credits": "Crédits",
+    "nav.analysis": "Analyse",
     "nav.assistant": "Assistant",
     "nav.settings": "Paramètres",
+    "nav.profile": "Profil",
     "onboarding.welcome": "Bienvenue",
     "onboarding.firstPost": "Première publication",
     "onboarding.sevenDayPlan": "Plan sur 7 jours",
@@ -120,8 +132,10 @@ const TRANSLATIONS: Record<string, Dictionary> = {
     "nav.calendar": "Calendário",
     "nav.connections": "Conexões",
     "nav.credits": "Créditos",
+    "nav.analysis": "Análise",
     "nav.assistant": "Assistente",
     "nav.settings": "Configurações",
+    "nav.profile": "Perfil",
     "onboarding.welcome": "Bem-vindo",
     "onboarding.firstPost": "Primeira publicação",
     "onboarding.sevenDayPlan": "Plano de 7 dias",

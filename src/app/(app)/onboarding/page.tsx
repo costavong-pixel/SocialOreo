@@ -29,7 +29,7 @@ export default async function OnboardingPage() {
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Set up your workspace</h1>
-      <p className="mt-2 text-white/70">Workspace: <code>{workspace.id}</code></p>
+      <p className="mt-2 text-white/70">Workspace: {workspace.label}</p>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="font-display text-lg font-extrabold">Conversational purpose intake</h2>
@@ -47,7 +47,7 @@ export default async function OnboardingPage() {
           />
         </div>
         {plans.length === 0 ? (
-          <p className="mt-2 text-sm text-white/50">No seven-day plan yet. Approve your profile, add a sandbox destination, then create your first Post to generate a plan.</p>
+          <p className="mt-2 text-sm text-white/50">No seven-day plan yet. Approve your profile, connect an account, then create your first Post to generate a plan.</p>
         ) : (          <div className="mt-3 space-y-3">
             {plans.map((plan) => {
               const items = Array.isArray(plan.planJson) ? (plan.planJson as Array<{ day: number; topic: string; status?: string }>) : [];
@@ -70,7 +70,7 @@ export default async function OnboardingPage() {
         <h2 className="font-display text-lg font-extrabold">Next steps</h2>
         <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-white/80">
           <li>Approve your profile and review the proposed fields.</li>
-          <li>Connect a sandbox Instagram/TikTok destination (Connections).</li>
+          <li>Connect a social account (Connections).</li>
           <li>Create your first destination-specific Post and seven-day plan.</li>
           <li>Post variants stay light drafts until you approve and schedule.</li>
         </ol>

@@ -37,7 +37,8 @@ export default async function M2CalendarPage() {
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Calendar</h1>
-      <p className="mt-2 text-white/70">Seven-day plan and scheduled provider-disabled Post occurrences.</p>
+      <p className="mt-2 text-white/70">Seven-day plan and scheduled Posts.</p>
+      <p className="mt-3 rounded-2xl border border-amber-200/20 bg-amber-200/10 px-4 py-3 text-sm text-amber-100/80">Staging notice: the calendar records your saved schedule; live social delivery is not enabled here.</p>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <h2 className="font-display text-lg font-extrabold">Seven-day plan</h2>
@@ -78,7 +79,7 @@ export default async function M2CalendarPage() {
                   <div key={slot.id} className="flex items-center justify-between rounded-2xl border border-white/5 p-3">
                     <div>
                       <p className="font-bold">{slot.destinationRef}</p>
-                      <p className="text-xs text-white/50">post {slot.postRequestId} · {slot.timezone} · provider-disabled</p>
+                      <p className="text-xs text-white/50">Scheduled Post · {slot.timezone}</p>
                     </div>
                     <p className="text-sm font-bold text-white/80">{slot.scheduleAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
                   </div>

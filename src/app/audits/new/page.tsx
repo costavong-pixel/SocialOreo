@@ -1,36 +1,37 @@
 import { NewAuditForm } from "@/components/audit/new-audit-form";
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
-import { ProductFrame } from "@/components/layout/product-frame";
 import { evaluateServerMonthlyAvailability } from "@/lib/payments/square/monthly-availability";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
+import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
+import { permanentRedirect, redirect } from "next/navigation";
 
-export default async function NewAuditPage() {
-  const user = await getSessionUser();
-  const isAdmin = user ? await requireAdminByAuthUserId(user.id) : false;
-  const monthlyAvailable = (await evaluateServerMonthlyAvailability(user, isAdmin)).available;
+/** Canonical SocialOlla Profile Analysis creation surface. */
+export async function AnalysisNewPage() {
+  const sessionUser = await getAcceptedSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
+  if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
+  if (!sessionUser || !resolution) redirect("/auth/login");
+
+  // This is a lazy, per-user workspace resolution already used by the
+  // canonical shell. It does not migrate historical credit or entitlement data.
+  await getOrCreatePersonalWorkspace(resolution.dbId);
+  const isAdmin = await requireAdminByAuthUserId(resolution.authUserId);
+  const monthlyAvailable = (await evaluateServerMonthlyAvailability(sessionUser, isAdmin)).available;
 
   return (
-    <ProductFrame backHref={user ? "/dashboard" : "/"} backLabel={user ? "Workspace" : "Home"} maxWidth="narrow" utility={user ? <a href="/auth/logout">Sign out</a> : undefined}>
-      <section className="so-task-form">
-        {!user ? (
-          <div className="mt-10 rounded-2xl border border-[var(--social-line-dark)] bg-[var(--social-surface)] p-6 md:p-10">
-            <h1 className="font-display text-3xl font-extrabold tracking-[-0.04em]">Sign in to start an audit</h1>
-            <p className="mt-4 text-[var(--social-muted-on-dark)]">
-              SocialOreo audits require an account so we can save your campaign brief and report.
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <a className="rounded-full bg-[var(--social-blue)] px-6 py-3 text-center text-sm font-bold text-[var(--social-ink)] transition hover:bg-[#cdbbff]" href="/auth/login">
-                Sign in
-              </a>
-              <a className="rounded-full border border-[var(--social-line-dark)] px-6 py-3 text-center text-sm font-bold transition hover:border-[var(--social-blue)]" href="/auth/login?screen_hint=signup">
-                Create account
-              </a>
-            </div>
-          </div>
-        ) : (
-          <NewAuditForm isAdmin={isAdmin} monthlyAvailable={monthlyAvailable} />
-        )}
-      </section>
-    </ProductFrame>
+    <section className="so-task-form">
+      <div className="mb-6">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--social-blue)]">Profile Analysis</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-[-0.04em]">Create a profile analysis</h1>
+        <p className="mt-2 max-w-2xl text-sm text-white/65">Analyze a public Instagram or TikTok profile and turn the evidence into a practical content plan.</p>
+      </div>
+      <NewAuditForm isAdmin={isAdmin} monthlyAvailable={monthlyAvailable} />
+    </section>
   );
+}
+
+/** Compatibility route: Profile Analysis now lives at /analysis/new. */
+export default function NewAuditPage() {
+  permanentRedirect("/analysis/new");
 }

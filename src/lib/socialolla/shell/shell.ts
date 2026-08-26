@@ -1,7 +1,8 @@
 /**
  * Slice A — SocialOlla product shell.
  * Mobile-first navigation, design tokens, plain-language state labels, and a
- * language selector contract. No prototype/admin routes are exposed.
+ * language selector contract. Admin routes are exposed separately by the
+ * authorized app shell; this list contains customer-facing product routes.
  */
 import type { TranslationKey } from "@/lib/socialolla/i18n/translations";
 
@@ -12,8 +13,10 @@ export const SHELL_NAV: ReadonlyArray<{ href: string; labelKey: TranslationKey }
   { href: "/calendar", labelKey: "nav.calendar" },
   { href: "/connections", labelKey: "nav.connections" },
   { href: "/credits", labelKey: "nav.credits" },
+  { href: "/analysis", labelKey: "nav.analysis" },
   { href: "/assistant", labelKey: "nav.assistant" },
   { href: "/settings", labelKey: "nav.settings" },
+  { href: "/profile", labelKey: "nav.profile" },
 ];
 
 export type ShellStateKind = "loading" | "empty" | "error" | "offline" | "partial-success";

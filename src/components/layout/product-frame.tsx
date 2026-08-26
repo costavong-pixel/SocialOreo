@@ -13,7 +13,7 @@ type ProductFrameProps = {
 
 export function ProductFrame({
   children,
-  backHref = "/dashboard",
+  backHref = "/home",
   backLabel = "Workspace",
   maxWidth = "wide",
   utility,
@@ -24,8 +24,9 @@ export function ProductFrame({
         <header className="so-topbar">
           <BrandMark inverse />
           <nav aria-label="Product" className="so-topbar-nav">
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/audits/new">New audit</Link>
+            <Link href="/home">Dashboard</Link>
+            <Link href="/analysis/new">New analysis</Link>
+            <Link href="/analysis">Analysis</Link>
             {utility}
           </nav>
         </header>

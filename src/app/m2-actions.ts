@@ -3,8 +3,10 @@
 import { createHmac } from "node:crypto";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
-import { getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
+import { prisma } from "@/lib/db/prisma";
+import { getAcceptedSessionUser, getSessionUser, getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
@@ -28,8 +30,13 @@ function signDemoVisitor(token: string): string {
 }
 
 async function requireUser() {
-  const sessionUser = await getVerifiedSessionUser();
-  if (!sessionUser) throw new Error("A verified account is required.");
+  const sessionUser = await getAcceptedSessionUser();
+  // Server actions can be invoked during a client navigation after the app
+  // shell was rendered. If the Auth0 session is absent or no longer verified,
+  // re-enter the approved login flow instead of surfacing a generic Next.js
+  // error page. This remains fail-closed: no workspace action runs without a
+  // provider-verified session or the explicit staging acceptance cohort.
+  if (!sessionUser) redirect("/auth/login?returnTo=%2Fhome");
   // Workspace.ownerUserId references User.id (DB primary key), NOT the Auth0
   // sub. Resolve the session user to the DB User row so every workspace-scoped
   // action satisfies the foreign key (the checkout path already does this via
@@ -195,7 +202,7 @@ export async function m2Demo(topic: string): Promise<M2DemoResponse> {
 }
 
 export async function m2RequireAdmin() {
-  const user = await getSessionUser();
+  const user = await getVerifiedSessionUser();
   if (!user) return { admin: false };
   const ok = await requireAdminByAuthUserId(user.id);
   return { admin: ok };
@@ -210,16 +217,23 @@ export async function m2AssistantRespond(input: {
 }) {
   // authenticated is always derived from the verified session server-side;
   // a guest (not signed in / unverified) is never treated as authenticated.
-  const verified = await getVerifiedSessionUser();
-  return assistantRespond({ ...input, authenticated: verified !== null });
+  const accepted = await getAcceptedSessionUser();
+  return assistantRespond({ ...input, authenticated: accepted !== null });
 }
 
 export async function m2AdminAdjust(targetAuthUserId: string, amount: number, reason: string) {
   const admin = await requireUser();
-  // Resolve the target session-style user to its DB User.id (the workspace FK
-  // references User.id, not the Auth0 sub). An unregistered sub is created
-  // lazily so the admin action always has a workspace to adjust.
-  const target = await syncUserFromAuth0({ id: targetAuthUserId, email: targetAuthUserId });
+  if (!(await requireAdminByAuthUserId(admin.authUserId))) throw new Error("Admin role required");
+
+  // An admin adjustment may target only an existing canonical identity. The
+  // target is action input, not a verified session, so it must never be passed
+  // to syncUserFromAuth0 or used as an email to synthesize a User row.
+  const target = await prisma.user.findUnique({
+    where: { authUserId: targetAuthUserId },
+    select: { id: true, authUserId: true },
+  });
+  if (!target) throw new Error("Target user must already have a canonical account.");
+
   return adminAdjustCredits({ adminAuthUserId: admin.authUserId, adminDbUserId: admin.dbId, targetAuthUserId, targetDbUserId: target.id, amount, reason });
 }
 

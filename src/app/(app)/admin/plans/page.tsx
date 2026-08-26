@@ -4,6 +4,7 @@ import { formatPriceCents, lifetimePlan } from "@/lib/socialolla/plans/plan-conf
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { AdminAdjustCreditsForm } from "@/components/admin/admin-adjust-credits-form";
 import { AdminSetLifetimePriceForm } from "@/components/admin/admin-set-lifetime-price-form";
+import { AdminNav } from "@/components/admin/admin-nav";
 
 export const metadata = { title: "Admin — Plans — SocialOlla" };
 
@@ -21,6 +22,10 @@ export default async function AdminPlansPage() {
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Admin — Plans &amp; entitlement</h1>
+
+      <div className="mt-4">
+        <AdminNav />
+      </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
         <p className="font-bold">{plan.name}</p>

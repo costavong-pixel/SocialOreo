@@ -7,14 +7,14 @@ const {
   mockFindUnique,
   mockUpdate,
   mockCreate,
-  mockGetVerifiedSessionUser,
+  mockGetAcceptedSessionUser,
 } = vi.hoisted(() => ({
   mockTransaction: vi.fn(),
   mockFindFirst: vi.fn(),
   mockFindUnique: vi.fn(),
   mockUpdate: vi.fn(),
   mockCreate: vi.fn(),
-  mockGetVerifiedSessionUser: vi.fn(),
+  mockGetAcceptedSessionUser: vi.fn(),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
@@ -24,7 +24,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({
-  getVerifiedSessionUser: () => mockGetVerifiedSessionUser(),
+  getAcceptedSessionUser: () => mockGetAcceptedSessionUser(),
 }));
 
 import {
@@ -136,13 +136,27 @@ describe("syncUserFromAuth0", () => {
     expect(mockFindFirst).not.toHaveBeenCalled();
     expect(mockCreate).not.toHaveBeenCalled();
   });
+
+  it("preserves an existing ADMIN role because sync never writes a role", async () => {
+    mockFindUnique.mockResolvedValue({ id: "db-admin", email: "admin@example.com" });
+    mockUpdate.mockResolvedValue({ id: "db-admin", authUserId: "auth0-admin", email: "admin@example.com", role: "ADMIN" });
+
+    const user = await syncUserFromAuth0({ id: "auth0-admin", email: "admin@example.com" });
+
+    expect(user.role).toBe("ADMIN");
+    expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { authUserId: "auth0-admin" },
+      data: { email: "admin@example.com" },
+    }));
+    expect(mockUpdate.mock.calls[0][0].data).not.toHaveProperty("role");
+  });
 });
 
 describe("resolveDbUserFromVerifiedSession", () => {
   afterEach(() => vi.clearAllMocks());
 
   it("returns a distinct conflict state instead of treating an identity collision as a missing login", async () => {
-    mockGetVerifiedSessionUser.mockResolvedValue({ id: "auth0-new", email: "creator@example.com" });
+    mockGetAcceptedSessionUser.mockResolvedValue({ id: "auth0-new", email: "creator@example.com", emailVerified: true, acceptance: "provider-verified" });
     mockFindUnique.mockResolvedValue(null);
     mockFindFirst.mockResolvedValue({ authUserId: "auth0-existing" });
     mockTransaction.mockImplementation((callback) => callback({
@@ -158,5 +172,15 @@ describe("resolveDbUserFromVerifiedSession", () => {
 
     expect(hasDbSessionIdentityConflict(resolution)).toBe(true);
     expect(isAuthIdentityCollisionError(new AuthIdentityCollisionError())).toBe(true);
+  });
+
+  it("fails closed for an unverified session before touching the database", async () => {
+    mockGetAcceptedSessionUser.mockResolvedValue(null);
+
+    await expect(resolveDbUserFromVerifiedSession()).resolves.toBeNull();
+
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(mockFindUnique).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 });

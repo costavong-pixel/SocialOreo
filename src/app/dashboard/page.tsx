@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { permanentRedirect, redirect } from "next/navigation";
 import { TrendScanStatus } from "@prisma/client";
 
 import { getSessionUser } from "@/lib/auth/current-user";
@@ -55,7 +55,12 @@ function recommendationTone(recommendation: PublicReelEvidence["recommendation"]
   return "border-amber-300/30 bg-amber-400/10 text-amber-100";
 }
 
-export default async function DashboardPage() {
+/**
+ * Retained for the Phase 1 migration map. The legacy implementation remains
+ * available while its useful analysis capabilities move behind /analysis, but
+ * it is no longer a customer-facing canonical route.
+ */
+export async function LegacyDashboardPage() {
   const sessionUser = await getSessionUser();
   if (!sessionUser) redirect("/auth/login");
 
@@ -263,12 +268,12 @@ export default async function DashboardPage() {
     <main className="social-orange-dashboard min-h-[100dvh] bg-[var(--social-ink)] text-[#f6f4ef]">
       <div className="mx-auto max-w-[1540px] px-4 py-4 lg:px-6">
         <header className="flex items-center justify-between border-b border-white/10 pb-4">
-          <Link href="/dashboard" className="font-display text-xl font-extrabold tracking-[-0.04em] sm:text-2xl">
+          <Link href="/home" className="font-display text-xl font-extrabold tracking-[-0.04em] sm:text-2xl">
             Social<span className="text-[var(--social-lime)]">Oreo</span>
           </Link>
           <div className="flex items-center gap-3">
             <span className="hidden text-xs font-bold uppercase tracking-[0.14em] text-white/35 sm:block">Public-data workspace</span>
-            <Link href="/audits/new" className="rounded-lg bg-[var(--social-lime)] px-4 py-2 text-sm font-extrabold text-[var(--social-ink)] transition hover:bg-white">New audit</Link>
+            <Link href="/analysis/new" className="rounded-lg bg-[var(--social-lime)] px-4 py-2 text-sm font-extrabold text-[var(--social-ink)] transition hover:bg-white">New analysis</Link>
             <a href="/auth/logout" className="hidden text-sm font-semibold text-white/55 hover:text-white lg:block">Sign out</a>
           </div>
         </header>
@@ -277,8 +282,8 @@ export default async function DashboardPage() {
           <aside className="rounded-xl border border-white/10 bg-[#101a32] p-3 lg:min-h-[1040px]">
             <p className="px-3 pb-3 pt-1 text-xs font-bold uppercase tracking-[0.16em] text-white/35">Workspace</p>
             <nav className="grid gap-1 text-sm font-semibold">
-              <Link href="/dashboard" className="rounded-lg bg-[var(--social-blue)]/35 px-3 py-2.5 text-[var(--social-lime)]">Overview</Link>
-              <Link href="/audits/new" className="rounded-lg px-3 py-2.5 text-white/60 hover:bg-white/5 hover:text-white">Run audit</Link>
+              <Link href="/home" className="rounded-lg bg-[var(--social-blue)]/35 px-3 py-2.5 text-[var(--social-lime)]">Overview</Link>
+              <Link href="/analysis/new" className="rounded-lg px-3 py-2.5 text-white/60 hover:bg-white/5 hover:text-white">Run analysis</Link>
               {latest ? <Link href={`/audits/${latest.id}`} className="rounded-lg px-3 py-2.5 text-white/60 hover:bg-white/5 hover:text-white">Profile report</Link> : null}
               {latest ? <Link href={`/audits/${latest.id}/compare`} className="rounded-lg px-3 py-2.5 text-white/60 hover:bg-white/5 hover:text-white">Competitor compare</Link> : null}
               {isAdmin ? <Link href="/admin/angle-library" className="rounded-lg px-3 py-2.5 text-white/60 hover:bg-white/5 hover:text-white">Hook library</Link> : null}
@@ -521,7 +526,7 @@ function TrendRadar({ instagramPilotEnabled, isAdmin, tiktokPilotEnabled, watchl
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100/70">Trend radar</p>
         <h2 className="mt-1 text-lg font-black">Find the next pattern, then make it yours</h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">SocialOreo is adding niche keywords, hashtags, and creator watchlists across Instagram, TikTok, and YouTube so public patterns can become an original hook, script, CTA, and caption — not a copy of someone else&apos;s reel.</p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-white/60">SocialOlla is adding niche keywords, hashtags, and creator watchlists across Instagram, TikTok, and YouTube so public patterns can become an original hook, script, CTA, and caption — not a copy of someone else&apos;s reel.</p>
       </div>
       <span className="w-fit rounded-md border border-cyan-100/20 bg-cyan-200/[0.08] px-2 py-1 text-xs font-black text-cyan-50">Watchlists ready</span>
     </div>
@@ -784,7 +789,7 @@ function CompetitorBoard({ board, competitorLimit, currentAuditId, available, wa
 }
 
 function StrategyChecklist({ auditId }: { auditId: string }) {
-  const report = `/audits/${auditId}`;
+  const report = `/analysis/${auditId}`;
   const steps = [
     { label: "Pick a post brief", href: `${report}#content-plan`, detail: "Evidence + next post" },
     { label: "Choose a hook", href: `${report}#hooks`, detail: "Ready-to-post openings" },
@@ -792,7 +797,12 @@ function StrategyChecklist({ auditId }: { auditId: string }) {
     { label: "Select the CTA", href: `${report}#ctas`, detail: "Give the post one clear action" },
     { label: "Finish the caption", href: `${report}#captions`, detail: "Publish with the matching copy" },
   ];
-  return <article className="rounded-xl border border-orange-300/20 bg-orange-400/[0.06] p-5"><p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-200/80">AI strategy checklist</p><h2 className="mt-1 text-lg font-black">Turn evidence into your next reel</h2><ol className="mt-4 grid gap-2">{steps.map((step, index) => <li key={step.label}><Link className="grid grid-cols-[1.75rem_1fr_auto] items-center gap-3 rounded-lg border border-orange-200/10 bg-black/10 p-3 hover:border-orange-300/45" href={step.href}><span className="text-xs font-black text-orange-300">{String(index + 1).padStart(2, "0")}</span><span><span className="block text-sm font-bold text-white">{step.label}</span><span className="mt-0.5 block text-xs text-orange-50/55">{step.detail}</span></span><span className="text-orange-300">→</span></Link></li>)}</ol><p className="mt-4 text-xs leading-5 text-orange-50/55">These links open SocialOreo’s generated brief and execution pack; they do not create an estimate or private metric.</p></article>;
+  return <article className="rounded-xl border border-orange-300/20 bg-orange-400/[0.06] p-5"><p className="text-xs font-bold uppercase tracking-[0.14em] text-orange-200/80">AI strategy checklist</p><h2 className="mt-1 text-lg font-black">Turn evidence into your next reel</h2><ol className="mt-4 grid gap-2">{steps.map((step, index) => <li key={step.label}><Link className="grid grid-cols-[1.75rem_1fr_auto] items-center gap-3 rounded-lg border border-orange-200/10 bg-black/10 p-3 hover:border-orange-300/45" href={step.href}><span className="text-xs font-black text-orange-300">{String(index + 1).padStart(2, "0")}</span><span><span className="block text-sm font-bold text-white">{step.label}</span><span className="mt-0.5 block text-xs text-orange-50/55">{step.detail}</span></span><span className="text-orange-300">→</span></Link></li>)}</ol><p className="mt-4 text-xs leading-5 text-orange-50/55">These links open SocialOlla’s generated brief and execution pack; they do not create an estimate or private metric.</p></article>;
+}
+
+/** Deprecated compatibility route: /home is the only canonical dashboard. */
+export default function DashboardPage() {
+  permanentRedirect("/home");
 }
 
 function InsightList({ title, items, tone }: { title: string; items?: string[]; tone: "emerald" | "rose" }) {

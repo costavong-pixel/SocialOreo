@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const mockGetSessionUser = vi.fn();
+const mockGetVerifiedSessionUser = vi.fn();
 const mockCreateAndRunAudit = vi.fn();
 
 vi.mock("@/lib/auth/current-user", () => ({
-  getSessionUser: () => mockGetSessionUser(),
+  getAcceptedSessionUser: () => mockGetVerifiedSessionUser(),
+  getVerifiedSessionUser: () => mockGetVerifiedSessionUser(),
 }));
 
 vi.mock("@/lib/audit/run-audit", () => ({
@@ -17,11 +18,7 @@ describe("POST /api/audits email verification", () => {
   });
 
   it("rejects unverified Auth0 email addresses", async () => {
-    mockGetSessionUser.mockResolvedValue({
-      id: "auth0-1",
-      email: "creator@example.com",
-      emailVerified: false,
-    });
+    mockGetVerifiedSessionUser.mockResolvedValue(null);
 
     const { POST } = await import("./route");
     const response = await POST(
@@ -42,7 +39,7 @@ describe("POST /api/audits email verification", () => {
       }),
     );
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(401);
     expect(mockCreateAndRunAudit).not.toHaveBeenCalled();
   });
 });

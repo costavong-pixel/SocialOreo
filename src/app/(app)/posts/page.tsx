@@ -25,13 +25,13 @@ export default async function PostsPage() {
   return (
     <section>
       <h1 className="font-display text-2xl font-extrabold tracking-[-0.04em]">Posts</h1>
-      <p className="mt-2 text-white/70">Destination-specific Post requests (provider-disabled).</p>
+      <p className="mt-2 text-white/70">Create and review Posts for your connected social accounts.</p>
       <div className="mt-6 space-y-3">
         {posts.length === 0 && <p className="text-sm text-white/50">{shellStateLabel("empty")} — create your first Post below.</p>}
         {posts.map((p) => (
           <div key={p.id} className="rounded-3xl border border-white/10 bg-white/[0.02] p-4">
             <p className="font-bold">{p.externalId}</p>
-            <p className="text-sm text-white/60">status: {p.status} · destination: {p.destinationRef} · language: {p.language}</p>
+            <p className="text-sm text-white/60">status: {p.status} · destination: {destinations.find((d) => d.externalId === p.destinationRef)?.label ?? "Connected account"} · language: {p.language}</p>
             <p className="text-sm text-white/60">variants: {p.variants?.length ?? 0} · occurrences: {p.occurrences?.length ?? 0}</p>
             <VariantEditor postExternalId={p.externalId} variants={p.variants as unknown as VariantShape[]} />
             <ScheduleControl
@@ -45,7 +45,7 @@ export default async function PostsPage() {
           </div>
         ))}
       </div>
-      <CreatePostForm />
+      <CreatePostForm destinations={destinations.map((destination) => ({ externalId: destination.externalId, label: destination.label, platform: destination.platform }))} />
     </section>
   );
 }

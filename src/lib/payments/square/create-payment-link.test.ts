@@ -68,14 +68,14 @@ describe("createSquarePaymentLink", () => {
           idempotency_key: "monthly-key",
           quick_pay: {
             location_id: "location",
-            name: "SocialOreo Monthly",
+            name: "SocialOlla Monthly",
             price_money: { amount: 1900, currency: "CAD" },
           },
           checkout_options: {
             subscription_plan_id: "monthly-plan-variation",
             redirect_url: "https://example.test/pricing?checkout=checkout-monthly",
           },
-          description: "SocialOreo Monthly subscription",
+            description: "SocialOlla Monthly subscription",
         }),
       }),
     );

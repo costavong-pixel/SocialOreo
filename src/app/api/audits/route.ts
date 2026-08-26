@@ -2,20 +2,13 @@ import { NextResponse } from "next/server";
 
 import { createAuditSchema } from "@/lib/audit/create-audit-schema";
 import { createAndRunAudit } from "@/lib/audit/run-audit";
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getAcceptedSessionUser } from "@/lib/auth/current-user";
 
 export async function POST(request: Request) {
-  const user = await getSessionUser();
+  const user = await getAcceptedSessionUser();
 
   if (!user) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
-  }
-
-  if (!user.email || !user.emailVerified) {
-    return NextResponse.json(
-      { error: "A verified email address is required." },
-      { status: 403 },
-    );
   }
 
   let body: unknown;

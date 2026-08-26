@@ -107,7 +107,7 @@ export function NewAuditForm({ isAdmin = false, monthlyAvailable = false }: { is
         return;
       }
 
-      router.push(`/audits/${payload.auditJobId}`);
+      router.push(`/analysis/${payload.auditJobId}`);
     } catch {
       setStep("brief");
       setError("Network error. Please try again.");
@@ -142,8 +142,8 @@ export function NewAuditForm({ isAdmin = false, monthlyAvailable = false }: { is
           <p className="mt-2 break-all text-sm font-semibold text-black">{url.trim()}</p>
         </div>
         <p className="mt-6 text-sm font-bold uppercase tracking-[0.2em] text-black/50">Campaign brief</p>
-        <h1 className="mt-4 text-4xl font-black tracking-[-0.04em] md:text-5xl">Tell SocialOreo what you are trying to achieve.</h1>
-        <p className="mt-4 text-black/70">SocialOreo scores and recommends based on your goal — not generic reach.</p>
+        <h1 className="mt-4 text-4xl font-black tracking-[-0.04em] md:text-5xl">Tell SocialOlla what you are trying to achieve.</h1>
+        <p className="mt-4 text-black/70">SocialOlla scores and recommends based on your goal — not generic reach.</p>
 
         <form className="mt-8 grid gap-4" onSubmit={handleSubmitAudit}>
           <label className="grid gap-2">
@@ -216,7 +216,7 @@ export function NewAuditForm({ isAdmin = false, monthlyAvailable = false }: { is
 
           <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
             <p className="font-bold">Not sure what to write?</p>
-            <p className="mt-1 text-sm text-black/65">SocialOreo can suggest a target audience and CTA from the choices above. You can edit both before running the audit.</p>
+            <p className="mt-1 text-sm text-black/65">SocialOlla can suggest a target audience and CTA from the choices above. You can edit both before running the analysis.</p>
             <button
               className="mt-3 rounded-full bg-black px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
               disabled={suggestionStatus === "loading" || (nicheChoice === "other" && !customNiche.trim())}
@@ -321,7 +321,7 @@ export function NewAuditForm({ isAdmin = false, monthlyAvailable = false }: { is
     <div className="mt-10 rounded-[2rem] border border-black/10 bg-white/70 p-6 shadow-sm md:p-10">
       <p className="text-sm font-bold uppercase tracking-[0.2em] text-black/50">Public profile audit</p>
       <h1 className="mt-4 text-4xl font-black tracking-[-0.04em] md:text-5xl">Start with a public profile or reel.</h1>
-      <p className="mt-4 text-black/70">Paste a public Instagram profile or reel, or a TikTok profile. SocialOreo will review recent public videos and score them against your campaign goal.</p>
+      <p className="mt-4 text-black/70">Paste a public Instagram profile or reel, or a TikTok profile. SocialOlla will review recent public videos and score them against your campaign goal.</p>
 
       <form className="mt-8 grid gap-4" onSubmit={handleContinueToBrief}>
         <label className="grid gap-2">

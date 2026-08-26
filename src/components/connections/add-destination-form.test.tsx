@@ -10,7 +10,7 @@ vi.mock("@/app/m2-actions", () => ({
   m2FirstPostAndPlan: vi.fn(),
 }));
 
-import { WatchForm } from "./add-destination-form";
+import { CreatePostForm, WatchForm } from "./add-destination-form";
 
 describe("WatchForm", () => {
   afterEach(() => vi.clearAllMocks());
@@ -25,7 +25,7 @@ describe("WatchForm", () => {
 
     // Confirmation step shows exact cost; the action must NOT be called yet.
     expect(screen.getByText("Confirm exact cost")).toBeTruthy();
-    expect(screen.getByText(/runs a provider-disabled analysis and consumes/)).toBeTruthy();
+    expect(screen.getByText(/One Basic Profile Analysis/).parentElement?.textContent).toContain("uses 2 credits");
     expect(m2RunWatchMock).not.toHaveBeenCalled();
 
     const confirmButton = screen.getByRole("button", { name: "Confirm and run Watch" }) as HTMLButtonElement;
@@ -57,5 +57,24 @@ describe("WatchForm", () => {
 
     expect(m2RunWatchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Preview Watch cost" })).toBeTruthy();
+  });
+});
+
+describe("CreatePostForm", () => {
+  it("directs a customer without a connection to Connections instead of asking for an internal id", () => {
+    render(<CreatePostForm />);
+
+    expect(screen.getByText("Connect an account to create your first Post.")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open Connections" }).getAttribute("href")).toBe("/connections");
+    expect(screen.queryByLabelText("Destination external id")).toBeNull();
+    expect(screen.queryByText("Add sandbox destination")).toBeNull();
+  });
+
+  it("selects a connected account when creating a local draft", () => {
+    render(<CreatePostForm destinations={[{ externalId: "dst_1", label: "Work Instagram", platform: "Instagram" }]} />);
+
+    expect(screen.getByLabelText("Connected account")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create draft" })).toBeTruthy();
+    expect(screen.queryByLabelText("Destination external id")).toBeNull();
   });
 });

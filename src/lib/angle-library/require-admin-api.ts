@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getSessionUser } from "@/lib/auth/current-user";
+import { getVerifiedSessionUser } from "@/lib/auth/current-user";
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 
 export type AdminApiAuthResult =
@@ -14,7 +14,7 @@ export type AdminApiAuthResult =
     };
 
 export async function requireAdminApi(): Promise<AdminApiAuthResult> {
-  const user = await getSessionUser();
+  const user = await getVerifiedSessionUser();
 
   if (!user) {
     return {

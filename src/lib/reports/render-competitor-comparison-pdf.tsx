@@ -40,9 +40,9 @@ function CompetitorComparisonPdf({ input }: { input: CompetitorComparisonPdfInpu
   const { comparison } = input;
 
   return (
-    <Document author="SocialOreo" title="SocialOreo competitor comparison">
+    <Document author="SocialOlla" title="SocialOlla competitor comparison">
       <Page size="A4" style={styles.page}>
-        <Text style={styles.eyebrow}>SocialOreo client comparison</Text>
+        <Text style={styles.eyebrow}>SocialOlla client comparison</Text>
         <Text style={styles.title}>{input.yourLabel} vs {input.competitorLabel}</Text>
         <Text style={styles.subtitle}>Campaign goals: {input.yourGoal} / {input.competitorGoal}</Text>
 
@@ -61,7 +61,7 @@ function CompetitorComparisonPdf({ input }: { input: CompetitorComparisonPdfInpu
           <NumberedList items={comparison.studyIdeas} />
         </View>
 
-        <Text fixed render={({ pageNumber, totalPages }) => `SocialOreo client comparison · ${pageNumber} / ${totalPages}`} style={styles.footer} />
+        <Text fixed render={({ pageNumber, totalPages }) => `SocialOlla client comparison · ${pageNumber} / ${totalPages}`} style={styles.footer} />
       </Page>
     </Document>
   );

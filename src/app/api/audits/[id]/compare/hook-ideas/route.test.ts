@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getSessionUser: vi.fn(),
+  resolveDbUserFromVerifiedSession: vi.fn(),
   checkRateLimit: vi.fn(),
   findMany: vi.fn(),
   suggestComparisonHookIdeas: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/current-user", () => ({ getSessionUser: mocks.getSessionUser }));
+vi.mock("@/lib/auth/sync-user", () => ({
+  resolveDbUserFromVerifiedSession: mocks.resolveDbUserFromVerifiedSession,
+  hasDbSessionIdentityConflict: (resolution: unknown) => Boolean(resolution && typeof resolution === "object" && "status" in resolution && (resolution as { status?: string }).status === "identity-conflict"),
+}));
 vi.mock("@/lib/rate-limit/rate-limit", () => ({ checkRateLimit: mocks.checkRateLimit }));
 vi.mock("@/lib/db/prisma", () => ({ prisma: { auditJob: { findMany: mocks.findMany } } }));
 vi.mock("@/lib/reports/comparison-hook-ideas", () => ({ suggestComparisonHookIdeas: mocks.suggestComparisonHookIdeas }));
@@ -34,13 +37,13 @@ const audits = [
 describe("comparison hook ideas API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSessionUser.mockResolvedValue({ id: "auth0-user" });
+    mocks.resolveDbUserFromVerifiedSession.mockResolvedValue({ dbId: "db-owner", authUserId: "auth0-user", email: "owner@example.com" });
     mocks.checkRateLimit.mockReturnValue({ allowed: true, remaining: 2, resetAt: Date.now() + 60_000 });
     mocks.findMany.mockResolvedValue(audits);
   });
 
   it("requires authentication before making an AI request", async () => {
-    mocks.getSessionUser.mockResolvedValue(null);
+    mocks.resolveDbUserFromVerifiedSession.mockResolvedValue(null);
     const response = await POST(new Request("http://localhost/api/audits/mine/compare/hook-ideas", { method: "POST", body: JSON.stringify({ competitorId: "theirs" }) }), context);
 
     expect(response.status).toBe(401);

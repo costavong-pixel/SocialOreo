@@ -129,7 +129,7 @@ export function renderAuditReportHtml(input: AuditReportHtmlInput): string {
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:wght@400;600&display=swap" rel="stylesheet" />
-  <title>SocialOreo Audit Report</title>
+  <title>SocialOlla Profile Analysis Report</title>
   <style>
     :root { color-scheme: dark; }
     body { font-family: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 16px; line-height: 1.6; margin: 0; background: #080a0d; color: #f8fafc; }
@@ -158,7 +158,7 @@ export function renderAuditReportHtml(input: AuditReportHtmlInput): string {
   <main>
     <article>
       <header class="hero">
-        <p class="meta">SocialOreo expert campaign brief</p>
+        <p class="meta">SocialOlla expert campaign brief</p>
         <h1>${escapeHtml(input.summary.headline ?? "Campaign diagnosis")}</h1>
         <p class="score">${input.overallScore}/100</p>
         <p class="meta">${escapeHtml(input.profileUrl)} · ${input.videoCount} reels analyzed</p>

@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getSessionUser: vi.fn(),
+  getVerifiedSessionUser: vi.fn(),
   checkRateLimit: vi.fn(),
   suggestCampaignBrief: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/current-user", () => ({
-  getSessionUser: mocks.getSessionUser,
+  getAcceptedSessionUser: mocks.getVerifiedSessionUser,
+  getVerifiedSessionUser: mocks.getVerifiedSessionUser,
 }));
 
 vi.mock("@/lib/rate-limit/rate-limit", () => ({
@@ -31,12 +32,12 @@ const payload = {
 describe("campaign brief suggestions API", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.getSessionUser.mockResolvedValue({ id: "auth0-user" });
+    mocks.getVerifiedSessionUser.mockResolvedValue({ id: "auth0-user", email: "owner@example.com", emailVerified: true });
     mocks.checkRateLimit.mockReturnValue({ allowed: true, remaining: 5, resetAt: Date.now() + 60_000 });
   });
 
   it("requires authentication before requesting a suggestion", async () => {
-    mocks.getSessionUser.mockResolvedValue(null);
+    mocks.getVerifiedSessionUser.mockResolvedValue(null);
 
     const response = await POST(new Request("http://localhost/api/campaign-brief/suggestions", {
       method: "POST",

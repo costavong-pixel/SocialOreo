@@ -94,7 +94,7 @@ export function ScheduleControl({
     setResult(null);
     try {
       const outcome = await m2SchedulePost({ postRequestExternalId: postExternalId, scheduleAt: utcPreview.iso, timezone });
-      setResult(`Post scheduled (${outcome.status}). Slot persisted provider-disabled — no live transport.`);
+      setResult(`Post scheduled (${outcome.status}). Your schedule is saved; live delivery is not enabled in staging.`);
       router.refresh();
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : "Could not schedule post");
@@ -123,8 +123,8 @@ export function ScheduleControl({
 
       <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">
         <p className="font-bold text-white/80">Preview</p>
-        <p>Destination: {destination?.label ?? destinationRef} ({destination?.platform ?? "—"} · {destination?.status ?? "provider-disabled"})</p>
-        <p>Provider mode: {providerDisabled ? "provider-disabled (no live transport)" : "not configured"}</p>
+        <p>Destination: {destination?.label ?? "Connected account"} ({destination?.platform ?? "—"} · {destination?.status ?? "not connected"})</p>
+        <p>Live delivery: {providerDisabled ? "not enabled in staging" : "not configured"}</p>
         <p>{utcPreview ? <>Local wall time {utcPreview.wallTime} → stored UTC <code>{utcPreview.iso}</code></> : "Pick a date and timezone to see the UTC conversion."}</p>
         <p className="text-white/40">Scheduling requires an approved final variant. No credit is charged by scheduling.</p>
       </div>
@@ -138,13 +138,13 @@ export function ScheduleControl({
 
       {slots.length > 0 ? (
         <div className="border-t border-white/10 pt-2">
-          <p className="text-xs font-bold text-white/50">Scheduled slots (destination status / evidence labels):</p>
+          <p className="text-xs font-bold text-white/50">Scheduled slots:</p>
           {slots.map((slot) => {
             const occurrence = occurrences.find((o) => slotDate(slot.scheduleAt).getTime() === (o.scheduleAt ? slotDate(o.scheduleAt).getTime() : -1));
             const status = occurrence?.status ?? "SCHEDULED";
             return (
               <p key={slot.id} className="mt-1 text-xs text-white/60">
-                {slotDate(slot.scheduleAt).toISOString()} · {slot.timezone} · {slot.destinationRef} · status <strong>{status}</strong> · evidence: provider-disabled fixture
+                {slotDate(slot.scheduleAt).toISOString()} · {slot.timezone} · status <strong>{status}</strong>
               </p>
             );
           })}

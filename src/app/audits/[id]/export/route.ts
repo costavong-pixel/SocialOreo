@@ -1,4 +1,4 @@
-import { getSessionUser } from "@/lib/auth/current-user";
+import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "@/lib/auth/sync-user";
 import { prisma } from "@/lib/db/prisma";
 import { renderAuditReportHtml } from "@/lib/reports/render-audit-report-html";
 import { buildPublicMetrics } from "@/lib/reports/public-metrics";
@@ -8,17 +8,19 @@ type RouteContext = {
 };
 
 export async function GET(_request: Request, context: RouteContext) {
-  const user = await getSessionUser();
+  const resolution = await resolveDbUserFromVerifiedSession();
   const { id } = await context.params;
 
-  if (!user) {
+  if (hasDbSessionIdentityConflict(resolution)) {
+    return new Response("Account identity conflict.", { status: 409 });
+  }
+  if (!resolution) {
     return new Response("Authentication required.", { status: 401 });
   }
 
   const auditJob = await prisma.auditJob.findUnique({
-    where: { id },
+    where: { id, userId: resolution.dbId },
     include: {
-      user: true,
       auditReport: true,
       transcriptEnrichment: true,
       socialProfiles: true,
@@ -26,7 +28,7 @@ export async function GET(_request: Request, context: RouteContext) {
     },
   });
 
-  if (!auditJob || auditJob.user?.authUserId !== user.id || !auditJob.auditReport) {
+  if (!auditJob || !auditJob.auditReport) {
     return new Response("Report not found.", { status: 404 });
   }
 

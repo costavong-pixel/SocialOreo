@@ -1,42 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { m2AddDestination, m2CreatePost, m2RunWatch, m2FirstPostAndPlan } from "@/app/m2-actions";
+import Link from "next/link";
+import { m2CreatePost, m2RunWatch, m2FirstPostAndPlan } from "@/app/m2-actions";
 
-export function AddDestinationForm() {
-  const [platform, setPlatform] = useState("instagram");
-  const [accountLabel, setAccountLabel] = useState("");
+export function CreatePostForm({ destinations = [] }: { destinations?: Array<{ externalId: string; label: string; platform: string }> }) {
+  const [destination, setDestination] = useState(destinations[0]?.externalId ?? "");
   const [result, setResult] = useState<string | null>(null);
 
-  return (
-    <form
-      className="mt-6 space-y-3 rounded-3xl border border-white/10 bg-white/[0.02] p-5"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        try {
-          const created = await m2AddDestination(platform, accountLabel);
-          setResult(`Added ${accountLabel} (${created.providerDisabled ? "provider-disabled" : ""}).`);
-        } catch (cause) {
-          setResult(cause instanceof Error ? cause.message : "Failed to add destination");
-        }
-      }}
-    >
-      <label className="block text-sm font-bold" htmlFor="platform">Platform</label>
-      <select id="platform" value={platform} onChange={(e) => setPlatform(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white">
-        <option value="instagram">Instagram</option>
-        <option value="tiktok">TikTok</option>
-      </select>
-      <label className="block text-sm font-bold" htmlFor="label">Account label</label>
-      <input id="label" value={accountLabel} onChange={(e) => setAccountLabel(e.target.value)} placeholder="@costa.studio" className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
-      <button type="submit" className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]">Add sandbox destination</button>
-      {result && <p role="status" className="text-sm text-white/70">{result}</p>}
-    </form>
-  );
-}
+  if (destinations.length === 0) {
+    return (
+      <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
+        <h2 className="font-display text-lg font-extrabold">Create your first Post</h2>
+        <p className="mt-2 text-sm text-white/65">Connect an account to create your first Post.</p>
+        <Link href="/connections" className="mt-4 inline-flex rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]">Open Connections</Link>
+        <p className="mt-3 text-xs text-white/45">Staging notice: live social connections and delivery are not enabled here.</p>
+      </div>
+    );
+  }
 
-export function CreatePostForm() {
-  const [destination, setDestination] = useState("");
-  const [result, setResult] = useState<string | null>(null);
   return (
     <form
       className="mt-6 space-y-3 rounded-3xl border border-white/10 bg-white/[0.02] p-5"
@@ -44,15 +26,17 @@ export function CreatePostForm() {
         event.preventDefault();
         try {
           const created = await m2CreatePost({ destinationExternalId: destination, language: "en", requestedCount: 10, contentIntent: "post" });
-          setResult(`Post ${created.postRequestId} created in REVIEW (provider-disabled).`);
+          setResult(`Post draft ${created.postRequestId} saved. Live delivery is not enabled in staging.`);
         } catch (cause) {
           setResult(cause instanceof Error ? cause.message : "Failed to create post");
         }
       }}
     >
-      <label className="block text-sm font-bold" htmlFor="dst">Destination external id</label>
-      <input id="dst" value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="dst_..." className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white" />
-      <button type="submit" className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]">Create Post</button>
+      <label className="block text-sm font-bold" htmlFor="post-destination">Connected account</label>
+      <select id="post-destination" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white">
+        {destinations.map((item) => <option key={item.externalId} value={item.externalId}>{item.label} ({item.platform})</option>)}
+      </select>
+      <button type="submit" className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]">Create draft</button>
       {result && <p role="status" className="text-sm text-white/70">{result}</p>}
     </form>
   );
@@ -69,7 +53,7 @@ export function WatchForm({ cost = 1, batchAvailable = true }: { cost?: number; 
     setBusy(true);
     try {
       const report = await m2RunWatch(profileUrl, "instagram", true);
-      setResult(`Watch ${report.status} — report ${report.reportExternalId} (provider-disabled, exact credit preview + confirmation).`);
+          setResult(`Watch ${report.status} — report ${report.reportExternalId}. The staging result is not a live provider observation.`);
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : "Failed to run Watch");
     } finally {
@@ -95,10 +79,10 @@ export function WatchForm({ cost = 1, batchAvailable = true }: { cost?: number; 
       {step === "confirm" ? (
         <div className="rounded-2xl border border-[var(--social-blue)]/40 bg-[var(--social-blue)]/10 p-4">
           <p className="text-sm font-bold">Confirm exact cost</p>
-          <p className="mt-1 text-sm text-white/75">One Basic Profile Analysis for <strong>{profileUrl}</strong> runs a provider-disabled analysis and consumes <strong>{cost} credit{cost === 1 ? "" : "s"}</strong>{batchAvailable ? "" : " — no spendable batch is currently available."} Credits are held, then finalized on success or refunded on failure.</p>
+          <p className="mt-1 text-sm text-white/75">One Basic Profile Analysis for <strong>{profileUrl}</strong> uses <strong>{cost} credit{cost === 1 ? "" : "s"}</strong>{batchAvailable ? "" : " — no spendable batch is currently available."} Credits are held, then finalized on success or refunded on failure. Staging does not call a live monitoring provider.</p>
           <label className="mt-3 flex items-center gap-2 text-sm text-white/80">
             <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
-            I confirm the exact credit cost and that this runs provider-disabled.
+            I confirm the exact credit cost and understand that staging does not call a live monitoring provider.
           </label>
           <div className="mt-3 flex gap-2">
             <button type="submit" disabled={!confirmed || busy} className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff] disabled:opacity-50">Confirm and run Watch</button>
@@ -131,7 +115,7 @@ export function OnboardingFirstPostForm({ destinations }: { destinations: Array<
     >
       <label className="block text-sm font-bold" htmlFor="odst">Sandbox destination</label>
       {destinations.length === 0 ? (
-        <p className="text-sm text-white/60">Add a sandbox Instagram/TikTok destination in Connections first.</p>
+        <p className="text-sm text-white/60">Connect a social account in Connections first.</p>
       ) : (
         <select id="odst" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white">
           {destinations.map((d) => (

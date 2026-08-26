@@ -23,10 +23,10 @@ describe("ScheduleControl", () => {
     vi.clearAllMocks();
   });
 
-  it("shows the provider-disabled capability preview with a UTC conversion", () => {
+  it("shows the staging delivery notice with a UTC conversion", () => {
     render(<ScheduleControl postExternalId="req_1" destinationRef="dst_1" destinations={[destination]} occurrences={[]} slots={[]} />);
 
-    expect(screen.getByText(/provider-disabled \(no live transport\)/)).toBeTruthy();
+    expect(screen.getByText(/not enabled in staging/)).toBeTruthy();
     expect(screen.getByText(/Pick a date and timezone/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Schedule for (local time)"), { target: { value: "2026-08-10T15:30" } });
@@ -48,7 +48,7 @@ describe("ScheduleControl", () => {
 
     fireEvent.click(scheduleButton);
 
-    expect(await screen.findByText(/Slot persisted provider-disabled/)).toBeTruthy();
+    expect(await screen.findByText(/Your schedule is saved; live delivery is not enabled in staging/)).toBeTruthy();
     expect(m2SchedulePostMock).toHaveBeenCalledWith({
       postRequestExternalId: "req_1",
       scheduleAt: "2026-08-10T15:30:00.000Z",
@@ -61,9 +61,8 @@ describe("ScheduleControl", () => {
     const slot = { id: "slot-1", destinationRef: "dst_1", scheduleAt: "2026-08-10T15:30:00.000Z", timezone: "UTC", createdAt: "2026-08-04T00:00:00.000Z" };
     render(<ScheduleControl postExternalId="req_1" destinationRef="dst_1" destinations={[destination]} occurrences={[]} slots={[slot]} />);
 
-    expect(screen.getByText(/Scheduled slots/)).toBeTruthy();
-    expect(screen.getByText(/dst_1 · status/)).toBeTruthy();
+    expect(screen.getByText("Scheduled slots:")).toBeTruthy();
+    expect(screen.getByText(/UTC · status/)).toBeTruthy();
     expect(screen.getByText("SCHEDULED")).toBeTruthy();
-    expect(screen.getByText(/evidence: provider-disabled fixture/)).toBeTruthy();
   });
 });

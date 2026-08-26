@@ -118,9 +118,9 @@ try {
 
   await page.waitForURL((url) => (
     url.origin === STAGING_ORIGIN
-    && ["/", "/dashboard", "/home", "/credits"].includes(url.pathname)
+    && ["/", "/home", "/credits"].includes(url.pathname)
   ), { timeout: 300000 });
-  await page.goto(`${STAGING_ORIGIN}/dashboard`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${STAGING_ORIGIN}/home`, { waitUntil: "domcontentloaded" });
   await page.getByText("Sign out", { exact: true }).waitFor({ state: "visible", timeout: 30000 });
 
   const state = await context.storageState();
