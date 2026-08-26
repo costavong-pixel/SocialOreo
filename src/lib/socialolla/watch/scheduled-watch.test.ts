@@ -86,7 +86,16 @@ function configureDefaults() {
   mocks.prisma.publicProfileSnapshot.upsert.mockResolvedValue({ id: "snapshot-1" });
   mocks.prisma.watchReport.update.mockResolvedValue(report({ attemptCount: 1 }));
   mocks.prisma.watchReport.updateMany.mockResolvedValue({ count: 1 });
-  mocks.prisma.$transaction.mockImplementation(async (operations: unknown) => Array.isArray(operations) ? Promise.all(operations as Promise<unknown>[]) : operations);
+    mocks.prisma.$transaction.mockImplementation(async (operations: unknown) => {
+      if (typeof operations === "function") {
+        return operations({
+          publicProfileSnapshot: mocks.prisma.publicProfileSnapshot,
+          watchReport: mocks.prisma.watchReport,
+          publicProfileMonitor: mocks.prisma.publicProfileMonitor,
+        });
+      }
+      return Array.isArray(operations) ? Promise.all(operations as Promise<unknown>[]) : operations;
+    });
   mocks.holdCredits.mockResolvedValue({ held: true, replayed: false });
   mocks.finalizeCredits.mockResolvedValue({ finalized: true, replayed: false });
   mocks.refundCredits.mockResolvedValue({ refunded: true, replayed: false });
@@ -124,8 +133,13 @@ describe("scheduled Watch execution", () => {
       return current;
     });
     mocks.prisma.watchReport.create.mockImplementation(async () => current);
-    mocks.prisma.watchReport.updateMany.mockImplementation(async () => {
-      current = { ...current, attemptCount: 1, claimToken: "claim", claimedAt: now };
+    mocks.prisma.watchReport.updateMany.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      current = {
+        ...current,
+        attemptCount: 1,
+        ...(Object.prototype.hasOwnProperty.call(data, "claimToken") ? { claimToken: data.claimToken } : {}),
+        ...(Object.prototype.hasOwnProperty.call(data, "claimedAt") ? { claimedAt: data.claimedAt } : {}),
+      };
       return { count: 1 };
     });
 
@@ -138,8 +152,8 @@ describe("scheduled Watch execution", () => {
       where: { captureKey: current.captureKey },
       create: expect.objectContaining({ monitorId: monitor.id, captureKey: current.captureKey, sourceUrls: [] }),
     }));
-    expect(mocks.prisma.watchReport.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: current.id },
+    expect(mocks.prisma.watchReport.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: current.id }),
       data: expect.objectContaining({ status: "COMPLETED", evidenceJson: expect.objectContaining({ type: "WATCH_CAPTURE" }) }),
     }));
   });
@@ -155,18 +169,41 @@ describe("scheduled Watch execution", () => {
     expect(mocks.holdCredits).not.toHaveBeenCalled();
   });
 
+  it("stops before settlement when the claim is lost after provider work", async () => {
+    let current: Record<string, unknown> = report();
+    let calls = 0;
+    mocks.prisma.publicProfileMonitor.findMany.mockResolvedValue([monitor]);
+    mocks.prisma.watchReport.findFirst.mockResolvedValue(null);
+    mocks.prisma.watchReport.findUnique.mockImplementation(async ({ where }: { where: { captureKey?: string; id?: string } }) => where.captureKey ? null : current);
+    mocks.prisma.watchReport.create.mockImplementation(async () => current);
+    mocks.prisma.watchReport.updateMany.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      calls += 1;
+      if (typeof data.claimToken === "string") current = { ...current, claimToken: data.claimToken, claimedAt: data.claimedAt, attemptCount: 1 };
+      return { count: calls === 3 ? 0 : 1 };
+    });
+
+    const { processDueWatchCaptures } = await import("./scheduled-watch");
+    await expect(processDueWatchCaptures(now)).resolves.toMatchObject({ inspected: 1, skipped: 1, completed: 0, failed: 0 });
+    expect(mocks.finalizeCredits).not.toHaveBeenCalled();
+  });
+
   it("backs off transient provider failure and refunds after the terminal attempt", async () => {
     const active = report({ attemptCount: 3 });
     mocks.prisma.publicProfileMonitor.findMany.mockResolvedValue([monitor]);
     mocks.prisma.watchReport.findFirst.mockResolvedValue(active);
-    mocks.prisma.watchReport.findUnique.mockResolvedValue({ ...active, attemptCount: 4, claimToken: "claim", claimedAt: now });
+    let claimToken = "claim";
+    mocks.prisma.watchReport.findUnique.mockImplementation(async () => ({ ...active, attemptCount: 4, claimToken, claimedAt: now }));
+    mocks.prisma.watchReport.updateMany.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      if (typeof data.claimToken === "string") claimToken = data.claimToken;
+      return { count: 1 };
+    });
     mocks.fetchSocialAudit.mockRejectedValue(new Error("provider timeout"));
 
     const { processDueWatchCaptures, watchRetryDelayMs } = await import("./scheduled-watch");
     expect(watchRetryDelayMs(1)).toBe(5 * 60 * 1000);
     await expect(processDueWatchCaptures(now)).resolves.toMatchObject({ inspected: 1, failed: 1, retried: 0 });
     expect(mocks.refundCredits).toHaveBeenCalledWith(expect.objectContaining({ amount: 2, intent: active.intentKey }));
-    expect(mocks.prisma.watchReport.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "FAILED", lastError: "Provider timeout." }) }));
+    expect(mocks.prisma.watchReport.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "FAILED", lastError: "Provider timeout." }) }));
   });
 
   it("computes a baseline delta without storing raw provider payloads", async () => {
@@ -175,14 +212,22 @@ describe("scheduled Watch execution", () => {
     mocks.prisma.watchReport.findFirst.mockResolvedValue(null);
     mocks.prisma.watchReport.findUnique.mockImplementation(async ({ where }: { where: { captureKey?: string; id?: string } }) => where.captureKey ? null : current);
     mocks.prisma.watchReport.create.mockResolvedValue(current);
-    mocks.prisma.watchReport.updateMany.mockImplementation(async () => { current = { ...current, attemptCount: 1 }; return { count: 1 }; });
+    mocks.prisma.watchReport.updateMany.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      current = {
+        ...current,
+        attemptCount: 1,
+        ...(Object.prototype.hasOwnProperty.call(data, "claimToken") ? { claimToken: data.claimToken } : {}),
+        ...(Object.prototype.hasOwnProperty.call(data, "claimedAt") ? { claimedAt: data.claimedAt } : {}),
+      };
+      return { count: 1 };
+    });
     mocks.prisma.publicProfileSnapshot.findFirst.mockResolvedValue({ capturedAt: new Date("2026-08-19T12:00:00.000Z"), followerCount: 90, followingCount: 10, postCount: 3, reelsCollected: 0, totalViews: 0, medianViews: 0, visibleInteractions: 0, visibleInteractionRate: 0 });
     mocks.fetchSocialAudit.mockResolvedValue({ profile: { platform: "instagram", provider: "apify", profileUrl: monitor.profileUrl, followerCount: 101, rawProviderPayload: { secret: "should-not-persist" } }, videos: [] });
     mocks.buildPublicSnapshotMetrics.mockReturnValue({ followerCount: 101, followingCount: 10, postCount: 3, reelsCollected: 0, totalViews: 0, medianViews: 0, visibleInteractions: 0, visibleInteractionRate: 0 });
 
     const { processDueWatchCaptures } = await import("./scheduled-watch");
     await processDueWatchCaptures(now);
-    const updateCall = mocks.prisma.watchReport.update.mock.calls.find((call) => call[0].data.status === "COMPLETED");
+    const updateCall = mocks.prisma.watchReport.updateMany.mock.calls.find((call) => call[0].data.status === "COMPLETED");
     expect(updateCall?.[0].data.deltaJson).toMatchObject({ metrics: { followerCount: { previous: 90, current: 101, delta: 11 } } });
     expect(JSON.stringify(updateCall?.[0].data.reportJson)).not.toContain("should-not-persist");
   });
