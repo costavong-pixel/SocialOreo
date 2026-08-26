@@ -32,6 +32,15 @@ export function livePublishingEnabled(env: Record<string, string | undefined> = 
   return hasMediaStorage && livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
 }
 
+/**
+ * OAuth is an externally mutating capability too: connecting an account
+ * exchanges a code and stores a token. Keep its boundary server-side rather
+ * than relying on the Connections page hiding the link.
+ */
+export function instagramPublishingOAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+}
+
 export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {
   const capabilities = platformCapabilities(platform);
   if (!capabilities || platform !== "instagram") throw new Error(`No publishing provider contract exists for ${platform}`);

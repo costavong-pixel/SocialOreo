@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { detectMediaMimeType, mediaLimits, validateMediaDescriptor } from "./media";
+import { detectMediaMimeType, mediaLimits, mediaSizeLimitForMime, validateMediaDescriptor } from "./media";
 import { createLocalPrivateMediaStorage, verifyMediaGrant } from "./local-storage";
 
 describe("owned Post media", () => {
@@ -12,6 +12,12 @@ describe("owned Post media", () => {
     expect(() => validateMediaDescriptor({ assetId: "med_1", ownerWorkspaceId: "wsp_1", kind: "image", mimeType: "image/png", detectedMimeType: "image/jpeg", sizeBytes: 10, originalName: "a.png", storageKey: "media/wsp_1/med_1" })).toThrow("MIME");
     expect(() => validateMediaDescriptor({ assetId: "med_1", ownerWorkspaceId: "wsp_1", kind: "image", mimeType: "image/jpeg", detectedMimeType: "image/jpeg", sizeBytes: mediaLimits.imageBytes + 1, originalName: "a.jpg", storageKey: "media/wsp_1/med_1" })).toThrow("size");
     expect(() => validateMediaDescriptor({ assetId: "med_1", ownerWorkspaceId: "wsp_1", kind: "image", mimeType: "image/jpeg", detectedMimeType: "image/jpeg", sizeBytes: 10, originalName: "a.jpg", storageKey: "media/wsp_1/../other" })).toThrow("storage");
+  });
+
+  it("chooses the early upload limit from the declared media family", () => {
+    expect(mediaSizeLimitForMime("image/jpeg")).toBe(mediaLimits.imageBytes);
+    expect(mediaSizeLimitForMime("video/mp4")).toBe(mediaLimits.videoBytes);
+    expect(mediaSizeLimitForMime("")).toBe(mediaLimits.videoBytes);
   });
 
   it("creates short-lived signed grants and rejects tampering", async () => {

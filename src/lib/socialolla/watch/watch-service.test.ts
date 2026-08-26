@@ -104,6 +104,14 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     expect(reportUpdateOrder).toBeGreaterThan(finalizeCreateOrder ?? 0);
   });
 
+  it("validates and normalizes one-off Watch URLs before any provider or credit work", async () => {
+    const { createWatchService } = await import("./watch-service");
+    await expect(createWatchService().run({ authUserId: "user-1", profileUrl: "http://127.0.0.1/profile", platform: "instagram", confirmed: true })).rejects.toThrow("Internal or local");
+    await expect(createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.tiktok.com/@creator", platform: "instagram", confirmed: true })).rejects.toThrow("platform");
+    expect(mocks.fetchSocialAudit).not.toHaveBeenCalled();
+    expect(mocks.holdCredits).not.toHaveBeenCalled();
+  });
+
   it("uses the exact workspace for entitlement pricing", async () => {
     const { createWatchService } = await import("./watch-service");
     await createWatchService().preview("user-1");

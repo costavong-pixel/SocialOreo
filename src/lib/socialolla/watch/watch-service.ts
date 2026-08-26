@@ -7,6 +7,7 @@ import { liveSocialAuditRuntimeAllowed, providerDisabledEnabled } from "@/lib/pr
 import { socialProviderForPlatform } from "@/lib/providers/social/audit-provider-config";
 import type { NormalizedSocialAuditResult } from "@/lib/providers/social/types";
 import { sanitizeSocialAuditResult } from "@/lib/providers/social/sanitize-audit-result";
+import { validateSocialUrl } from "@/lib/validators/social-url";
 
 export interface WatchCostPreview {
   estimatedCredits: number;
@@ -33,6 +34,15 @@ function newWatchReportExternalId(): string {
  * - live provider calls remain staging-only and are disabled by default.
  */
 export function createWatchService() {
+  function normalizedProfileUrl(input: WatchRunInput): string {
+    const parsed = validateSocialUrl(input.profileUrl);
+    if (!parsed.ok || parsed.kind !== "profile") {
+      throw new Error(parsed.ok ? "Watch requires a public profile URL" : parsed.error);
+    }
+    if (parsed.platform !== input.platform) throw new Error("Profile URL platform does not match the selected platform");
+    return parsed.normalizedUrl;
+  }
+
   function safeStoredAnalysis(value: unknown): NormalizedSocialAuditResult | null {
     if (!value || typeof value !== "object") return null;
     const candidate = value as Partial<NormalizedSocialAuditResult>;
@@ -57,6 +67,7 @@ export function createWatchService() {
     if (!providerDisabledEnabled() && !liveSocialAuditRuntimeAllowed()) {
       throw new Error("Live provider calls are disabled outside the exact staging runtime.");
     }
+    const profileUrl = normalizedProfileUrl(input);
 
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
     const entitlement = await prisma.entitlementSnapshot.findFirst({
@@ -65,8 +76,8 @@ export function createWatchService() {
     });
     const cost = entitlement?.watchCreditsPerRequest ?? 1;
 
-    const intent = intentKey(workspace.id, `watch:${input.profileUrl}`, "basic-profile-analysis");
-    const reference = `watch:${input.profileUrl}`;
+    const intent = intentKey(workspace.id, `watch:${profileUrl}`, "basic-profile-analysis");
+    const reference = `watch:${profileUrl}`;
 
     const replay = await prisma.watchReport.findUnique({
       where: { intentKey: intent },
@@ -89,7 +100,7 @@ export function createWatchService() {
           externalId: newWatchReportExternalId(),
           intentKey: intent,
           workspaceId: workspace.dbId,
-          profileUrl: input.profileUrl,
+          profileUrl,
           platform: input.platform,
           status: "RUNNING",
           provider: providerDisabledEnabled() ? "provider-disabled" : socialProviderForPlatform(input.platform),
@@ -128,7 +139,7 @@ export function createWatchService() {
       // crashed predecessor must still be settled if this attempt fails.
       holdAcquired = true;
 
-      const analysis = sanitizeSocialAuditResult(await fetchSocialAudit(input.platform, { url: input.profileUrl, limit: 30 }));
+      const analysis = sanitizeSocialAuditResult(await fetchSocialAudit(input.platform, { url: profileUrl, limit: 30 }));
       await finalizeCredits({ amount: cost, reference, intent, actorAuthUserId: input.authUserId });
       await prisma.watchReport.update({
         where: { id: report.id },

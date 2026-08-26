@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   prisma: {
-    publicProfileMonitor: { findMany: vi.fn(), findFirst: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    publicProfileMonitor: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), count: vi.fn(), upsert: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     watchReport: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     publicProfileSnapshot: { findFirst: vi.fn(), upsert: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
+    user: { findUnique: vi.fn() },
     $transaction: vi.fn(),
   },
   fetchSocialAudit: vi.fn(),
@@ -78,6 +79,9 @@ function report(overrides: Record<string, unknown> = {}) {
 function configureDefaults() {
   mocks.getOrCreatePersonalWorkspace.mockResolvedValue({ id: "wsp_1", dbId: "ws-1" });
   mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ watchCreditsPerRequest: 2 });
+  mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "MONTHLY" });
+  mocks.prisma.publicProfileMonitor.findUnique.mockResolvedValue(null);
+  mocks.prisma.publicProfileMonitor.count.mockResolvedValue(0);
   mocks.prisma.publicProfileMonitor.upsert.mockResolvedValue(monitor);
   mocks.prisma.publicProfileMonitor.update.mockResolvedValue(monitor);
   mocks.prisma.publicProfileMonitor.updateMany.mockResolvedValue({ count: 1 });
@@ -123,6 +127,16 @@ describe("scheduled Watch execution", () => {
       where: { userId_profileUrl: { userId: "user-1", profileUrl: "https://www.instagram.com/example" } },
       create: expect.objectContaining({ userId: "user-1", cadenceHours: 168, enabled: true }),
     }));
+  });
+
+  it("enforces the effective active-monitor entitlement while allowing an active monitor to be updated", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "LIFETIME" });
+    mocks.prisma.publicProfileMonitor.count.mockResolvedValue(1);
+    const { configureWatchMonitor } = await import("./scheduled-watch");
+    await expect(configureWatchMonitor({ userId: "user-1", profileUrl: "https://www.instagram.com/another/", platform: "instagram", cadenceHours: 168, confirmed: true })).rejects.toThrow("limit");
+
+    mocks.prisma.publicProfileMonitor.findUnique.mockResolvedValue({ id: "monitor-1", enabled: true });
+    await expect(configureWatchMonitor({ userId: "user-1", profileUrl: monitor.profileUrl, platform: "instagram", cadenceHours: 336, confirmed: true })).resolves.toMatchObject({ enabled: true });
   });
 
   it("claims, charges once, stores evidence, and produces a completed first capture", async () => {
@@ -231,5 +245,25 @@ describe("scheduled Watch execution", () => {
     const updateCall = mocks.prisma.watchReport.updateMany.mock.calls.find((call) => call[0].data.status === "COMPLETED");
     expect(updateCall?.[0].data.deltaJson).toMatchObject({ metrics: { followerCount: { previous: 90, current: 101, delta: 11 } } });
     expect(JSON.stringify(updateCall?.[0].data.reportJson)).not.toContain("should-not-persist");
+  });
+
+  it("reuses a durably pending provider result after settlement recovery", async () => {
+    let current: Record<string, unknown> = report();
+    mocks.prisma.publicProfileMonitor.findMany.mockResolvedValue([monitor]);
+    mocks.prisma.watchReport.findFirst.mockImplementation(async () => current.status === "COMPLETED" ? null : current);
+    mocks.prisma.watchReport.findUnique.mockImplementation(async ({ where }: { where: { captureKey?: string; id?: string } }) => where.captureKey ? null : current);
+    mocks.prisma.watchReport.create.mockImplementation(async () => current);
+    mocks.prisma.watchReport.updateMany.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      current = { ...current, ...data };
+      if (typeof data.claimToken === "string") current = { ...current, attemptCount: Number(current.attemptCount ?? 0) + 1 };
+      return { count: 1 };
+    });
+    mocks.finalizeCredits.mockRejectedValueOnce(new Error("settlement unavailable")).mockResolvedValue({ finalized: true });
+
+    const { processDueWatchCaptures } = await import("./scheduled-watch");
+    await expect(processDueWatchCaptures(now)).resolves.toMatchObject({ retried: 1, completed: 0 });
+    await expect(processDueWatchCaptures(now)).resolves.toMatchObject({ completed: 1, retried: 0 });
+    expect(mocks.fetchSocialAudit).toHaveBeenCalledTimes(1);
+    expect(current.status).toBe("COMPLETED");
   });
 });

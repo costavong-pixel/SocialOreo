@@ -13,6 +13,7 @@ import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { buildPublicSnapshotMetrics } from "@/lib/snapshots/public-profile-snapshots";
 import { normalizeWatchCadence, sanitizedWatchError, watchCaptureKey, watchProviderCostEstimate, type WatchCadenceHours } from "@/lib/snapshots/watch-policy";
 import { validateSocialUrl } from "@/lib/validators/social-url";
+import { watchCompetitorLimitForUser } from "./resolver";
 
 export const WATCH_MAX_CAPTURE_ATTEMPTS = 3;
 export const WATCH_CLAIM_LEASE_MS = 10 * 60 * 1000;
@@ -182,33 +183,46 @@ export async function configureWatchMonitor(input: {
   const normalizedUrl = profileInput(input.profileUrl, input.platform);
   await getOrCreatePersonalWorkspace(input.userId);
   const configuredProvider = providerDisabledEnabled() ? "provider-disabled" : socialProviderForPlatform(input.platform);
+  const monitorLimit = await watchCompetitorLimitForUser(input.userId);
 
-  const monitor = await prisma.publicProfileMonitor.upsert({
-    where: { userId_profileUrl: { userId: input.userId, profileUrl: normalizedUrl } },
-    create: {
-      userId: input.userId,
-      profileUrl: normalizedUrl,
-      platform: input.platform,
-      provider: configuredProvider,
-      reelLimit: 30,
-      enabled: true,
-      cadenceHours,
-      providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, 30)),
-      nextCaptureAt: new Date(),
-      retryCount: 0,
-      lastError: null,
-    },
-    update: {
-      platform: input.platform,
-      provider: configuredProvider,
-      enabled: true,
-      cadenceHours,
-      providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, 30)),
-      nextCaptureAt: new Date(),
-      lastError: null,
-      retryCount: 0,
-    },
-  });
+  const monitor = await prisma.$transaction(async (tx) => {
+    const existing = await tx.publicProfileMonitor.findUnique({
+      where: { userId_profileUrl: { userId: input.userId, profileUrl: normalizedUrl } },
+      select: { id: true, enabled: true },
+    });
+    if (!existing?.enabled) {
+      const activeCount = await tx.publicProfileMonitor.count({
+        where: { userId: input.userId, enabled: true, NOT: { profileUrl: normalizedUrl } },
+      });
+      if (activeCount >= monitorLimit) throw new Error("Watch monitor limit reached for this plan.");
+    }
+    return tx.publicProfileMonitor.upsert({
+      where: { userId_profileUrl: { userId: input.userId, profileUrl: normalizedUrl } },
+      create: {
+        userId: input.userId,
+        profileUrl: normalizedUrl,
+        platform: input.platform,
+        provider: configuredProvider,
+        reelLimit: 30,
+        enabled: true,
+        cadenceHours,
+        providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, 30)),
+        nextCaptureAt: new Date(),
+        retryCount: 0,
+        lastError: null,
+      },
+      update: {
+        platform: input.platform,
+        provider: configuredProvider,
+        enabled: true,
+        cadenceHours,
+        providerCostEstimate: new Prisma.Decimal(watchProviderCostEstimate(input.platform, 30)),
+        nextCaptureAt: new Date(),
+        lastError: null,
+        retryCount: 0,
+      },
+    });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   return monitorView(monitor as WatchMonitorRow);
 }
 
@@ -364,6 +378,26 @@ function watchEvidence(input: {
   };
 }
 
+function pendingAudit(reportJson: unknown): NormalizedSocialAuditResult | null {
+  if (!reportJson || typeof reportJson !== "object") return null;
+  const candidate = reportJson as { type?: unknown; audit?: unknown };
+  if (candidate.type !== "WATCH_CAPTURE_PENDING") return null;
+  if (!candidate.audit || typeof candidate.audit !== "object") return null;
+  const audit = candidate.audit as { profile?: unknown; videos?: unknown };
+  if (!audit.profile || typeof audit.profile !== "object" || !Array.isArray(audit.videos)) return null;
+  return sanitizeSocialAuditResult(candidate.audit as NormalizedSocialAuditResult);
+}
+
+async function persistPendingAudit(report: WatchReportRow, auditData: NormalizedSocialAuditResult): Promise<boolean> {
+  const where = activeClaimWhere(report);
+  if (!where) return false;
+  const result = await prisma.watchReport.updateMany({
+    where,
+    data: { reportJson: { type: "WATCH_CAPTURE_PENDING", audit: auditData } as Prisma.InputJsonObject },
+  });
+  return result.count === 1;
+}
+
 async function stillEnabled(monitor: WatchMonitorRow): Promise<boolean> {
   const current = await prisma.publicProfileMonitor.findFirst({
     where: { id: monitor.id, userId: monitor.userId, enabled: true },
@@ -434,13 +468,20 @@ async function executeClaimedReport(report: WatchReportRow, monitor: WatchMonito
     return terminalFailure(report, monitor, now, error instanceof Error && error.message === "Insufficient credits" ? "Insufficient credits." : "Credit hold unavailable.", false);
   }
 
-  let auditData: NormalizedSocialAuditResult;
-  try {
-    auditData = await fetchSocialAudit(platform(report.platform) as SocialPlatform, { url: report.profileUrl, limit: monitor.reelLimit });
-  } catch (error) {
-    const reason = sanitizedWatchError(error);
-    if (report.attemptCount < WATCH_MAX_CAPTURE_ATTEMPTS) return scheduleRetry(report, monitor, now, reason);
-    return terminalFailure(report, monitor, now, reason, true);
+  let auditData = pendingAudit(report.reportJson);
+  if (!auditData) {
+    try {
+      auditData = sanitizeSocialAuditResult(await fetchSocialAudit(platform(report.platform) as SocialPlatform, { url: report.profileUrl, limit: monitor.reelLimit }));
+    } catch (error) {
+      const reason = sanitizedWatchError(error);
+      if (report.attemptCount < WATCH_MAX_CAPTURE_ATTEMPTS) return scheduleRetry(report, monitor, now, reason);
+      return terminalFailure(report, monitor, now, reason, true);
+    }
+    try {
+      if (!(await persistPendingAudit(report, auditData))) return skipped(report, "Watch capture lease was lost.");
+    } catch {
+      return scheduleRetry(report, monitor, now, "Watch result persistence unavailable.");
+    }
   }
 
   if (!(await stillEnabled(monitor))) return terminalFailure(report, monitor, now, "Watch was paused before capture completed.", true);

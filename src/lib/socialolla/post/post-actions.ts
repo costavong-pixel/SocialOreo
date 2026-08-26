@@ -6,6 +6,7 @@ import { intentKey } from "@/lib/socialolla/credits/batch-service";
 import { enqueuePublishJob, reschedulePublishJob, cancelPublishJob } from "@/lib/socialolla/publishing/job-service";
 import { processDuePublishJobs } from "@/lib/socialolla/publishing/publish-worker";
 import { deleteOwnedMedia } from "@/lib/socialolla/media/media-service";
+import { toPostListView, type PostListView } from "./post-view";
 
 function externalId(prefix: string): string { return `${prefix}_${randomBytes(12).toString("base64url")}`; }
 
@@ -112,5 +113,20 @@ export async function reschedulePostPublish(input: { authUserId: string; jobId: 
 
 export async function listPostRequests(authUserId: string) {
   const workspace = await ownedWorkspace(authUserId);
-  return prisma.postRequest.findMany({ where: { workspaceId: workspace.dbId }, orderBy: { createdAt: "desc" }, include: { variants: true, occurrences: true, destinations: { include: { destination: true, publishJobs: { include: { attempts: true, receipt: true } } } } }, take: 50 });
+  const posts = await prisma.postRequest.findMany({
+    where: { workspaceId: workspace.dbId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      externalId: true,
+      destinationRef: true,
+      language: true,
+      status: true,
+      variants: { select: { id: true, platform: true, title: true, caption: true, hashtags: true, cta: true, isFinal: true, variantLocale: true, mediaAssetIds: true } },
+      occurrences: { select: { id: true, status: true, scheduleAt: true, timezone: true, destinationRef: true } },
+      destinations: { select: { externalId: true, platform: true, status: true, publishJobs: { select: { id: true, status: true, receipt: { select: { providerObjectId: true } } } } } },
+    },
+    take: 50,
+  });
+  return posts.map((post) => toPostListView(post as PostListView));
 }
