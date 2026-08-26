@@ -42,8 +42,7 @@ export async function verifyInstagramPublishingEligibility(config: InstagramPubl
 export async function refreshInstagramPublishingToken(accessToken: string) {
   const url = new URL("https://graph.instagram.com/refresh_access_token");
   url.searchParams.set("grant_type", "ig_refresh_token");
-  url.searchParams.set("access_token", accessToken);
-  return refreshedTokenSchema.parse(await responseJson(await fetch(url, { cache: "no-store" })));
+  return refreshedTokenSchema.parse(await responseJson(await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" })));
 }
 
 export function assertProfessionalAccount(accountType: string | undefined): asserts accountType is "BUSINESS" | "CREATOR" {

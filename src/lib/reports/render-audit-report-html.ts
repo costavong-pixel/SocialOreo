@@ -1,5 +1,6 @@
 import { buildReelStructures } from "./reel-structures";
 import type { PublicMetrics } from "./public-metrics";
+import { safeHttpsUrl } from "@/lib/validators/external-url";
 
 export type AuditReportHtmlInput = {
   profileUrl: string;
@@ -70,10 +71,14 @@ function formatPercent(value: number | undefined): string {
   return value === undefined ? "Unavailable" : `${(value * 100).toFixed(1)}%`;
 }
 
+function safeReportLink(value: string | undefined): string | undefined {
+  return safeHttpsUrl(value);
+}
+
 function renderPublicMetrics(metrics: PublicMetrics | undefined, transcriptEnrichmentStatus?: string): string {
   if (!metrics) return "";
   const reelEvidence = metrics.reelEvidence?.length
-    ? `<h3>Keep, change, or stop</h3><p class="meta">Ranked by public views. Every reel includes one practical next test.</p><ol>${metrics.reelEvidence.map((item) => `<li class="reel">${item.thumbnailUrl ? `<img src="${escapeHtml(item.thumbnailUrl)}" alt="Public reel thumbnail" />` : ""}<div><p class="decision">${escapeHtml(item.recommendation)}${item.rank ? ` · #${item.rank}` : ""}</p><a href="${escapeHtml(item.url)}">${escapeHtml(item.caption)}</a><p>${escapeHtml(item.evidence)}</p><p class="meta">${escapeHtml(item.nextTest)}</p></div></li>`).join("")}</ol>`
+    ? `<h3>Keep, change, or stop</h3><p class="meta">Ranked by public views. Every reel includes one practical next test.</p><ol>${metrics.reelEvidence.map((item) => { const url = safeReportLink(item.url); const thumbnailUrl = safeReportLink(item.thumbnailUrl ?? undefined); return `<li class="reel">${thumbnailUrl ? `<img src="${escapeHtml(thumbnailUrl)}" alt="Public reel thumbnail" />` : ""}<div><p class="decision">${escapeHtml(item.recommendation)}${item.rank ? ` · #${item.rank}` : ""}</p>${url ? `<a href="${escapeHtml(url)}">${escapeHtml(item.caption)}</a>` : `<span>${escapeHtml(item.caption)}</span>`}<p>${escapeHtml(item.evidence)}</p><p class="meta">${escapeHtml(item.nextTest)}</p></div></li>`; }).join("")}</ol>`
     : "<p class=\"meta\">No public reels were saved with this audit.</p>";
   const enrichmentNote = transcriptEnrichmentStatus === "SUBMITTED"
     ? "<p class=\"callout\">Transcripts are being collected in the background. Reopen this export in a few minutes to see any completed spoken-hook analysis.</p>"
@@ -81,7 +86,7 @@ function renderPublicMetrics(metrics: PublicMetrics | undefined, transcriptEnric
       ? "<p class=\"meta\">Transcript collection was unavailable for this audit. The public metadata report is still complete.</p>"
       : "";
   const intelligence = metrics.contentIntelligence
-    ? `<h3>Spoken-hook evidence</h3><p class="meta">${metrics.contentIntelligence.transcriptCount}/${metrics.contentIntelligence.totalReels} reels include a public transcript. ${metrics.contentIntelligence.audioCount}/${metrics.contentIntelligence.totalReels} include an exposed audio label. Missing data stays unavailable.</p>${enrichmentNote}${metrics.contentIntelligence.transcriptOpenings.length ? `<h4>Spoken openings</h4><ul>${metrics.contentIntelligence.transcriptOpenings.map((item) => `<li><a href="${escapeHtml(item.url)}">“${escapeHtml(item.opening)}”</a><br /><span class="meta">${escapeHtml(item.caption)}${item.views === undefined ? "" : ` — ${formatMetric(item.views)} public views`}</span></li>`).join("")}</ul>` : "<p class=\"meta\">No transcript was returned for these public reels.</p>"}${metrics.contentIntelligence.audioPatterns.length ? `<h4>Audio patterns</h4><ul>${metrics.contentIntelligence.audioPatterns.map((item) => `<li>${escapeHtml(item.label)} — ${formatMetric(item.averageViews)} average public views (${item.sampleSize} reels)</li>`).join("")}</ul>` : "<p class=\"meta\">No public audio label was returned for these reels.</p>"}`
+    ? `<h3>Spoken-hook evidence</h3><p class="meta">${metrics.contentIntelligence.transcriptCount}/${metrics.contentIntelligence.totalReels} reels include a public transcript. ${metrics.contentIntelligence.audioCount}/${metrics.contentIntelligence.totalReels} include an exposed audio label. Missing data stays unavailable.</p>${enrichmentNote}${metrics.contentIntelligence.transcriptOpenings.length ? `<h4>Spoken openings</h4><ul>${metrics.contentIntelligence.transcriptOpenings.map((item) => { const url = safeReportLink(item.url); return `<li>${url ? `<a href="${escapeHtml(url)}">“${escapeHtml(item.opening)}”</a>` : `<span>“${escapeHtml(item.opening)}”</span>`}<br /><span class="meta">${escapeHtml(item.caption)}${item.views === undefined ? "" : ` — ${formatMetric(item.views)} public views`}</span></li>`; }).join("")}</ul>` : "<p class=\"meta\">No transcript was returned for these public reels.</p>"}${metrics.contentIntelligence.audioPatterns.length ? `<h4>Audio patterns</h4><ul>${metrics.contentIntelligence.audioPatterns.map((item) => `<li>${escapeHtml(item.label)} — ${formatMetric(item.averageViews)} average views (${item.sampleSize} reels)</li>`).join("")}</ul>` : "<p class=\"meta\">No public audio label was returned for these reels.</p>"}`
     : "";
   const patterns = (title: string, items: PublicMetrics["postingWindows"]) => `<h3>${title}</h3>${items.length ? `<ul>${items.slice(0, 4).map((item) => `<li>${escapeHtml(item.label)} — ${formatMetric(item.averageViews)} average views (${item.sampleSize} reels)</li>`).join("")}</ul>` : "<p class=\"meta\">No public view data available.</p>"}`;
 

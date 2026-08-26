@@ -19,16 +19,14 @@ export async function exchangeInstagramAuthorizationCode(config: Config, code: s
   const longLivedUrl = new URL("https://graph.instagram.com/access_token");
   longLivedUrl.searchParams.set("grant_type", "ig_exchange_token");
   longLivedUrl.searchParams.set("client_secret", config.clientSecret);
-  longLivedUrl.searchParams.set("access_token", shortLived.access_token);
-  const longLived = tokenSchema.parse(await responseJson(await fetch(longLivedUrl, { cache: "no-store" })));
+  const longLived = tokenSchema.parse(await responseJson(await fetch(longLivedUrl, { headers: { Authorization: `Bearer ${shortLived.access_token}` }, cache: "no-store" })));
   return longLived;
 }
 
 export async function getInstagramProfessionalProfile(config: Config, accessToken: string) {
   const url = new URL(`https://graph.instagram.com/${config.graphVersion}/me`);
   url.searchParams.set("fields", "id,username,account_type");
-  url.searchParams.set("access_token", accessToken);
-  return profileSchema.parse(await responseJson(await fetch(url, { cache: "no-store" })));
+  return profileSchema.parse(await responseJson(await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" })));
 }
 
 type InsightValue = { value?: number; end_time?: string };
@@ -38,8 +36,7 @@ async function tryAccountMetric(config: Config, instagramUserId: string, accessT
   const url = new URL(`https://graph.instagram.com/${config.graphVersion}/${instagramUserId}/insights`);
   url.searchParams.set("metric", metric);
   url.searchParams.set("period", "day");
-  url.searchParams.set("access_token", accessToken);
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   if (!response.ok) return null;
   const body = await response.json() as InsightResponse;
   const values = body.data?.[0]?.values ?? [];
@@ -52,8 +49,7 @@ async function tryAudienceDemographics(config: Config, instagramUserId: string, 
   url.searchParams.set("metric", "follower_demographics");
   url.searchParams.set("period", "lifetime");
   url.searchParams.set("breakdown", "age,gender");
-  url.searchParams.set("access_token", accessToken);
-  const response = await fetch(url, { cache: "no-store" });
+  const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
   if (!response.ok) return null;
   return await response.json();
 }

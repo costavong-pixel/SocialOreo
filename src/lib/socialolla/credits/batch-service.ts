@@ -223,26 +223,28 @@ export async function finalizeCredits(params: {
   const hold = await matchingHold(params.intent);
   if (!hold) throw new Error("No matching hold for finalize");
   if (hold.amount !== params.amount) throw new Error("Finalize amount does not match hold");
-  const refunded = await prisma.creditTransaction.findUnique({
-    where: { idempotencyKey: refundKey(params.intent) },
-  });
-  if (refunded) throw new Error("Cannot finalize after refund");
-  const existing = await prisma.creditTransaction.findUnique({
-    where: { idempotencyKey: finalizeKey(params.intent) },
-  });
-  if (existing) return { finalized: true, replayed: true };
-  await prisma.creditTransaction.create({
-    data: {
-      batchId: hold.batchId,
-      kind: "FINALIZE",
-      amount: params.amount,
-      reference: params.reference,
-      idempotencyKey: finalizeKey(params.intent),
-    },
+  const settlement = await prisma.$transaction(async (tx) => {
+    // Lock the batch so FINALIZE and REFUND cannot both pass their terminal
+    // state checks concurrently for the same HOLD.
+    await tx.creditBatch.update({ where: { id: hold.batchId }, data: { remaining: { increment: 0 } } });
+    const refunded = await tx.creditTransaction.findUnique({ where: { idempotencyKey: refundKey(params.intent) } });
+    if (refunded) throw new Error("Cannot finalize after refund");
+    const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey: finalizeKey(params.intent) } });
+    if (existing) return { finalized: true, replayed: true };
+    await tx.creditTransaction.create({
+      data: {
+        batchId: hold.batchId,
+        kind: "FINALIZE",
+        amount: params.amount,
+        reference: params.reference,
+        idempotencyKey: finalizeKey(params.intent),
+      },
+    });
+    return { finalized: true, replayed: false };
   });
   const batch = await prisma.creditBatch.findUnique({ where: { id: hold.batchId } });
-  if (batch) await auditEvent(batch.workspaceId, "credit.finalize", { batch: batch.externalId, amount: params.amount, reference: params.reference }, params.actorAuthUserId);
-  return { finalized: true, replayed: false };
+  if (batch && !settlement.replayed) await auditEvent(batch.workspaceId, "credit.finalize", { batch: batch.externalId, amount: params.amount, reference: params.reference }, params.actorAuthUserId);
+  return settlement;
 }
 
 /** Refund requires a matching HOLD (no credit inflation). */
@@ -255,20 +257,19 @@ export async function refundCredits(params: {
   const hold = await matchingHold(params.intent);
   if (!hold) throw new Error("No matching hold for refund");
   if (hold.amount !== params.amount) throw new Error("Refund amount does not match hold");
-  const finalized = await prisma.creditTransaction.findUnique({
-    where: { idempotencyKey: finalizeKey(params.intent) },
-  });
-  if (finalized) throw new Error("Cannot refund after finalize");
-  const existing = await prisma.creditTransaction.findUnique({
-    where: { idempotencyKey: refundKey(params.intent) },
-  });
-  if (existing) return { refunded: true, replayed: true };
-  await prisma.$transaction([
-    prisma.creditBatch.update({
+  const settlement = await prisma.$transaction(async (tx) => {
+    // The no-op update takes the same row lock as FINALIZE, making the
+    // opposite-state check and terminal write one serialized transition.
+    await tx.creditBatch.update({ where: { id: hold.batchId }, data: { remaining: { increment: 0 } } });
+    const finalized = await tx.creditTransaction.findUnique({ where: { idempotencyKey: finalizeKey(params.intent) } });
+    if (finalized) throw new Error("Cannot refund after finalize");
+    const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey: refundKey(params.intent) } });
+    if (existing) return { refunded: true, replayed: true };
+    await tx.creditBatch.update({
       where: { id: hold.batchId },
       data: { remaining: { increment: params.amount } },
-    }),
-    prisma.creditTransaction.create({
+    });
+    await tx.creditTransaction.create({
       data: {
         batchId: hold.batchId,
         kind: "REFUND",
@@ -276,11 +277,12 @@ export async function refundCredits(params: {
         reference: params.reference,
         idempotencyKey: refundKey(params.intent),
       },
-    }),
-  ]);
+    });
+    return { refunded: true, replayed: false };
+  });
   const batch = await prisma.creditBatch.findUnique({ where: { id: hold.batchId } });
-  if (batch) await auditEvent(batch.workspaceId, "credit.refund", { batch: batch.externalId, amount: params.amount, reference: params.reference }, params.actorAuthUserId);
-  return { refunded: true, replayed: false };
+  if (batch && !settlement.replayed) await auditEvent(batch.workspaceId, "credit.refund", { batch: batch.externalId, amount: params.amount, reference: params.reference }, params.actorAuthUserId);
+  return settlement;
 }
 
 /**
@@ -310,8 +312,8 @@ export async function adjustCredits(params: {
       externalId: newCreditBatchExternalId(),
       workspaceId: params.internalWorkspaceId,
       kind: "PURCHASED",
-      amount: params.amount > 0 ? params.amount : 0,
-      remaining: params.amount > 0 ? params.amount : 0,
+      amount: 0,
+      remaining: 0,
       expiresAt: params.amount > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null,
     },
   }));

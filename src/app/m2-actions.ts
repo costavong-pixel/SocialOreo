@@ -102,17 +102,17 @@ export async function m2AddDestination(platform: string, accountLabel: string) {
 
 export async function m2FirstPostAndPlan(input: { destinationExternalId: string; businessName?: string; topic?: string; language: string }) {
   const user = await requireUser();
-  return createFirstPostAndPlan({ authUserId: user.dbId, ...input });
+  return createFirstPostAndPlan({ ...input, authUserId: user.dbId });
 }
 
 export async function m2CreatePost(input: { destinationExternalId: string; language: string; requestedCount: number; contentIntent?: string; mediaAssetIds?: string[] }) {
   const user = await requireUser();
-  return createPostRequest({ authUserId: user.dbId, confirmed: true, ...input });
+  return createPostRequest({ ...input, authUserId: user.dbId, confirmed: true });
 }
 
 export async function m2UpdateVariant(input: { postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
   const user = await requireUser();
-  return updatePostVariant({ authUserId: user.dbId, ...input });
+  return updatePostVariant({ ...input, authUserId: user.dbId });
 }
 
 export async function m2SchedulePost(input: { postRequestExternalId: string; scheduleAt: string; timezone: string }) {
@@ -158,7 +158,7 @@ export async function m2DeleteMedia(assetId: string) {
 
 export async function m2ReplacePostMedia(input: { postRequestExternalId: string; oldAssetId: string; newAssetId: string }) {
   const user = await requireUser();
-  return replacePostMedia({ authUserId: user.dbId, ...input });
+  return replacePostMedia({ ...input, authUserId: user.dbId });
 }
 
 export async function m2MediaPreviewUrl(assetId: string) {
@@ -263,7 +263,7 @@ export async function m2AssistantRespond(input: {
   // authenticated is always derived from the verified session server-side;
   // a guest (not signed in / unverified) is never treated as authenticated.
   const accepted = await getAcceptedSessionUser();
-  return assistantRespond({ ...input, authenticated: accepted !== null });
+  return assistantRespond({ ...input, authenticated: accepted !== null, actorAuthUserId: accepted?.id });
 }
 
 export async function m2AdminAdjust(targetAuthUserId: string, amount: number, reason: string) {
