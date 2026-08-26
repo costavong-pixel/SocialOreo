@@ -19,7 +19,7 @@ describe("WatchMonitorForm", () => {
     expect(configureMock).not.toHaveBeenCalled();
   });
 
-  it("shows provider-disabled truth and lets the owner pause an existing monitor", () => {
+  it("shows truthful staging-preview status and lets the owner pause an existing monitor", () => {
     render(<WatchMonitorForm cost={1} providerDisabled monitors={[{
       profileUrl: "https://www.instagram.com/example",
       platform: "instagram",
@@ -32,7 +32,8 @@ describe("WatchMonitorForm", () => {
       retryCount: 0,
       reportCount: 1,
     }]} />);
-    expect(screen.getByText(/provider-disabled mode/)).toBeTruthy();
+    expect(screen.getByText(/Live captures are unavailable in this staging environment/)).toBeTruthy();
+    expect(screen.queryByText(/provider-disabled/)).toBeNull();
     expect(screen.getByText(/1 capture/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
   });

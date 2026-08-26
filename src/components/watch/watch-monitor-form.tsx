@@ -55,7 +55,7 @@ export function WatchMonitorForm({
   return (
     <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
       <h2 className="font-display text-lg font-extrabold">Scheduled monitoring</h2>
-      <p className="mt-1 text-sm text-white/60">Instagram profile captures use {cost} credit{cost === 1 ? "" : "s"} each. {providerDisabled ? "Staging is currently in provider-disabled mode; no real provider execution is claimed." : "Captures use the configured staging provider."}</p>
+      <p className="mt-1 text-sm text-white/60">Instagram profile captures use {cost} credit{cost === 1 ? "" : "s"} each. {providerDisabled ? "Live captures are unavailable in this staging environment; no social provider will be contacted." : "Captures use the configured staging provider."}</p>
       <form onSubmit={submit} className="mt-4 grid gap-3 md:grid-cols-[1fr_180px_auto] md:items-end">
         <label className="block text-sm font-bold">Instagram profile URL<input value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} placeholder="https://www.instagram.com/creator/" className="mt-2 w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 font-normal text-white" disabled={isPending} /></label>
         <label className="block text-sm font-bold">Cadence<select value={cadenceHours} onChange={(event) => setCadenceHours(event.target.value)} className="mt-2 w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 font-normal text-white" disabled={isPending}><option value="168">Weekly</option><option value="336">Fortnightly</option></select></label>
