@@ -12,12 +12,17 @@ const mutations = [
   {
     id: "allow-production-live-provider",
     file: targets.guard,
-    mutate: (value) => value.replace('env.NODE_ENV !== "production"', 'env.NODE_ENV === "production"'),
+    mutate: (value) => value.replace('nodeEnvironment === "staging"', 'nodeEnvironment !== "staging"'),
+  },
+  {
+    id: "allow-missing-provider-disabled-flag",
+    file: targets.guard,
+    mutate: (value) => value.replace('return value !== "false";', 'return value === "false";'),
   },
   {
     id: "allow-non-staging-live-provider",
     file: targets.guard,
-    mutate: (value) => value.replace('env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging"', 'env.SOCIALOLLA_ENV?.trim().toLowerCase() !== "staging"'),
+    mutate: (value) => value.replace('socialollaEnvironment === "staging"', 'socialollaEnvironment !== "staging"'),
   },
   {
     id: "invert-provider-disabled-default",

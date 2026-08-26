@@ -3,24 +3,29 @@
  *
  * Milestone 2 must make zero live provider calls. The single guard sits at the
  * `fetchSocialAudit` chokepoint so every caller (Watch, audits, future worker)
- * is covered: when SOCIALOLLA_PROVIDER_DISABLED is true the live provider is
- * never constructed and a deterministic fixture is returned instead.
+ * is covered: unless SOCIALOLLA_PROVIDER_DISABLED is explicitly false, the
+ * live provider is never constructed and a deterministic fixture is returned.
  */
 import { createHash } from "node:crypto";
 import type { FetchSocialAuditInput, NormalizedSocialAuditResult, SocialPlatform } from "./types";
 
-export function providerDisabledEnabled(): boolean {
-  return process.env.SOCIALOLLA_PROVIDER_DISABLED === "true";
+export function providerDisabledEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  // Live providers require an explicit opt-out from the safe default. Treat
+  // omission and every malformed value as provider-disabled.
+  const value = env.SOCIALOLLA_PROVIDER_DISABLED?.trim().toLowerCase();
+  return value !== "false";
 }
 
 /**
  * Live social providers are a staging-only capability. The explicit
  * environment check is intentionally separate from the provider-disabled
- * fixture flag so a missing or false flag can never make production or an
+ * fixture flag so a missing or malformed flag can never make production or an
  * unrecognised environment provider-capable.
  */
-export function liveSocialAuditRuntimeAllowed(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.NODE_ENV !== "production" && env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging";
+export function liveSocialAuditRuntimeAllowed(env: Record<string, string | undefined> = process.env): boolean {
+  const nodeEnvironment = String(env.NODE_ENV ?? "").trim().toLowerCase();
+  const socialollaEnvironment = String(env.SOCIALOLLA_ENV ?? "").trim().toLowerCase();
+  return nodeEnvironment === "staging" && socialollaEnvironment === "staging";
 }
 
 export function assertProviderDisabledMode(): void {
