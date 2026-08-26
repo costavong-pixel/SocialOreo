@@ -4,13 +4,24 @@ import { useState } from "react";
 import { m2CreatePost, m2RunWatch, m2FirstPostAndPlan, m2DeleteMedia, m2MediaPreviewUrl, m2PublishPost, m2UploadMedia } from "@/app/m2-actions";
 
 export function CreatePostForm({ destinations = [] }: { destinations?: Array<{ externalId: string; label: string; platform: string; status?: string }> }) {
-  const connectedInstagram = destinations.filter((item) => item.platform === "instagram" && item.status === "CONNECTED");
+  const connectedInstagram = destinations.filter((item) => item.platform.toLowerCase() === "instagram" && (!item.status || item.status === "CONNECTED"));
   const [destination, setDestination] = useState(connectedInstagram[0]?.externalId ?? "");
   const [assetId, setAssetId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [postId, setPostId] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  if (destinations.length === 0) {
+    return (
+      <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
+        <h2 className="font-display text-lg font-extrabold">Create your first Post</h2>
+        <p className="mt-2 text-sm text-white/65">Connect an account to create your first Post.</p>
+        <a href="/connections" className="mt-4 inline-flex rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff]">Open Connections</a>
+        <p className="mt-3 text-xs text-white/45">Staging notice: live social connections and delivery are not enabled here.</p>
+      </div>
+    );
+  }
 
   async function upload(file: File) {
     setBusy(true);
@@ -49,7 +60,13 @@ export function CreatePostForm({ destinations = [] }: { destinations?: Array<{ e
       onSubmit={async (event) => {
         event.preventDefault();
         try {
-          const created = await m2CreatePost({ destinationExternalId: destination, language: "en", requestedCount: 1, contentIntent: "real-staging-post", mediaAssetIds: assetId ? [assetId] : [] });
+          const created = await m2CreatePost({
+            destinationExternalId: destination,
+            language: "en",
+            requestedCount: assetId ? 1 : 10,
+            contentIntent: assetId ? "real-staging-post" : "post",
+            mediaAssetIds: assetId ? [assetId] : [],
+          });
           setPostId(created.postRequestId);
           setResult(`Post saved in ${created.status}. Reload-safe database row created.`);
         } catch (cause) {
@@ -57,12 +74,12 @@ export function CreatePostForm({ destinations = [] }: { destinations?: Array<{ e
         }
       }}
     >
-      <label className="block text-sm font-bold" htmlFor="dst">Instagram destination</label>
-      {connectedInstagram.length ? <select id="dst" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white">{connectedInstagram.map((item) => <option key={item.externalId} value={item.externalId}>{item.label} · {item.status ?? "unknown"}</option>)}</select> : <p className="text-sm text-white/60">Connect an Instagram publishing destination first.</p>}
+      <label className="block text-sm font-bold" htmlFor="post-destination">Connected account</label>
+      {connectedInstagram.length ? <select id="post-destination" aria-label="Connected account" value={destination} onChange={(e) => setDestination(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-white">{connectedInstagram.map((item) => <option key={item.externalId} value={item.externalId}>{item.label}</option>)}</select> : <p className="text-sm text-white/60">Connect an Instagram publishing destination first.</p>}
       <label className="block text-sm font-bold" htmlFor="post-media">Image media (JPEG required for Instagram publishing)</label>
       <input id="post-media" type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void upload(file); }} className="block w-full text-sm text-white/70 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:font-bold file:text-white" />
       {previewUrl && assetId ? <div className="flex items-center gap-3 rounded-2xl border border-white/10 p-3"><img src={previewUrl} alt="Post media preview" className="h-20 w-20 rounded-xl object-cover" /><div className="min-w-0 flex-1"><p className="text-xs text-white/60">Owned media attached</p></div><button type="button" disabled={busy} onClick={() => void removeMedia()} className="rounded-full border border-rose-300/30 px-3 py-2 text-xs font-bold text-rose-200">Remove / replace</button></div> : null}
-      <button type="submit" disabled={busy || !destination || !assetId || !connectedInstagram.length} className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff] disabled:opacity-50">Create Post</button>
+      <button type="submit" disabled={busy || !destination || !connectedInstagram.length} className="rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff] disabled:opacity-50">{assetId ? "Create Post" : "Create draft"}</button>
       {postId ? <button type="button" disabled={busy} onClick={async () => { setBusy(true); try { const published = await m2PublishPost({ postRequestExternalId: postId }); setResult(`Publish result: ${published.status}. Provider receipt is shown on /posts.`); } catch (cause) { setResult(cause instanceof Error ? cause.message : "Publish failed"); } finally { setBusy(false); } }} className="ml-2 rounded-full border border-emerald-300/40 px-5 py-2.5 text-sm font-extrabold text-emerald-200 disabled:opacity-50">Publish now</button> : null}
       {result && <p role="status" className="text-sm text-white/70">{result}</p>}
     </form>
