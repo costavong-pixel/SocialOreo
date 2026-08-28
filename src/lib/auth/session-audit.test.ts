@@ -55,6 +55,7 @@ describe("session security audit", () => {
         sid: "raw-provider-session-id",
       },
       {
+        NODE_ENV: "test",
         SOCIALOLLA_ENV: "staging",
         SOCIALOLLA_REVISION: "abc123",
       },
@@ -88,7 +89,7 @@ describe("session security audit", () => {
         emailVerified: true,
         authTime: 1_787_800_000,
       },
-      { SOCIALOLLA_ENV: "staging" },
+      { NODE_ENV: "test", SOCIALOLLA_ENV: "staging" },
     );
 
     expect(result.status).toBe("created");
