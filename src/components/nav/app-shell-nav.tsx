@@ -60,14 +60,26 @@ export function AppShellNav({
             <span className="max-w-[10rem] truncate">{accountLabel}</span>
             <span aria-hidden="true" className="text-white/50">⌄</span>
           </summary>
-          <div className="absolute right-0 z-20 mt-2 min-w-64 rounded-2xl border border-white/15 bg-[#171126] p-3 shadow-2xl">
-            <p className="truncate text-sm font-extrabold">{accountLabel}</p>
-            <p className="mt-1 truncate text-xs text-white/60">{account.email}</p>
-            <p className="mt-2 text-xs font-bold uppercase tracking-[0.12em] text-[var(--social-blue)]">
-              Role: {account.role === "ADMIN" ? "Admin" : "User"}
-            </p>
-            {!account.emailVerified ? <p className="mt-1 text-xs text-amber-200">Email not verified</p> : null}
+          <div className="absolute right-0 z-20 mt-2 min-w-72 rounded-2xl border border-white/15 bg-[#171126] p-3 shadow-2xl">
+            <p className="text-[0.68rem] font-bold uppercase tracking-[0.12em] text-white/45">Signed in as</p>
+            <p className="mt-1 truncate text-sm font-extrabold">{accountLabel}</p>
+            <p data-testid="account-email" className="mt-1 truncate text-xs text-white/65">{account.email}</p>
+
+            <div className="mt-3 grid gap-1 rounded-xl border border-white/10 bg-black/10 px-3 py-2 text-xs">
+              <p data-testid="account-role" className="font-bold text-[var(--social-blue)]">
+                Role: {account.role === "ADMIN" ? "Admin" : "User"}
+              </p>
+              <p data-testid="account-email-verified" className={account.emailVerified ? "text-emerald-200" : "text-amber-200"}>
+                Email verified: <strong>{account.emailVerified ? "Yes" : "No"}</strong>
+              </p>
+            </div>
+
             <div className="mt-3 grid gap-1 border-t border-white/10 pt-2">
+              <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/10" href="/profile">Profile</Link>
+              <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/10" href="/settings">Settings</Link>
+              {isAdmin ? (
+                <Link className="rounded-xl px-3 py-2 text-sm font-bold text-[var(--social-blue)] hover:bg-white/10" href="/admin/plans">Admin</Link>
+              ) : null}
               <Link className="rounded-xl px-3 py-2 text-sm font-bold text-white/85 hover:bg-white/10" href="/auth/logout">Sign out</Link>
             </div>
           </div>
