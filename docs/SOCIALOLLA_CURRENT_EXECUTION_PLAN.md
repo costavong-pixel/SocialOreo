@@ -65,6 +65,10 @@ Do not restart these areas from zero. Reverify only when a relevant diff invalid
 - Square checkout/webhook implementation and test foundations.
 - Targeted Post/provider/Watch/auth mutation contracts. These are engineering evidence, not provider/customer acceptance.
 
+## Identity visibility requirement
+
+Every authenticated acceptance surface must make the active identity explicit. The account menu and Profile page must show the signed-in email, canonical database role (`User` or `Admin`), and explicit Auth0 provider `email_verified` state (`Yes` or `No`). The admin-only `/admin/sessions` security-playbook view must correlate session events to the canonical account and show the same identity facts without rendering raw Auth0 subjects, tokens, cookies, or raw provider session IDs.
+
 ## Outstanding work and implementation schedule
 
 ### Phase A — Preserve one exact candidate
@@ -92,6 +96,8 @@ Outstanding:
 - Verify Profile and Home.
 - Verify 10/10 first-click canonical navigation.
 - Verify Dashboard, Post, Watch, Calendar, Connections, Credits, Analysis, Assistant, Settings, and Profile do not fall into stale/public/error states.
+- Verify the account menu/Profile explicitly show signed-in email, `User`/`Admin`, and `email_verified: Yes/No`.
+- Verify `/admin/sessions` shows canonical account email/current role/provider `email_verified` without raw Auth0 subject exposure.
 - Capture current screenshots for owner visual acceptance.
 
 Do not ask the owner to repeat Auth0 login unless there is concrete evidence that the existing session is genuinely unavailable.
@@ -288,6 +294,7 @@ Required:
 - Settings
 - payments
 - canonical navigation
+- account/session identity visibility: signed-in email, `User`/`Admin`, explicit `email_verified`
 - screenshots and owner visual inspection
 - failure paths and recovery
 - real provider effects for provider-dependent features
@@ -335,6 +342,7 @@ Requirements:
 - If `sid` or authentication-time information is available, derive only a one-way session reference for deduplication/correlation.
 - Store only security-relevant metadata such as identity-provider label, provider `email_verified`, environment, and release identity when available.
 - Authentication decisions remain independent of audit persistence; audit-write failure must be observable server-side but must not grant or deny authentication by itself.
+- Admin playbook display must resolve canonical account email and current `User`/`Admin` role without copying raw email into the audit payload or rendering the raw Auth0 subject.
 - Define retention/export/incident-query policy before production launch; do not invent a retention period in code without an explicit product/security decision.
 
 ## Do-not-loop rules for autonomous engineering
