@@ -26,19 +26,30 @@ const account = {
 };
 
 describe("authenticated account menu", () => {
-  it("shows identity and hides Admin for a USER account", () => {
+  it("shows exactly who is signed in, USER role, and explicit verification state", () => {
     render(<AppShellNav locale="en-US" isAdmin={false} account={account} />);
 
-    expect(screen.getByText("new@example.com")).toBeTruthy();
-    expect(screen.getByText("Role: User")).toBeTruthy();
+    expect(screen.getByTestId("account-email").textContent).toBe("new@example.com");
+    expect(screen.getByTestId("account-role").textContent).toContain("Role: User");
+    expect(screen.getByTestId("account-email-verified").textContent).toContain("Email verified: Yes");
     expect(screen.getByRole("link", { name: "Profile" }).getAttribute("href")).toBe("/profile");
+    expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/settings");
     expect(screen.queryByRole("link", { name: /^Admin$/ })).toBeNull();
   });
 
-  it("shows the Admin entry only when the server-authorized role is ADMIN", () => {
+  it("shows the ADMIN role and Admin entry only for a server-authorized admin", () => {
     render(<AppShellNav locale="en-US" isAdmin account={{ ...account, role: "ADMIN" }} />);
 
     expect(screen.getAllByRole("link", { name: /^Admin$/ }).length).toBeGreaterThan(0);
-    expect(screen.getByText("Role: Admin")).toBeTruthy();
+    expect(screen.getByTestId("account-role").textContent).toContain("Role: Admin");
+    expect(screen.getByTestId("account-email-verified").textContent).toContain("Email verified: Yes");
+  });
+
+  it("shows an explicit No when Auth0 reports email_verified=false", () => {
+    render(<AppShellNav locale="en-US" isAdmin={false} account={{ ...account, emailVerified: false }} />);
+
+    expect(screen.getByTestId("account-email").textContent).toBe("new@example.com");
+    expect(screen.getByTestId("account-role").textContent).toContain("Role: User");
+    expect(screen.getByTestId("account-email-verified").textContent).toContain("Email verified: No");
   });
 });
