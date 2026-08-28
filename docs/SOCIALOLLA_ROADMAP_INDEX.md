@@ -1,107 +1,102 @@
 # SocialOlla Roadmap Index
 
 **Project:** SocialOlla  
-**Coordination date:** 2026-08-02  
-**Status:** Documentation-only coordination baseline  
-**Final merger repository:** Not selected; selection requires the comparative audit
+**Current coordination date:** 2026-08-27  
+**Repository:** `costavong-pixel/SocialOreo`
 
-## Purpose
+## Current authority
 
-This directory coordinates the merger of:
+For active implementation scheduling and outstanding work, start with:
 
-- `costavong-pixel/barnd-ai-content-agent` — Content Factory
-- `costavong-pixel/SocialOreo` — SocialOreo
+1. **`SOCIALOLLA_CURRENT_EXECUTION_PLAN.md`** — current release identities, outstanding implementation phases, evidence rules, provider status, final acceptance, and final security gate.
+2. **`decisions/SOCIALOLLA_SESSION_SECURITY_LOG.md`** — persistent Auth0 session audit decision for security playbooks/incident response.
+3. `SOCIALOLLA_PRODUCT_DECISIONS.md` — owner-confirmed product decisions.
+4. `SOCIALOLLA_M2_COMPLETION_LEDGER.md` and other completion ledgers — historical implementation evidence.
+5. `SOCIALOLLA_MASTER_ROADMAP.md`, repository comparison, merger map, and merger ledgers — historical merger planning/provenance.
+6. Exact repository code, migrations, tests, CI, deployment identity, provider receipts, DB evidence, and owner screenshots — implementation truth.
 
-The documents here organize product decisions, repository evidence, merger phases,
-and migration work in one place. Keeping the coordination documents in this
-repository does **not** mean SocialOreo has been selected as the final target
-codebase.
+A newer verified runtime/provider result supersedes an older checkpoint. A newer product decision supersedes an older commercial recommendation, but never silently overrides security, ownership, delivery-evidence, rollback, migration, or production-approval requirements.
 
-## Authority order
+## Current implementation checkpoint
 
-When requirements conflict, use this order:
+At the latest preserved completion checkpoint recorded in the current execution plan:
 
-1. `SOCIALOLLA_PRODUCT_DECISIONS.md` — decisions confirmed directly by Costa.
-2. `SOCIALOLLA_MASTER_ROADMAP.md` — architecture and merger sequence derived from
-   the 2026-08-01 Master Merger Plan.
-3. `SOCIALOLLA_REPOSITORY_COMPARISON.md` — verified feature-by-feature evidence.
-4. `SOCIALOLLA_MASTER_MERGER_LEDGER.md` — current phase, SHAs, PRs, gates, and
-   blockers.
-5. `SOCIALOLLA_MIGRATION_MAP.md` — approved source-to-target data and module map.
-6. Repository code, migrations, tests, CI, and deployment evidence.
+- GitHub `main`: `467b39e6870e60d3a2cb21e208000af782d86231`
+- Last committed completion candidate: `3942075b3915159b50c903a0565b1ccc97861ba6`
+- Staging runtime: `12fde638c5d4d641390a94e0480ade005f3389f9`
+- Recovered Post/Watch work preserved separately at `1895e2b4a22dbe9a43e3f54a2b2749551c2235b5`
+- Newer provider-boundary/workspace/reconciliation edits existed after `3942075...` but were not yet preserved as a durable SHA at the last pause.
+- Production effects: zero.
+- Real payments: zero.
 
-A newer confirmed product decision supersedes an older commercial recommendation
-in the Master Merger Plan. It does not automatically override security,
-isolation, delivery-evidence, rollback, or migration requirements.
-
-## Current repository checkpoints
-
-| Repository | Verified `main` | Current relevant work | Coordination interpretation |
-|---|---|---|---|
-| SocialOreo | `a76d0d70cef124f7e4884ffaf3b04f436b73d06e` | Draft PR #4, `711b2ee49e7a6d162160020b7fce6126c1cae0e7`, hardens saved-competitor Watch | Post-PR #4 audit is blocked until the PR is merged and new `main` is verified |
-| Content Factory | `e486c7bee4bf2e6687f8c74375b06559c4c1118a` | Draft PR #77, Phase 10L wording/lifecycle clarity | Preserve and evaluate in the merger comparison; no automatic merge decision |
+Do not treat the staging SHA, candidate SHA, and GitHub main SHA as interchangeable.
 
 ## Product structure
 
-SocialOlla has two user-facing product areas:
+The canonical SocialOlla customer shell is:
 
-- **Post** — create, review, schedule, publish, repeat, and track social content.
-- **Watch** — analyze public profiles and competitor activity using credit-based
-  provider work.
+**Dashboard · Post · Watch · Calendar · Connections · Credits · Analysis · Assistant · Settings**
 
-The launch customer is an individual user with one personal workspace. Agency,
-team, client, multi-brand-workspace, and shared-workspace capabilities are future
-plans.
+Profile/account context is available from the account menu. ADMIN uses the same product shell with additional authorized Admin access rather than a separate product generation.
 
-## Roadmap phase status
+Post and Watch are separate flagship features:
 
-| Phase | Status | Current gate |
-|---|---|---|
-| M0 — Freeze and inventory | In progress | Repository names and current SHAs captured; tags, environment inventory, backups, and open-item export remain |
-| M1 — Comparative audit | Blocked | Start only after SocialOreo PR #4 merges into `main` and exact merged SHA is verified |
-| M2 — Brand and navigation | Not started | Requires M1 module decisions |
-| M3 — Authentication and workspace | Not started | Requires canonical auth/workspace decision |
-| M4 — Campaign and content model | Not started | Requires schema comparison and migration map |
-| M5 — Unified UI | Not started | Requires selected components and navigation map |
-| M6 — Delivery and platform adapters | Not started | Preserve H5 lifecycle and validate direct Instagram/TikTok requirements |
-| M7 — Media and rendering | Not started | Requires storage and worker migration decisions |
-| M8 — Billing, plans, credits, and admin controls | Requirements in progress | Product rules are recorded; implementation comparison remains |
-| M9 — Demo and acceptance | Not started | Requires unified non-live workflow |
-| M10 — Staging and domain readiness | Not started | Explicit approval required before deployment or DNS work |
-| M11 — Final non-live audit | Not started | Must end READY FOR SOCIALOLLA STAGING or NOT READY — FIXES REQUIRED |
+- **Post** — create, adapt, attach media, choose destinations, publish now/schedule, run durable delivery jobs, capture provider receipts/status, retry/reconcile, and surface customer history.
+- **Watch** — choose a monitored profile, schedule repeated captures, reserve credits, run a real provider automatically, persist evidence/deltas, settle/refund credits exactly once, and surface history/results.
 
-## Coordination rules
+Analysis preserves useful historical audit/profile-analysis capability under the canonical SocialOlla shell.
 
-- Do not merge the repositories by copying all files.
-- Do not select a global winner. Select the strongest implementation per feature.
-- Do not treat provider-free contracts as live provider integrations.
-- Do not perform real OAuth, provider calls, publishing, billing charges,
-  production migration, deployment, or DNS work without explicit current approval.
-- Do not remove either source repository during the merger.
-- Every meaningful product decision must be added to
-  `SOCIALOLLA_PRODUCT_DECISIONS.md` and referenced in the merger ledger.
-- Every code phase must record exact base/head SHAs, tests, CI, migration impact,
-  rollback, and unresolved blockers.
-- A post may target multiple connected accounts, but every destination receives
-  an independent delivery job and evidence trail.
+## Current high-level phase sequence
 
-## Immediate sequence
+The detailed gates live in `SOCIALOLLA_CURRENT_EXECUTION_PLAN.md`. The default sequence is:
 
-1. Complete and merge SocialOreo PR #4 through its normal review and CI gates.
-2. Capture the new exact SocialOreo `main` SHA.
-3. Refresh Content Factory `main`, open PRs, and existing audit artifacts.
-4. Complete `SOCIALOLLA_REPOSITORY_COMPARISON.md` feature by feature.
-5. Select the final target repository only after the comparison is approved.
-6. Convert the approved comparison into small, reversible merger PRs.
+1. Preserve one exact candidate SHA.
+2. Deploy/accept that exact staging release for USER, ADMIN, Profile, Home, navigation, and owner-visible UI.
+3. Finish real Meta/Instagram OAuth and real Instagram Post.
+4. Install/prove the Post worker.
+5. Finish real Watch provider execution.
+6. Install/prove the Watch worker.
+7. Establish one canonical credit authority.
+8. Establish one canonical entitlement authority.
+9. Finish Content Factory authenticated integration.
+10. Finish Square sandbox checkout/webhook/refund lifecycle.
+11. Implement remaining connected social providers through shared adapter contracts.
+12. Neutralize conflicting legacy execution/write paths without destroying historical evidence.
+13. Run final exact-release customer/visual acceptance.
+14. Run the final full security/dependency release gate against the finished application.
 
-## Commercial focus
+The broad final security pass is intentionally deferred until functional completion per owner direction; targeted security controls remain part of implementation where a feature boundary requires them.
 
-The revenue-first path is:
+## Current social-provider reality
 
-1. sell the configurable individual Post package;
-2. include AI titles and captions;
-3. use credits for image generation and Watch/profile analysis;
-4. sell universal credit packs;
-5. introduce monthly and annual plans for new users after traction;
-6. preserve promised entitlements for existing lifetime-plan versions;
-7. reserve agency/team/multi-workspace capabilities for a future higher-value plan.
+| Platform | Current state |
+|---|---|
+| Instagram | Partial; auth/token/publishing code exists, real OAuth/publish/Watch acceptance outstanding |
+| Facebook Pages | Not implemented as a real connected provider |
+| TikTok | Public/read/audit capability only; no connected publishing OAuth/token path proven |
+| Pinterest | Not implemented |
+| LinkedIn | Not implemented |
+| X/Twitter | Not implemented |
+| YouTube | Trend/audit references only; no connected publishing flow proven |
+| Threads | Not implemented |
+
+Do not advertise all-platform support until each advertised provider has real-provider acceptance evidence.
+
+## Evidence rules
+
+- HTTP 200 is not customer acceptance.
+- UI-only/provider-disabled code is not a real integration.
+- A worker script is not an installed/running worker.
+- Real provider features require provider-side effect plus customer-visible result.
+- Previously passed evidence remains valid unless a relevant later diff invalidates it; use delta/change-impact verification instead of restarting every checkpoint.
+- Owner screenshots/visual inspection are required final evidence for customer-visible flows.
+- Production changes and real payments require explicit production approval.
+- Autonomous workers cannot self-approve production gates.
+
+## Session security logging
+
+The current roadmap includes persistent, privacy-minimized Auth0 session evidence using the existing `AuditEvent` store. See `decisions/SOCIALOLLA_SESSION_SECURITY_LOG.md` for event semantics, prohibited sensitive data, correlation strategy, failure behavior, and final security-playbook acceptance.
+
+## Historical merger documents
+
+Older documents in this directory describe the earlier SocialOreo + Content Factory merger phase. They remain provenance, but stale phase tables such as "M2 not started" must not be used as current product status when contradicted by the current execution plan and repository/runtime evidence.
