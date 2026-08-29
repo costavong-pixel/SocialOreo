@@ -3,6 +3,8 @@
  * Mobile-first navigation, design tokens, plain-language state labels, and a
  * language selector contract. Admin routes are exposed separately by the
  * authorized app shell; this list contains customer-facing product routes.
+ * Account-specific Profile access lives in the signed-in account menu rather
+ * than being duplicated in the primary product navigation.
  */
 import type { TranslationKey } from "@/lib/socialolla/i18n/translations";
 
@@ -16,7 +18,6 @@ export const SHELL_NAV: ReadonlyArray<{ href: string; labelKey: TranslationKey }
   { href: "/analysis", labelKey: "nav.analysis" },
   { href: "/assistant", labelKey: "nav.assistant" },
   { href: "/settings", labelKey: "nav.settings" },
-  { href: "/profile", labelKey: "nav.profile" },
 ];
 
 export type ShellStateKind = "loading" | "empty" | "error" | "offline" | "partial-success";
