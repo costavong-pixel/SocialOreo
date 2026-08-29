@@ -57,17 +57,7 @@ const mutations = [
     id: "remove-safe-report-projection",
     file: targets.service,
     mutate: (value) => value.replace(
-      `select: {
-        id: true,
-        externalId: true,
-        profileUrl: true,
-        platform: true,
-        status: true,
-        provider: true,
-        creditCost: true,
-        createdAt: true,
-        completedAt: true,
-      },`,
+      /select:\s*\{\s*id:\s*true,\s*externalId:\s*true,\s*profileUrl:\s*true,\s*platform:\s*true,\s*status:\s*true,\s*provider:\s*true,\s*creditCost:\s*true,\s*createdAt:\s*true,\s*completedAt:\s*true,\s*\},/m,
       "select: { reportJson: true },",
     ),
   },
