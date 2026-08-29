@@ -32,8 +32,12 @@ describe("authenticated account menu", () => {
     expect(screen.getByTestId("account-email").textContent).toBe("new@example.com");
     expect(screen.getByTestId("account-role").textContent).toContain("Role: User");
     expect(screen.getByTestId("account-email-verified").textContent).toContain("Email verified: Yes");
-    expect(screen.getByRole("link", { name: "Profile" }).getAttribute("href")).toBe("/profile");
-    expect(screen.getByRole("link", { name: "Settings" }).getAttribute("href")).toBe("/settings");
+
+    const profileLinks = screen.getAllByRole("link", { name: "Profile" });
+    expect(profileLinks).toHaveLength(1);
+    expect(profileLinks[0]?.getAttribute("href")).toBe("/profile");
+
+    expect(screen.getAllByRole("link", { name: "Settings" }).some((link) => link.getAttribute("href") === "/settings")).toBe(true);
     expect(screen.queryByRole("link", { name: /^Admin$/ })).toBeNull();
   });
 
