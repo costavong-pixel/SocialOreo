@@ -7,6 +7,9 @@ export function AdminNav() {
       <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/plans">
         Plans
       </Link>
+      <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/sessions">
+        Session log
+      </Link>
       <Link className="rounded-full border border-white/15 px-3 py-2 hover:border-[var(--social-blue)]" href="/admin/angle-library">
         Angle Library
       </Link>
