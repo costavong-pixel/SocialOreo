@@ -19,7 +19,6 @@ describe("Phase 1 canonical SocialOlla shell contract", () => {
       "/analysis",
       "/assistant",
       "/settings",
-      "/profile",
     ]);
   });
 
@@ -54,7 +53,8 @@ describe("Phase 1 canonical SocialOlla shell contract", () => {
 
   it("keeps account context on a canonical, customer-safe profile route", () => {
     expect(source("src/app/profile/page.tsx")).toContain('title: "Profile — SocialOlla"');
-    expect(SHELL_NAV.some((item) => item.href === "/profile")).toBe(true);
+    expect(SHELL_NAV.some((item) => item.href === "/profile")).toBe(false);
+    expect(source("src/components/nav/app-shell-nav.tsx")).toContain('href="/profile"');
     expect(source("src/components/profile/profile-context-view.tsx")).not.toMatch(/authUserId|accessToken|refreshToken|workspace ID/);
   });
 
