@@ -27,7 +27,8 @@ async function parseResponse(response: Response): Promise<Record<string, unknown
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const retryable = response.status >= 500 || response.status === 429;
-    throw new InstagramPublishError("Instagram rejected the publishing request.", retryable, response.status >= 500);
+    const reconciliationRequired = response.status >= 500 || response.status === 429;
+    throw new InstagramPublishError("Instagram rejected the publishing request.", retryable, reconciliationRequired);
   }
   if (!body || typeof body !== "object") throw new InstagramPublishError("Instagram returned an invalid publishing response.", false, true);
   return body as Record<string, unknown>;
@@ -50,12 +51,22 @@ async function publishRequest(input: InstagramPublishClientConfig, path: string,
 export async function createInstagramImageContainer(input: InstagramPublishClientConfig & { controlledMediaUrl: string; caption?: string }) {
   const body = new URLSearchParams({ image_url: assertControlledMediaUrl(input.controlledMediaUrl) });
   if (input.caption) body.set("caption", input.caption);
-  return idSchema.parse(await publishRequest(input, "media", body));
+  try {
+    return idSchema.parse(await publishRequest(input, "media", body));
+  } catch (error) {
+    if (error instanceof InstagramPublishError) throw error;
+    throw new InstagramPublishError("Instagram returned an invalid container response; reconciliation is required.", false, true);
+  }
 }
 
 export async function publishInstagramContainer(input: InstagramPublishClientConfig & { creationId: string }) {
   const body = new URLSearchParams({ creation_id: input.creationId });
-  return idSchema.parse(await publishRequest(input, "media_publish", body));
+  try {
+    return idSchema.parse(await publishRequest(input, "media_publish", body));
+  } catch (error) {
+    if (error instanceof InstagramPublishError) throw error;
+    throw new InstagramPublishError("Instagram returned an invalid publish response; reconciliation is required.", false, true);
+  }
 }
 
 export async function publishInstagramImage(input: InstagramPublishClientConfig & { controlledMediaUrl: string; caption?: string }) {

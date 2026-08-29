@@ -73,6 +73,11 @@ export function createPostService(client?: ContentFactoryClient) {
       where: { externalId: input.destinationExternalId, workspace: { ownerUserId: input.authUserId } },
     });
     if (!destination) throw new Error("Destination not found for this workspace");
+    const profileExternalId = input.profileExternalId?.trim() || undefined;
+    if (profileExternalId) {
+      const profile = await prisma.profile.findFirst({ where: { externalId: profileExternalId, workspaceId: workspace.dbId }, select: { externalId: true } });
+      if (!profile) throw new Error("Profile not found for this workspace");
+    }
     const entitlement = await prisma.entitlementSnapshot.findFirst({
       where: { workspace: { ownerUserId: input.authUserId } },
       orderBy: { validFrom: "desc" },
@@ -98,7 +103,7 @@ export function createPostService(client?: ContentFactoryClient) {
       request = await cf.createRequest({
         workspaceExternalId: workspace.id,
         destinationRef: destination.externalId,
-        profileRef: input.profileExternalId,
+        profileRef: profileExternalId,
         language: input.language,
         requestedCount: input.requestedCount,
         idempotencyKey: intent,

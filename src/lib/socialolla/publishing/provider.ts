@@ -3,7 +3,14 @@ import { platformCapabilities, type PlatformCapabilities, type PublishingPlatfor
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 
-export type PublishProviderInput = Readonly<{ workspaceId: string; destinationExternalId: string; platform: PublishingPlatform; variant: PostVariant }>;
+export type PublishProviderInput = Readonly<{
+  workspaceId: string;
+  destinationExternalId: string;
+  platform: PublishingPlatform;
+  variant: PostVariant;
+  /** Called only after provider preflight and immediately before the external request. */
+  onProviderRequestStart?: () => Promise<boolean>;
+}>;
 
 export interface PublishProvider {
   readonly platform: PublishingPlatform;
@@ -16,6 +23,13 @@ export class PublishingProviderDisabledError extends Error {
   constructor(platform: string) {
     super(`Live publishing is disabled for ${platform}; no provider request was made.`);
     this.name = "PublishingProviderDisabledError";
+  }
+}
+
+export class PublishingProviderClaimLostError extends Error {
+  constructor() {
+    super("Publish job ownership was lost before the provider request.");
+    this.name = "PublishingProviderClaimLostError";
   }
 }
 

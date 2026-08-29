@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
       findFirst: vi.fn(),
     },
     destination: { findFirst: vi.fn() },
+    profile: { findFirst: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
     creditBatch: {
       findFirst: vi.fn(),
@@ -134,6 +135,21 @@ describe("Slice C — SocialOreo Post integration", () => {
     await expect(
       service.preview("user-1", "dst_abcdefghijklmnop", 10),
     ).rejects.toThrow("Destination not found");
+  });
+
+  it("rejects a profile reference that is not bound to the workspace before holding credits", async () => {
+    mocks.prisma.profile.findFirst.mockResolvedValue(null);
+    const { createPostService } = await import("./post-service");
+    const service = createPostService();
+    await expect(service.execute({
+      authUserId: "user-1",
+      destinationExternalId: "dst_abcdefghijklmnop",
+      profileExternalId: "profile_foreign",
+      language: "en",
+      requestedCount: 1,
+      confirmed: true,
+    })).rejects.toThrow("Profile not found");
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
   });
 
   it("blocks before credit hold when Content Factory data is unreachable", async () => {

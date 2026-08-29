@@ -26,6 +26,11 @@ export async function createPostRequest(input: { authUserId: string; destination
   const workspace = await ownedWorkspace(input.authUserId);
   const destination = await prisma.destination.findFirst({ where: { externalId: input.destinationExternalId, workspaceId: workspace.dbId }, select: { id: true, externalId: true, platform: true } });
   if (!destination) throw new Error("Destination not found for this workspace");
+  const profileExternalId = input.profileExternalId?.trim() || undefined;
+  if (profileExternalId) {
+    const profile = await prisma.profile.findFirst({ where: { externalId: profileExternalId, workspaceId: workspace.dbId }, select: { externalId: true } });
+    if (!profile) throw new Error("Profile not found for this workspace");
+  }
   const mediaAssetIds = [...new Set(input.mediaAssetIds ?? [])];
   await assertOwnedMedia(workspace.dbId, mediaAssetIds);
   const intent = intentKey(workspace.id, input.destinationExternalId, input.contentIntent?.trim() || "post");
@@ -34,11 +39,11 @@ export async function createPostRequest(input: { authUserId: string; destination
   const service = createPostService();
   const preview = await service.preview(input.authUserId, input.destinationExternalId, input.requestedCount);
   if (!preview.batchAvailable) throw new Error("Insufficient credits");
-  const request = await service.execute({ authUserId: input.authUserId, destinationExternalId: input.destinationExternalId, profileExternalId: input.profileExternalId, language: input.language, requestedCount: input.requestedCount, confirmed: input.confirmed, contentIntent: input.contentIntent });
+  const request = await service.execute({ authUserId: input.authUserId, destinationExternalId: input.destinationExternalId, profileExternalId, language: input.language, requestedCount: input.requestedCount, confirmed: input.confirmed, contentIntent: input.contentIntent });
   const postRequest = await prisma.$transaction(async (tx) => {
     const existing = await tx.postRequest.findUnique({ where: { intentKey: intent }, select: { externalId: true, cfRequestRef: true, status: true } });
     if (existing) return existing;
-    const created = await tx.postRequest.create({ data: { externalId: externalId("post"), workspaceId: workspace.dbId, destinationRef: input.destinationExternalId, profileRef: input.profileExternalId, language: input.language, requestedCount: input.requestedCount, status: "REVIEW", intentKey: intent, cfRequestRef: request.id } });
+    const created = await tx.postRequest.create({ data: { externalId: externalId("post"), workspaceId: workspace.dbId, destinationRef: input.destinationExternalId, profileRef: profileExternalId, language: input.language, requestedCount: input.requestedCount, status: "REVIEW", intentKey: intent, cfRequestRef: request.id } });
     const variant = await tx.postVariant.create({ data: { postRequestId: created.id, platform: destination.platform, title: `Draft title (${input.language})`, caption: `Draft caption for ${destination.platform} in ${input.language}.`, hashtags: [], cta: "Learn more", variantLocale: `${input.language}-US`, mediaAssetIds } });
     await tx.postOccurrence.create({ data: { postRequestId: created.id, kind: "FIRST", status: "LIGHT_DRAFT", destinationRef: input.destinationExternalId } });
     await tx.postDestination.create({ data: { externalId: externalId("postdst"), postRequestId: created.id, destinationId: destination.id, variantId: variant.id, platform: destination.platform, status: "PENDING" } });
@@ -104,7 +109,10 @@ export async function publishPostNow(input: { authUserId: string; postRequestExt
   const completed = targets.find((target) => target.publishJobs.some((job) => job.status === "PUBLISHED"));
   if (completed) return { status: "PUBLISHED" as const, jobs: completed.publishJobs.filter((job) => job.status === "PUBLISHED"), outcomes: [] as const, duplicate: true as const };
   const jobs = await Promise.all(targets.map((target) => enqueuePublishJob({ authUserId: input.authUserId, postRequestExternalId: post.externalId, postDestinationExternalId: target.externalId, mode: "NOW" })));
-  const outcomes = await processDuePublishJobs({ maxJobs: jobs.length });
+  // A user-triggered publish may process only the jobs just created/replayed
+  // for this workspace. The scheduled worker intentionally omits this scope
+  // and is the only path allowed to drain the global due queue.
+  const outcomes = await processDuePublishJobs({ maxJobs: jobs.length, jobIds: jobs.map((job) => job.id), workspaceId: workspace.dbId });
   return { status: outcomes.some((outcome) => outcome.status === "PUBLISHED") ? "PUBLISHED" : outcomes[0]?.status ?? "QUEUED", jobs, outcomes };
 }
 

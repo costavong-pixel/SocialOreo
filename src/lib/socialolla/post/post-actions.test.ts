@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  findFirstPost: vi.fn(),
+  const mocks = vi.hoisted(() => ({
+    findFirstPost: vi.fn(),
+    findFirstProfile: vi.fn(),
   workspace: vi.fn(),
   enqueue: vi.fn(),
   process: vi.fn(),
 }));
 
 vi.mock("@/lib/db/prisma", () => ({
-  prisma: { postRequest: { findFirst: (...args: unknown[]) => mocks.findFirstPost(...args) } },
+  prisma: {
+    postRequest: { findFirst: (...args: unknown[]) => mocks.findFirstPost(...args) },
+    profile: { findFirst: (...args: unknown[]) => mocks.findFirstProfile(...args) },
+  },
 }));
 
 vi.mock("@/lib/socialolla/workspace", () => ({
@@ -67,6 +71,6 @@ describe("Publish now approval boundary", () => {
     await expect(publishPostNow({ authUserId: "user_1", postRequestExternalId: "post_1", confirmed: true }))
       .resolves.toMatchObject({ status: "PUBLISHED" });
     expect(mocks.enqueue).toHaveBeenCalledTimes(1);
-    expect(mocks.process).toHaveBeenCalledWith({ maxJobs: 1 });
+    expect(mocks.process).toHaveBeenCalledWith({ maxJobs: 1, jobIds: ["job_1"], workspaceId: "workspace_1" });
   });
 });

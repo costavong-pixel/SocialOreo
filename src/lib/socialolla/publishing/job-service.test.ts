@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
-    publishJob: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
+    publishJob: { updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
     publishAttempt: { updateMany: vi.fn() },
     postDestination: { updateMany: vi.fn(), findUnique: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -21,6 +21,7 @@ describe("publish job reconciliation state", () => {
         callback(mocks.prisma),
     );
     mocks.prisma.publishJob.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.publishJob.findMany.mockResolvedValue([]);
     mocks.prisma.publishJob.findFirst.mockResolvedValue({ attemptCount: 1 });
     mocks.prisma.publishAttempt.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.postDestination.updateMany.mockResolvedValue({ count: 1 });
@@ -99,6 +100,38 @@ describe("publish job reconciliation state", () => {
     ).resolves.toEqual({ accepted: false, replayed: true });
     expect(mocks.prisma.publishAttempt.updateMany).not.toHaveBeenCalled();
     expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("scopes a user-triggered claim to the requested jobs and workspace", async () => {
+    const { claimDuePublishJob } = await import("./job-service");
+    const now = new Date("2026-08-26T10:00:00.000Z");
+    mocks.prisma.publishJob.findFirst.mockResolvedValueOnce(null);
+
+    await expect(claimDuePublishJob({
+      now,
+      workerId: "manual-worker",
+      jobIds: ["job-owned"],
+      workspaceId: "workspace-owned",
+    })).resolves.toBeNull();
+
+    expect(mocks.prisma.publishJob.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: { in: ["job-owned"] },
+        postDestination: { postRequest: { workspaceId: "workspace-owned" } },
+      }),
+    }));
+    expect(mocks.prisma.publishJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: { in: ["job-owned"] },
+        postDestination: { postRequest: { workspaceId: "workspace-owned" } },
+      }),
+    }));
+  });
+
+  it("does not drain the global queue when a scoped claim has no job ids", async () => {
+    const { claimDuePublishJob } = await import("./job-service");
+    await expect(claimDuePublishJob({ now: new Date(), workerId: "manual-worker", jobIds: [] })).resolves.toBeNull();
+    expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it("keeps a publish failure transition claim-bound", async () => {

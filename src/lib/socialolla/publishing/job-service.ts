@@ -41,10 +41,14 @@ export async function enqueuePublishJob(input: { authUserId: string; postRequest
   });
 }
 
-export async function claimDuePublishJob(input: { now: Date; workerId: string }) {
+export async function claimDuePublishJob(input: { now: Date; workerId: string; jobIds?: readonly string[]; workspaceId?: string }) {
+  if (input.jobIds && input.jobIds.length === 0) return null;
+  const scope: Prisma.PublishJobWhereInput = {};
+  if (input.jobIds) scope.id = { in: [...input.jobIds] };
+  if (input.workspaceId) scope.postDestination = { postRequest: { workspaceId: input.workspaceId } };
   return prisma.$transaction(async (tx) => {
     const staleBefore = new Date(input.now.getTime() - 15 * 60 * 1000);
-    const staleJobs = await tx.publishJob.findMany({ where: { status: "PROCESSING", claimedAt: { lt: staleBefore } }, select: { id: true, postDestinationId: true, providerCallStartedAt: true } });
+    const staleJobs = await tx.publishJob.findMany({ where: { ...scope, status: "PROCESSING", claimedAt: { lt: staleBefore } }, select: { id: true, postDestinationId: true, providerCallStartedAt: true } });
     for (const stale of staleJobs) {
       const recoveredStatus = stale.providerCallStartedAt ? "RECONCILIATION_REQUIRED" as const : "QUEUED" as const;
       const message = stale.providerCallStartedAt ? "Provider call began before the publish lease expired; manual reconciliation is required." : "Previous publish lease expired before provider call.";
@@ -55,7 +59,7 @@ export async function claimDuePublishJob(input: { now: Date; workerId: string })
       }
     }
     const candidate = await tx.publishJob.findFirst({
-      where: { status: "QUEUED", AND: [{ OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: input.now } }] }, { OR: [{ scheduledFor: null }, { scheduledFor: { lte: input.now } }] }] },
+      where: { ...scope, status: "QUEUED", AND: [{ OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: input.now } }] }, { OR: [{ scheduledFor: null }, { scheduledFor: { lte: input.now } }] }] },
       orderBy: [{ nextAttemptAt: "asc" }, { createdAt: "asc" }],
       include: { postDestination: { include: { destination: true, variant: true, postRequest: true } } },
     });

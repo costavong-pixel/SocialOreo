@@ -34,4 +34,37 @@ describe("Instagram publishing transport", () => {
     expect(failure.reconciliationRequired).toBe(true);
     expect(failure.retryable).toBe(true);
   });
+
+  it("does not blind-retry a provider rate-limit response", async () => {
+    vi.stubEnv("APP_URL", "https://staging.example.com");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const failure = await createInstagramImageContainer({
+      graphVersion: "v25.0",
+      userId: "ig_1",
+      accessToken: "secret",
+      controlledMediaUrl: "https://staging.example.com/api/media/med_1?expires=1&signature=s",
+    }).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(InstagramPublishError);
+    expect(failure.retryable).toBe(true);
+    expect(failure.reconciliationRequired).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats a malformed successful provider body as ambiguous", async () => {
+    vi.stubEnv("APP_URL", "https://staging.example.com");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({}), { status: 200 })));
+
+    const failure = await createInstagramImageContainer({
+      graphVersion: "v25.0",
+      userId: "ig_1",
+      accessToken: "secret",
+      controlledMediaUrl: "https://staging.example.com/api/media/med_1?expires=1&signature=s",
+    }).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(InstagramPublishError);
+    expect(failure.reconciliationRequired).toBe(true);
+  });
 });

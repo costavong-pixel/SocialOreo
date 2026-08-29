@@ -6,7 +6,7 @@ import { publishInstagramImage } from "@/lib/instagram-publishing/publish-client
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
 import { platformCapabilities } from "./platform-adaptation";
-import { livePublishingRuntimeAllowed, PublishingProviderDisabledError, type PublishProvider, type PublishProviderInput } from "./provider";
+import { livePublishingRuntimeAllowed, PublishingProviderClaimLostError, PublishingProviderDisabledError, type PublishProvider, type PublishProviderInput } from "./provider";
 
 export function createInstagramPublishingProvider(storage: PrivateMediaStorage): PublishProvider {
   const capabilities = platformCapabilities("instagram");
@@ -53,6 +53,7 @@ export function createInstagramPublishingProvider(storage: PrivateMediaStorage):
         }
       }
       const grant = await storage.createControlledReadGrant({ descriptor: { assetId: asset.externalId, ownerWorkspaceId: destination.workspace.externalId, kind: "image", mimeType: asset.mimeType, detectedMimeType: asset.detectedMimeType, sizeBytes: asset.sizeBytes, originalName: asset.originalName, storageKey: asset.storageKey }, expiresInSeconds: 300 });
+      if (input.onProviderRequestStart && !(await input.onProviderRequestStart())) throw new PublishingProviderClaimLostError();
       return publishInstagramImage({ graphVersion: config.graphVersion, userId: destination.platformUserId, accessToken: token, controlledMediaUrl: grant.grant, caption: input.variant.content.text });
     },
   };
