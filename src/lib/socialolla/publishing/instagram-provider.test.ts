@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
 
 const mocks = vi.hoisted(() => ({
   findDestination: vi.fn(),
@@ -73,6 +74,14 @@ const asset = {
   status: "READY",
 };
 
+function testStorage(createControlledReadGrant: PrivateMediaStorage["createControlledReadGrant"]): PrivateMediaStorage {
+  return {
+    put: async ({ descriptor }) => descriptor,
+    read: async () => Buffer.alloc(0),
+    createControlledReadGrant,
+  };
+}
+
 describe("Instagram provider request boundary", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -92,12 +101,10 @@ describe("Instagram provider request boundary", () => {
   it("marks the request started only after preflight and before the provider call", async () => {
     const events: string[] = [];
     const { createInstagramPublishingProvider } = await import("./instagram-provider");
-    const provider = createInstagramPublishingProvider({
-      createControlledReadGrant: async () => {
+    const provider = createInstagramPublishingProvider(testStorage(async () => {
         events.push("grant");
-        return { grant: "https://staging.socialolla.com/api/media/asset_image?expires=1&signature=s" };
-      },
-    });
+        return { grant: "https://staging.socialolla.com/api/media/asset_image?expires=1&signature=s", expiresAt: new Date("2026-08-26T00:05:00.000Z") };
+      }));
     const started = vi.fn(async () => {
       events.push("start");
       return true;
@@ -126,7 +133,7 @@ describe("Instagram provider request boundary", () => {
 
   it("does not mark a request started when preflight rejects the destination", async () => {
     const { createInstagramPublishingProvider } = await import("./instagram-provider");
-    const provider = createInstagramPublishingProvider({ createControlledReadGrant: vi.fn() });
+    const provider = createInstagramPublishingProvider(testStorage(vi.fn()));
     const started = vi.fn(async () => true);
     mocks.findDestination.mockResolvedValue({ ...destination, publishingEligibilityVerifiedAt: null });
 
