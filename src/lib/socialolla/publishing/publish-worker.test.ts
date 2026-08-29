@@ -106,4 +106,32 @@ describe("publish worker ambiguity boundary", () => {
     expect(mocks.markReconciliation).not.toHaveBeenCalled();
     expect(mocks.markFailure).toHaveBeenCalledWith(expect.objectContaining({ jobId: "job-1", retryable: false }));
   });
+
+  it("records provider-disabled processing as a safe failure without crossing the request boundary", async () => {
+    const publish = vi.fn(async () => {
+      throw new Error("Live publishing is disabled for instagram; no provider request was made.");
+    });
+    mocks.provider.mockReturnValue({
+      enabled: false,
+      publish,
+    });
+
+    const { processDuePublishJobs } = await import("./publish-worker");
+    const outcomes = await processDuePublishJobs({ maxJobs: 1, workerId: "worker-1" });
+
+    expect(outcomes).toEqual([{
+      status: "FAILED",
+      jobId: "job-1",
+      retryScheduled: false,
+      error: "Live publishing is disabled for instagram; no provider request was made.",
+    }]);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(mocks.markStarted).not.toHaveBeenCalled();
+    expect(mocks.markSuccess).not.toHaveBeenCalled();
+    expect(mocks.markReconciliation).not.toHaveBeenCalled();
+    expect(mocks.markFailure).toHaveBeenCalledWith(expect.objectContaining({
+      jobId: "job-1",
+      retryable: false,
+    }));
+  });
 });
