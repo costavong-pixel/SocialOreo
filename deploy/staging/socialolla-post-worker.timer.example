@@ -5,6 +5,7 @@ Description=Run the SocialOlla staging Post publishing worker
 OnBootSec=30s
 OnUnitActiveSec=60s
 AccuracySec=5s
+RandomizedDelaySec=15s
 Unit=socialolla-post-worker.service
 
 [Install]

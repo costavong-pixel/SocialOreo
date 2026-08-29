@@ -128,6 +128,13 @@ export function assertWatchWorkerStagingRuntime(env: Record<string, string | und
   }
 }
 
+export function assertWatchWorkerProviderDisabledRuntime(env: Record<string, string | undefined> = process.env): void {
+  assertWatchWorkerStagingRuntime(env);
+  if (!providerDisabledEnabled(env)) {
+    throw new Error("The Watch worker requires provider-disabled mode.");
+  }
+}
+
 function externalId(prefix: string): string {
   return `${prefix}_${randomBytes(12).toString("base64url")}`;
 }

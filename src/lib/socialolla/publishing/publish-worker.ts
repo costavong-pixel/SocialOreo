@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
+import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { claimDuePublishJob, markPublishFailure, markPublishProviderStarted, markPublishReconciliationRequired, markPublishSuccess } from "./job-service";
 import { createPublishingProvider, PublishingProviderClaimLostError } from "./provider";
 import { InstagramPublishError } from "@/lib/instagram-publishing/publish-client";
@@ -12,6 +13,17 @@ export type PublishWorkerOutcome =
   | { status: "RECONCILIATION_REQUIRED"; jobId: string; error: string };
 
 function message(error: unknown): string { return error instanceof Error ? error.message : "Publish attempt failed"; }
+
+export function assertPostWorkerStagingRuntime(env: Record<string, string | undefined> = process.env): void {
+  const nodeEnvironment = (env.NODE_ENV ?? "").trim().toLowerCase();
+  const appEnvironment = (env.SOCIALOLLA_ENV ?? "").trim().toLowerCase();
+  if (nodeEnvironment !== "staging" || appEnvironment !== "staging") {
+    throw new Error("The Post worker is staging-only.");
+  }
+  if (!providerDisabledEnabled(env)) {
+    throw new Error("The Post worker requires provider-disabled mode.");
+  }
+}
 
 export async function processDuePublishJobs(input: { now?: Date; workerId?: string; maxJobs?: number; jobIds?: readonly string[]; workspaceId?: string } = {}): Promise<PublishWorkerOutcome[]> {
   const now = input.now ?? new Date();

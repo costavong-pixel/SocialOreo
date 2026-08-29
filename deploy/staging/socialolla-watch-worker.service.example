@@ -7,7 +7,16 @@ ConditionPathExists=/srv/socialolla/staging
 [Service]
 Type=oneshot
 User=socialolla
+Group=socialolla
 WorkingDirectory=/srv/socialolla/staging
 EnvironmentFile=/srv/socialolla/config/socialolla-staging.env
+Environment=NODE_ENV=staging
 Environment=SOCIALOLLA_ENV=staging
+Environment=SOCIALOLLA_PROVIDER_DISABLED=true
+Environment=SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED=false
 ExecStart=/usr/bin/npm run watch-worker:once
+TimeoutStartSec=120
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

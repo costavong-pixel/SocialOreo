@@ -61,6 +61,15 @@ describe("publish worker ambiguity boundary", () => {
     mocks.markReconciliation.mockResolvedValue({ accepted: true, replayed: false });
   });
 
+  it("fails closed unless the worker is running in provider-disabled staging", async () => {
+    const { assertPostWorkerStagingRuntime } = await import("./publish-worker");
+
+    expect(() => assertPostWorkerStagingRuntime({ NODE_ENV: "staging", SOCIALOLLA_ENV: "staging", SOCIALOLLA_PROVIDER_DISABLED: "true" })).not.toThrow();
+    expect(() => assertPostWorkerStagingRuntime({ NODE_ENV: "production", SOCIALOLLA_ENV: "staging", SOCIALOLLA_PROVIDER_DISABLED: "true" })).toThrow("staging-only");
+    expect(() => assertPostWorkerStagingRuntime({ NODE_ENV: "staging", SOCIALOLLA_ENV: "production", SOCIALOLLA_PROVIDER_DISABLED: "true" })).toThrow("staging-only");
+    expect(() => assertPostWorkerStagingRuntime({ NODE_ENV: "staging", SOCIALOLLA_ENV: "staging", SOCIALOLLA_PROVIDER_DISABLED: "false" })).toThrow("provider-disabled");
+  });
+
   it("reconciles generic errors after an enabled provider boundary", async () => {
     const { processDuePublishJobs } = await import("./publish-worker");
     const outcomes = await processDuePublishJobs({ maxJobs: 1, workerId: "worker-1" });
