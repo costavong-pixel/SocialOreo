@@ -236,7 +236,6 @@ export async function createAndRunAudit(input: CreateAuditInput): Promise<Create
         followingCount: auditData.profile.followingCount,
         postCount: auditData.profile.postCount,
         profileImageUrl: auditData.profile.profileImageUrl,
-        rawProviderPayload: auditData.profile.rawProviderPayload as Prisma.InputJsonValue,
       },
     });
 
@@ -262,7 +261,6 @@ export async function createAndRunAudit(input: CreateAuditInput): Promise<Create
           thumbnailUrl: video.thumbnailUrl,
           videoUrlIfAvailable: video.videoUrlIfAvailable,
           transcriptIfAvailable: video.transcriptIfAvailable,
-          rawProviderPayload: video.rawProviderPayload as Prisma.InputJsonValue,
         })),
       });
     }

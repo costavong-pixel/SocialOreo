@@ -28,6 +28,6 @@ export async function GET() {
   authorize.searchParams.set("scope", "instagram_business_basic,instagram_business_manage_insights");
   authorize.searchParams.set("state", state);
   const response = NextResponse.redirect(authorize);
-  response.cookies.set("socialoreo_meta_oauth", cookieValue, { httpOnly: true, maxAge: 600, path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+  response.cookies.set("socialoreo_meta_oauth", cookieValue, { httpOnly: true, maxAge: 600, path: "/", sameSite: "lax", secure: process.env.NODE_ENV === "production" || ["staging", "production"].includes(process.env.SOCIALOLLA_ENV?.trim().toLowerCase() ?? "") });
   return response;
 }

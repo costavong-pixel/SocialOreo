@@ -1,5 +1,6 @@
 import type { NormalizedSocialAuditResult, NormalizedSocialVideo } from "./types";
 import { SocialProviderError } from "./types";
+import { safeHttpsUrl } from "@/lib/validators/external-url";
 
 type ApifyTikTokItem = Record<string, unknown>;
 
@@ -34,7 +35,7 @@ function normalizeUsername(value: string): string {
 
 function videoUrl(item: ApifyTikTokItem, username: string | undefined): string | undefined {
   const direct = stringValue(item.webVideoUrl) ?? stringValue(item.videoUrl) ?? stringValue(item.url);
-  if (direct) return direct;
+  if (direct) return safeHttpsUrl(direct);
 
   const id = stringValue(item.id) ?? stringValue(item.videoId);
   return id && username ? `https://www.tiktok.com/@${username}/video/${id}` : undefined;
@@ -47,7 +48,7 @@ function isVideoItem(item: ApifyTikTokItem): boolean {
 function normalizeVideo(item: ApifyTikTokItem, fallbackUsername: string | undefined): NormalizedSocialVideo | undefined {
   const author = recordValue(item.authorMeta) ?? recordValue(item.author);
   const username = stringValue(author?.name) ?? stringValue(author?.uniqueId) ?? fallbackUsername;
-  const url = videoUrl(item, username);
+  const url = safeHttpsUrl(videoUrl(item, username));
   if (!url) return undefined;
 
   const caption = stringValue(item.text) ?? stringValue(item.desc) ?? stringValue(item.caption);
@@ -69,8 +70,8 @@ function normalizeVideo(item: ApifyTikTokItem, fallbackUsername: string | undefi
     commentCount: numberValue(item.commentCount) ?? numberValue(stats?.commentCount) ?? numberValue(stats?.comments),
     shareCount: numberValue(item.shareCount) ?? numberValue(stats?.shareCount) ?? numberValue(stats?.shares),
     postedAt: stringValue(item.createTimeISO) ?? stringValue(item.createTime),
-    thumbnailUrl: stringValue(videoMeta?.coverUrl) ?? stringValue(item.covers && recordValue(item.covers)?.default),
-    videoUrlIfAvailable: stringValue(videoMeta?.downloadAddr) ?? stringValue(item.videoUrl),
+    thumbnailUrl: safeHttpsUrl(stringValue(videoMeta?.coverUrl) ?? stringValue(item.covers && recordValue(item.covers)?.default)),
+    videoUrlIfAvailable: safeHttpsUrl(stringValue(videoMeta?.downloadAddr) ?? stringValue(item.videoUrl)),
     rawProviderPayload: item,
   };
 }
@@ -118,7 +119,7 @@ export function normalizeApifyTikTokPayload(
       followerCount: numberValue(author?.fans) ?? numberValue(author?.followerCount),
       followingCount: numberValue(author?.following),
       postCount: numberValue(author?.video),
-      profileImageUrl: stringValue(author?.avatar) ?? stringValue(author?.avatarLarger),
+    profileImageUrl: safeHttpsUrl(stringValue(author?.avatar) ?? stringValue(author?.avatarLarger)),
       rawProviderPayload: profileItem ?? items[0],
     },
     videos,

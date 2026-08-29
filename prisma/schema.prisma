@@ -75,13 +75,13 @@ enum SquareProduct {
 }
 
 model User {
-  id                          String          @id @default(cuid())
-  authUserId                  String          @unique
+  id                          String                       @id @default(cuid())
+  authUserId                  String                       @unique
   email                       String
-  role                        UserRole        @default(USER)
-  accessPlan                  AccessPlan      @default(NONE)
-  freeAuditAllowanceRemaining Int             @default(1)
-  createdAt                   DateTime        @default(now())
+  role                        UserRole                     @default(USER)
+  accessPlan                  AccessPlan                   @default(NONE)
+  freeAuditAllowanceRemaining Int                          @default(1)
+  createdAt                   DateTime                     @default(now())
   creditAccount               CreditAccount?
   creditLedger                CreditLedger[]
   auditJobs                   AuditJob[]
@@ -97,39 +97,39 @@ model User {
 }
 
 model InstagramInsightsConnection {
-  id                    String                           @id @default(cuid())
-  userId                String                           @unique
-  instagramUserId       String                           @unique
-  username              String?
-  accountType           String?
-  tokenCiphertext       String
-  tokenExpiresAt        DateTime?
-  scopes                String[]                         @default([])
-  status                InstagramInsightsConnectionStatus @default(CONNECTED)
-  lastSyncedAt          DateTime?
-  lastError             String?
-  connectedAt           DateTime                         @default(now())
-  updatedAt             DateTime                         @updatedAt
-  user                  User                             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  snapshots             InstagramInsightsSnapshot[]
+  id              String                            @id @default(cuid())
+  userId          String                            @unique
+  instagramUserId String                            @unique
+  username        String?
+  accountType     String?
+  tokenCiphertext String
+  tokenExpiresAt  DateTime?
+  scopes          String[]                          @default([])
+  status          InstagramInsightsConnectionStatus @default(CONNECTED)
+  lastSyncedAt    DateTime?
+  lastError       String?
+  connectedAt     DateTime                          @default(now())
+  updatedAt       DateTime                          @updatedAt
+  user            User                              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots       InstagramInsightsSnapshot[]
 
   @@index([status, updatedAt])
 }
 
 model InstagramInsightsSnapshot {
-  id                         String                      @id @default(cuid())
-  connectionId               String
-  periodStart                DateTime
-  periodEnd                  DateTime
-  accountReach               Int?
-  accountViews               Int?
-  profileViews               Int?
-  totalInteractions          Int?
-  followerCount              Int?
-  audienceDemographicsJson   Json?
-  reelInsightsJson           Json?
-  fetchedAt                  DateTime                    @default(now())
-  connection                 InstagramInsightsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  id                       String                      @id @default(cuid())
+  connectionId             String
+  periodStart              DateTime
+  periodEnd                DateTime
+  accountReach             Int?
+  accountViews             Int?
+  profileViews             Int?
+  totalInteractions        Int?
+  followerCount            Int?
+  audienceDemographicsJson Json?
+  reelInsightsJson         Json?
+  fetchedAt                DateTime                    @default(now())
+  connection               InstagramInsightsConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, periodStart, periodEnd])
   @@index([connectionId, fetchedAt])
@@ -144,42 +144,42 @@ model CreditAccount {
 }
 
 model CreditLedger {
-  id                  String   @id @default(cuid())
-  userId              String
-  delta               Int
-  reason              String
-  squarePaymentId     String?  @unique
-  squareCustomerId    String?
-  createdAt           DateTime @default(now())
-  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  userId           String
+  delta            Int
+  reason           String
+  squarePaymentId  String?  @unique
+  squareCustomerId String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model SquareCheckout {
-  id                String        @id @default(cuid())
-  userId            String
-  product           SquareProduct
-  squareOrderId     String?       @unique
-  squarePaymentId   String?       @unique
-  squareCustomerId  String?
-  squarePaymentLinkId String?       @unique
-  checkoutUrl       String?
-  squareApplicationId String?
-  squareEnvironment   String?
-  squareLocationId    String?
+  id                    String         @id @default(cuid())
+  userId                String
+  product               SquareProduct
+  squareOrderId         String?        @unique
+  squarePaymentId       String?        @unique
+  squareCustomerId      String?
+  squarePaymentLinkId   String?        @unique
+  checkoutUrl           String?
+  squareApplicationId   String?
+  squareEnvironment     String?
+  squareLocationId      String?
   squarePlanVariationId String?
   // Stable server-owned key used with the database advisory lock/unique index
   // to serialize pending checkout creation for one Square context.
-  pendingKey        String?       @unique
-  expiresAt           DateTime?
-  idempotencyKey    String?       @unique
-  amountCents       Int?
-  currency          String?
-  refundedAt        DateTime?
-  completedAt       DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  refunds           SquareRefund[]
+  pendingKey            String?        @unique
+  expiresAt             DateTime?
+  idempotencyKey        String?        @unique
+  amountCents           Int?
+  currency              String?
+  refundedAt            DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refunds               SquareRefund[]
 
   @@index([userId, product])
   @@index([squareCustomerId, product])
@@ -187,28 +187,28 @@ model SquareCheckout {
 }
 
 model SquareWebhookEvent {
-  squareEventId      String   @id
-  eventType          String
-  payloadHash        String
-  processingToken    String?
+  squareEventId       String    @id
+  eventType           String
+  payloadHash         String
+  processingToken     String?
   processingStartedAt DateTime?
-  createdAt          DateTime @default(now())
-  processedAt        DateTime?
+  createdAt           DateTime  @default(now())
+  processedAt         DateTime?
 
   @@index([eventType, createdAt])
 }
 
 model SquareSubscription {
-  squareSubscriptionId String   @id
+  squareSubscriptionId String    @id
   userId               String?
   squareCustomerId     String
   planVariationId      String
   status               String
   canceledDate         String?
   lastEventAt          DateTime?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  user                 User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  user                 User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([userId, status])
   @@index([squareCustomerId, planVariationId])
@@ -231,47 +231,47 @@ model SquarePaymentAuditLog {
 }
 
 model SquareRefund {
-  squareRefundId     String        @id
-  squarePaymentId    String        @unique
+  squareRefundId      String          @id
+  squarePaymentId     String          @unique
   squareRefundOrderId String?
-  squareCheckoutId   String?
-  userId             String?
-  product            SquareProduct?
-  status             String
-  amountCents        Int
-  currency           String
-  refundedAt         DateTime
-  processedAt        DateTime       @default(now())
-  createdAt          DateTime       @default(now())
-  checkout           SquareCheckout? @relation(fields: [squareCheckoutId], references: [id], onDelete: SetNull)
-  user               User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  squareCheckoutId    String?
+  userId              String?
+  product             SquareProduct?
+  status              String
+  amountCents         Int
+  currency            String
+  refundedAt          DateTime
+  processedAt         DateTime        @default(now())
+  createdAt           DateTime        @default(now())
+  checkout            SquareCheckout? @relation(fields: [squareCheckoutId], references: [id], onDelete: SetNull)
+  user                User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([squarePaymentId, status])
   @@index([squareCheckoutId, refundedAt])
 }
 
 model AuditJob {
-  id                    String            @id @default(cuid())
-  userId                String?
-  platform              String
-  provider              String
-  profileUrl            String
-  status                AuditStatus       @default(PENDING)
-  reelLimit             Int               @default(30)
-  campaignBriefJson     Json?
-  providerCostEstimate  Decimal?          @db.Decimal(10, 4)
-  errorMessage          String?
-  createdAt             DateTime          @default(now())
-  completedAt           DateTime?
-  user                  User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  socialProfiles        SocialProfile[]
-  socialVideos          SocialVideo[]
-  auditReport           AuditReport?
-  feedback              AuditFeedback?
-  providerCallLogs      ProviderCallLog[]
-  transcriptEnrichment  TranscriptEnrichment?
+  id                     String                  @id @default(cuid())
+  userId                 String?
+  platform               String
+  provider               String
+  profileUrl             String
+  status                 AuditStatus             @default(PENDING)
+  reelLimit              Int                     @default(30)
+  campaignBriefJson      Json?
+  providerCostEstimate   Decimal?                @db.Decimal(10, 4)
+  errorMessage           String?
+  createdAt              DateTime                @default(now())
+  completedAt            DateTime?
+  user                   User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  socialProfiles         SocialProfile[]
+  socialVideos           SocialVideo[]
+  auditReport            AuditReport?
+  feedback               AuditFeedback?
+  providerCallLogs       ProviderCallLog[]
+  transcriptEnrichment   TranscriptEnrichment?
   competitorBoardEntries CompetitorBoardEntry[]
-  publicSnapshots      PublicProfileSnapshot[]
+  publicSnapshots        PublicProfileSnapshot[]
 }
 
 model SocialProfile {
@@ -292,7 +292,7 @@ model SocialProfile {
 }
 
 model SocialVideo {
-  id                    String   @id @default(cuid())
+  id                    String    @id @default(cuid())
   auditJobId            String
   platform              String
   provider              String
@@ -313,7 +313,7 @@ model SocialVideo {
   videoUrlIfAvailable   String?
   transcriptIfAvailable String?
   rawProviderPayload    Json?
-  auditJob              AuditJob @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+  auditJob              AuditJob  @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
 }
 
 model AuditReport {
@@ -342,22 +342,25 @@ model CompetitorBoardEntry {
 }
 
 model PublicProfileMonitor {
-  id            String                  @id @default(cuid())
-  userId        String
-  profileUrl    String
-  platform      String
-  provider      String
-  reelLimit     Int                     @default(30)
-  enabled       Boolean                 @default(false)
-  cadenceHours  Int                     @default(168)
-  providerCostEstimate Decimal?         @db.Decimal(10, 4)
-  lastCapturedAt DateTime?
-  nextCaptureAt DateTime?
-  lastError     String?
-  createdAt     DateTime                @default(now())
-  updatedAt     DateTime                @updatedAt
-  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  snapshots     PublicProfileSnapshot[]
+  id                   String                  @id @default(cuid())
+  userId               String
+  profileUrl           String
+  platform             String
+  provider             String
+  reelLimit            Int                     @default(30)
+  enabled              Boolean                 @default(false)
+  cadenceHours         Int                     @default(168)
+  providerCostEstimate Decimal?                @db.Decimal(10, 4)
+  lastCapturedAt       DateTime?
+  nextCaptureAt        DateTime?
+  lastError            String?
+  lastAttemptAt        DateTime?
+  retryCount           Int                     @default(0)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  user                 User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshots            PublicProfileSnapshot[]
+  watchReports         WatchReport[]
 
   @@unique([userId, profileUrl])
   @@index([enabled, nextCaptureAt])
@@ -365,38 +368,38 @@ model PublicProfileMonitor {
 }
 
 model PublicProfileSnapshot {
-  id                     String                @id @default(cuid())
+  id                     String               @id @default(cuid())
   monitorId              String
-  sourceAuditJobId       String?               @unique
-  captureKey             String?               @unique
+  sourceAuditJobId       String?              @unique
+  captureKey             String?              @unique
   capturedAt             DateTime
   followerCount          Int?
   followingCount         Int?
   postCount              Int?
-  reelsCollected         Int                   @default(0)
+  reelsCollected         Int                  @default(0)
   totalViews             Int?
   medianViews            Int?
   visibleInteractions    Int?
   visibleInteractionRate Float?
   provider               String
-  providerCostEstimate   Decimal?              @db.Decimal(10, 4)
-  sourceUrls             String[]              @default([])
-  createdAt              DateTime              @default(now())
-  monitor                PublicProfileMonitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
-  sourceAuditJob         AuditJob?             @relation(fields: [sourceAuditJobId], references: [id], onDelete: SetNull)
+  providerCostEstimate   Decimal?             @db.Decimal(10, 4)
+  sourceUrls             String[]             @default([])
+  createdAt              DateTime             @default(now())
+  monitor                PublicProfileMonitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  sourceAuditJob         AuditJob?            @relation(fields: [sourceAuditJobId], references: [id], onDelete: SetNull)
 
   @@index([monitorId, capturedAt])
 }
 
 model AuditFeedback {
-  id               String              @id @default(cuid())
-  auditJobId       String              @unique
-  rating           AuditFeedbackRating
-  usefulSections   String[]            @default([])
-  comments         String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  auditJob         AuditJob            @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
+  id             String              @id @default(cuid())
+  auditJobId     String              @unique
+  rating         AuditFeedbackRating
+  usefulSections String[]            @default([])
+  comments       String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  auditJob       AuditJob            @relation(fields: [auditJobId], references: [id], onDelete: Cascade)
 }
 
 model ContactRequest {
@@ -440,45 +443,45 @@ model TrendWatchlist {
 }
 
 model TrendScan {
-  id             String          @id @default(cuid())
-  watchlistId    String
-  platform       TrendPlatform
-  sourceType     TrendSourceType
-  query          String
-  provider       String?
-  status         TrendScanStatus @default(PENDING)
-  estimatedCost  Decimal?        @db.Decimal(10, 4)
-  resultCount    Int             @default(0)
-  errorMessage   String?
-  requestedAt    DateTime        @default(now())
-  completedAt    DateTime?
-  watchlist      TrendWatchlist  @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
-  videos         TrendVideo[]
+  id            String          @id @default(cuid())
+  watchlistId   String
+  platform      TrendPlatform
+  sourceType    TrendSourceType
+  query         String
+  provider      String?
+  status        TrendScanStatus @default(PENDING)
+  estimatedCost Decimal?        @db.Decimal(10, 4)
+  resultCount   Int             @default(0)
+  errorMessage  String?
+  requestedAt   DateTime        @default(now())
+  completedAt   DateTime?
+  watchlist     TrendWatchlist  @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+  videos        TrendVideo[]
 
   @@index([watchlistId, requestedAt])
   @@index([status, requestedAt])
 }
 
 model TrendVideo {
-  id                    String    @id @default(cuid())
-  scanId                String
-  sourceUrl             String
-  providerVideoId       String?
-  creatorHandle         String?
-  caption               String?
-  hashtags              String[]  @default([])
-  postedAt              DateTime?
-  viewCount             Int?
-  likeCount             Int?
-  commentCount          Int?
-  shareCount            Int?
-  saveCount             Int?
+  id                     String    @id @default(cuid())
+  scanId                 String
+  sourceUrl              String
+  providerVideoId        String?
+  creatorHandle          String?
+  caption                String?
+  hashtags               String[]  @default([])
+  postedAt               DateTime?
+  viewCount              Int?
+  likeCount              Int?
+  commentCount           Int?
+  shareCount             Int?
+  saveCount              Int?
   visibleInteractionRate Float?
-  thumbnailUrl          String?
-  transcriptIfAvailable String?
-  rawProviderPayload    Json?
-  createdAt             DateTime  @default(now())
-  scan                  TrendScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  thumbnailUrl           String?
+  transcriptIfAvailable  String?
+  rawProviderPayload     Json?
+  createdAt              DateTime  @default(now())
+  scan                   TrendScan @relation(fields: [scanId], references: [id], onDelete: Cascade)
 
   @@unique([scanId, sourceUrl])
   @@index([scanId, viewCount])
@@ -510,15 +513,15 @@ model AngleLibrary {
 }
 
 model ProviderCallLog {
-  id                String    @id @default(cuid())
-  auditJobId        String?
-  provider          String
-  endpointOrActor   String
-  estimatedCost     Decimal?  @db.Decimal(10, 4)
-  status            String
-  errorMessage      String?
-  createdAt         DateTime  @default(now())
-  auditJob          AuditJob? @relation(fields: [auditJobId], references: [id], onDelete: SetNull)
+  id              String    @id @default(cuid())
+  auditJobId      String?
+  provider        String
+  endpointOrActor String
+  estimatedCost   Decimal?  @db.Decimal(10, 4)
+  status          String
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  auditJob        AuditJob? @relation(fields: [auditJobId], references: [id], onDelete: SetNull)
 }
 
 // =============================================================================
@@ -554,113 +557,119 @@ enum PlanStatus {
 }
 
 model Workspace {
-  id                  String   @id @default(cuid())
-  externalId          String   @unique
-  ownerUserId         String   @unique
-  label               String
-  defaultLocale       String   @default("en-US")
-  provider            WorkspaceProvider @default(PERSONAL)
-  createdAt           DateTime @default(now())
-  ownerUser           User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
-  destinations        Destination[]
-  profiles            Profile[]
+  id                   String                @id @default(cuid())
+  externalId           String                @unique
+  ownerUserId          String                @unique
+  label                String
+  defaultLocale        String                @default("en-US")
+  provider             WorkspaceProvider     @default(PERSONAL)
+  createdAt            DateTime              @default(now())
+  ownerUser            User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  destinations         Destination[]
+  profiles             Profile[]
   entitlementSnapshots EntitlementSnapshot[]
-  creditBatches       CreditBatch[]
-  auditEvents         AuditEvent[]
-  watchReports        WatchReport[]
-  postRequests        PostRequest[]
-  sevenDayPlans       SevenDayPlan[]
-  scheduleSlots       ScheduleSlot[]
+  creditBatches        CreditBatch[]
+  auditEvents          AuditEvent[]
+  watchReports         WatchReport[]
+  postRequests         PostRequest[]
+  sevenDayPlans        SevenDayPlan[]
+  scheduleSlots        ScheduleSlot[]
+  mediaAssets          MediaAsset[]
 
   @@index([ownerUserId])
 }
 
 model Destination {
-  id              String            @id @default(cuid())
-  externalId      String            @unique
-  workspaceId     String
-  label           String
-  platform        String
-  platformUserId  String?
-  accountLabel    String?
-  status          DestinationStatus @default(DISCONNECTED)
-  providerDisabled Boolean          @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id                              String            @id @default(cuid())
+  externalId                      String            @unique
+  workspaceId                     String
+  label                           String
+  platform                        String
+  platformUserId                  String?
+  accountLabel                    String?
+  status                          DestinationStatus @default(DISCONNECTED)
+  providerDisabled                Boolean           @default(true)
+  accessTokenCiphertext           String?
+  accessTokenExpiresAt            DateTime?
+  publishingEligibilityVerifiedAt DateTime?
+  scopes                          String[]          @default([])
+  createdAt                       DateTime          @default(now())
+  updatedAt                       DateTime          @updatedAt
+  workspace                       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  postDestinations                PostDestination[]
 
   @@index([workspaceId, platform])
 }
 
 model Profile {
-  id              String   @id @default(cuid())
-  externalId      String   @unique
+  id              String    @id @default(cuid())
+  externalId      String    @unique
   workspaceId     String
   handle          String
   name            String?
   platform        String
   locale          String?
   defaultLanguage String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
   workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
 }
 
 model PlanVersion {
-  id                   String               @id @default(cuid())
-  externalId           String               @unique
+  id                   String                @id @default(cuid())
+  externalId           String                @unique
   version              Int
   name                 String
-  status               PlanStatus           @default(ACTIVE)
-  createdAt            DateTime             @default(now())
+  status               PlanStatus            @default(ACTIVE)
+  createdAt            DateTime              @default(now())
   entitlementSnapshots EntitlementSnapshot[]
 }
 
 model EntitlementSnapshot {
-  id                     String       @id @default(cuid())
-  externalId             String       @unique
+  id                     String      @id @default(cuid())
+  externalId             String      @unique
   workspaceId            String
   planVersionId          String
-  maxWatchCompetitors    Int          @default(3)
-  maxDestinations        Int          @default(1)
-  includedMonthlyCredits Int          @default(0)
-  postCreditsPerRequest  Int          @default(1)
-  watchCreditsPerRequest Int          @default(1)
-  validFrom              DateTime     @default(now())
-  workspace              Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  planVersion            PlanVersion  @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
+  maxWatchCompetitors    Int         @default(3)
+  maxDestinations        Int         @default(1)
+  includedMonthlyCredits Int         @default(0)
+  postCreditsPerRequest  Int         @default(1)
+  watchCreditsPerRequest Int         @default(1)
+  validFrom              DateTime    @default(now())
+  workspace              Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  planVersion            PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Restrict)
 
   @@index([workspaceId])
 }
 
 model CreditBatch {
-  id           String          @id @default(cuid())
-  externalId   String          @unique
-  workspaceId  String
-  kind         CreditBatchKind
-  amount       Int
-  remaining    Int
-  expiresAt    DateTime?
-  periodKey    String?
-  squarePaymentId String? @unique
-  createdAt    DateTime        @default(now())
-  workspace    Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  transactions CreditTransaction[]
+  id              String              @id @default(cuid())
+  externalId      String              @unique
+  workspaceId     String
+  kind            CreditBatchKind
+  amount          Int
+  remaining       Int
+  expiresAt       DateTime?
+  periodKey       String?
+  squarePaymentId String?             @unique
+  createdAt       DateTime            @default(now())
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transactions    CreditTransaction[]
 
-  @@index([workspaceId, kind])
   @@unique([workspaceId, kind, periodKey])
+  @@index([workspaceId, kind])
 }
 
 model CreditTransaction {
-  id             String               @id @default(cuid())
+  id             String                @id @default(cuid())
   batchId        String
   kind           CreditTransactionKind
   amount         Int
   reference      String
-  idempotencyKey String               @unique
-  createdAt      DateTime             @default(now())
-  batch          CreditBatch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  idempotencyKey String                @unique
+  createdAt      DateTime              @default(now())
+  batch          CreditBatch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
 
   @@index([batchId])
 }
@@ -707,92 +716,228 @@ enum PostOccurrenceStatus {
   CANCELLED
 }
 
+enum PostDestinationStatus {
+  PENDING
+  QUEUED
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELED
+  RECONCILIATION_REQUIRED
+}
+
+enum PublishJobStatus {
+  QUEUED
+  PROCESSING
+  PUBLISHED
+  FAILED
+  CANCELED
+  RECONCILIATION_REQUIRED
+}
+
+enum PublishJobMode {
+  NOW
+  SCHEDULED
+}
+
+enum PublishAttemptStatus {
+  PROCESSING
+  SUCCEEDED
+  FAILED
+}
+
 model WatchReport {
-  id                String            @id @default(cuid())
-  externalId        String            @unique
-  workspaceId       String
-  profileUrl        String
-  platform          String
-  status            WatchReportStatus @default(RUNNING)
-  reportJson        Json?
-  provider         String            @default("provider-disabled")
-  creditCost        Int               @default(0)
-  createdAt         DateTime          @default(now())
-  completedAt       DateTime?
-  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  id            String                @id @default(cuid())
+  externalId    String                @unique
+  intentKey     String?               @unique
+  monitorId     String?
+  captureKey    String?               @unique
+  workspaceId   String
+  profileUrl    String
+  platform      String
+  status        WatchReportStatus     @default(RUNNING)
+  reportJson    Json?
+  deltaJson     Json?
+  evidenceJson  Json?
+  provider      String                @default("provider-disabled")
+  creditCost    Int                   @default(0)
+  attemptCount  Int                   @default(0)
+  nextAttemptAt DateTime?
+  claimToken    String?
+  claimedAt     DateTime?
+  lastError     String?
+  createdAt     DateTime              @default(now())
+  completedAt   DateTime?
+  workspace     Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  monitor       PublicProfileMonitor? @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
+  @@index([monitorId, status, nextAttemptAt])
 }
 
 model PostRequest {
-  id              String             @id @default(cuid())
-  externalId      String             @unique
-  workspaceId     String
-  destinationRef  String
-  profileRef      String?
-  language        String             @default("en")
-  status          PostRequestStatus  @default(REVIEW)
-  intentKey       String             @unique
-  cfRequestRef    String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  variants        PostVariant[]
-  occurrences     PostOccurrence[]
+  id             String            @id @default(cuid())
+  externalId     String            @unique
+  workspaceId    String
+  destinationRef String
+  profileRef     String?
+  language       String            @default("en")
+  status         PostRequestStatus @default(REVIEW)
+  intentKey      String            @unique
+  cfRequestRef   String?
+  requestedCount Int               @default(1)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  workspace      Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  variants       PostVariant[]
+  occurrences    PostOccurrence[]
+  destinations   PostDestination[]
 
   @@index([workspaceId, status])
 }
 
 model PostVariant {
-  id            String     @id @default(cuid())
-  postRequestId String
-  platform      String
-  title         String
-  caption       String?
-  hashtags      String[]
-  cta           String?
-  characterLimit Int       @default(2200)
-  variantLocale String     @default("en-US")
-  isFinal       Boolean    @default(false)
-  postRequest   PostRequest @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+  id             String            @id @default(cuid())
+  postRequestId  String
+  platform       String
+  title          String
+  caption        String?
+  hashtags       String[]
+  cta            String?
+  characterLimit Int               @default(2200)
+  variantLocale  String            @default("en-US")
+  isFinal        Boolean           @default(false)
+  mediaAssetIds  String[]          @default([])
+  postRequest    PostRequest       @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+  destinations   PostDestination[]
 
   @@index([postRequestId])
 }
 
-model PostOccurrence {
-  id            String               @id @default(cuid())
+model MediaAsset {
+  id               String    @id @default(cuid())
+  externalId       String    @unique
+  workspaceId      String
+  kind             String
+  mimeType         String
+  detectedMimeType String
+  sizeBytes        Int
+  originalName     String
+  storageKey       String    @unique
+  status           String    @default("READY")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}
+
+model PostDestination {
+  id            String                @id @default(cuid())
+  externalId    String                @unique
   postRequestId String
-  kind          PostOccurrenceKind   @default(FIRST)
-  status        PostOccurrenceStatus @default(IDEA)
-  scheduleAt    DateTime?
-  timezone      String               @default("UTC")
+  destinationId String
+  variantId     String
+  platform      String
+  status        PostDestinationStatus @default(PENDING)
+  publishAt     DateTime?
+  timezone      String                @default("UTC")
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  postRequest   PostRequest           @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+  destination   Destination           @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  variant       PostVariant           @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  publishJobs   PublishJob[]
+
+  @@unique([postRequestId, destinationId])
+  @@index([postRequestId, status])
+  @@index([destinationId, status])
+}
+
+model PublishJob {
+  id                    String           @id @default(cuid())
+  externalId            String           @unique
+  postDestinationId     String
+  mode                  PublishJobMode   @default(NOW)
+  status                PublishJobStatus @default(QUEUED)
+  idempotencyKey        String           @unique
+  scheduledFor          DateTime?
+  nextAttemptAt         DateTime?
+  attemptCount          Int              @default(0)
+  claimToken            String?
+  claimedAt             DateTime?
+  providerCallStartedAt DateTime?
+  lastError             String?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  postDestination       PostDestination  @relation(fields: [postDestinationId], references: [id], onDelete: Cascade)
+  attempts              PublishAttempt[]
+  receipt               ProviderReceipt?
+
+  @@index([status, nextAttemptAt])
+  @@index([postDestinationId, status])
+}
+
+model PublishAttempt {
+  id            String               @id @default(cuid())
+  publishJobId  String
+  attemptNumber Int
+  status        PublishAttemptStatus @default(PROCESSING)
+  startedAt     DateTime             @default(now())
+  finishedAt    DateTime?
+  error         String?
+  publishJob    PublishJob           @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+
+  @@unique([publishJobId, attemptNumber])
+  @@index([publishJobId, status])
+}
+
+model ProviderReceipt {
+  id               String     @id @default(cuid())
+  publishJobId     String     @unique
+  provider         String
+  providerObjectId String?
+  url              String?
+  publishedAt      DateTime?
+  metadata         Json?
+  createdAt        DateTime   @default(now())
+  publishJob       PublishJob @relation(fields: [publishJobId], references: [id], onDelete: Cascade)
+}
+
+model PostOccurrence {
+  id             String               @id @default(cuid())
+  postRequestId  String
+  kind           PostOccurrenceKind   @default(FIRST)
+  status         PostOccurrenceStatus @default(IDEA)
+  scheduleAt     DateTime?
+  timezone       String               @default("UTC")
   destinationRef String
-  evidenceJson  Json?
-  postRequest   PostRequest          @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
+  evidenceJson   Json?
+  postRequest    PostRequest          @relation(fields: [postRequestId], references: [id], onDelete: Cascade)
 
   @@index([postRequestId, status])
 }
 
 model SevenDayPlan {
-  id            String    @id @default(cuid())
-  workspaceId   String
+  id             String    @id @default(cuid())
+  workspaceId    String
   destinationRef String
-  planJson      Json
-  createdAt     DateTime  @default(now())
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  planJson       Json
+  createdAt      DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt])
 }
 
 model ScheduleSlot {
-  id            String    @id @default(cuid())
-  workspaceId   String
-  postRequestId String
+  id             String    @id @default(cuid())
+  workspaceId    String
+  postRequestId  String
   destinationRef String
-  scheduleAt    DateTime
-  timezone      String    @default("UTC")
-  createdAt     DateTime  @default(now())
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  scheduleAt     DateTime
+  timezone       String    @default("UTC")
+  createdAt      DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, scheduleAt])
 }

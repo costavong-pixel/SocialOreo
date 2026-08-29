@@ -24,9 +24,10 @@ describe("runApifyActor actor id URL encoding", () => {
     ).rejects.toThrow("Apify actor run failed with status 400.");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.apify.com/v2/acts/apify~instagram-scraper/runs?token=test-token",
+      "https://api.apify.com/v2/acts/apify~instagram-scraper/runs",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({ Authorization: "Bearer test-token" }),
       }),
     );
   });

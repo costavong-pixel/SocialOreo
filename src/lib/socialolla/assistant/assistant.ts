@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 /**
@@ -39,14 +39,83 @@ export interface ExecuteIntent {
   domain: AssistantDomain;
   action: "Execute";
   preview: string;
-  confirmationToken: string;
+  /** @deprecated The client-supplied expected token is never trusted. */
+  confirmationToken?: string;
   providedToken: string;
+  intent?: string;
+  actorAuthUserId?: string;
 }
 
 const CONFIRMATION_PREFIX = "so-ok-";
+const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
+const PROCESS_FALLBACK_SECRET = randomBytes(32).toString("hex");
 
-export function newConfirmationToken(): string {
-  return `${CONFIRMATION_PREFIX}${randomBytes(12).toString("base64url")}`;
+type ConfirmationContext = {
+  domain?: AssistantDomain;
+  intent?: string;
+  actorAuthUserId?: string;
+};
+
+type ConfirmationClaims = ConfirmationContext & {
+  version: 1;
+  nonce: string;
+  expiresAt: number;
+};
+
+function confirmationSecret(): string {
+  // AUTH0_SECRET is already required by the authenticated server runtime. The
+  // dedicated variable permits rotation without coupling this contract to
+  // Auth0. A deployed staging/production runtime must fail closed when neither
+  // secret is configured; the process fallback is only for isolated tests.
+  const configured = process.env.SOCIALOLLA_ASSISTANT_CONFIRMATION_SECRET || process.env.AUTH0_SECRET;
+  if (!configured && (process.env.NODE_ENV === "production" || process.env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging")) {
+    throw new Error("Assistant confirmation secret is not configured.");
+  }
+  return configured || PROCESS_FALLBACK_SECRET;
+}
+
+function encodeClaims(claims: ConfirmationClaims): string {
+  return Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
+}
+
+function signClaims(encodedClaims: string): string {
+  return createHmac("sha256", confirmationSecret()).update(encodedClaims).digest("base64url");
+}
+
+function verifyConfirmationToken(token: string): ConfirmationClaims | null {
+  if (!token.startsWith(CONFIRMATION_PREFIX)) return null;
+  const value = token.slice(CONFIRMATION_PREFIX.length);
+  const separator = value.lastIndexOf(".");
+  if (separator <= 0 || separator === value.length - 1) return null;
+
+  const encodedClaims = value.slice(0, separator);
+  const providedSignature = Buffer.from(value.slice(separator + 1), "base64url");
+  const expectedSignature = Buffer.from(signClaims(encodedClaims), "base64url");
+  if (providedSignature.length !== expectedSignature.length || !timingSafeEqual(providedSignature, expectedSignature)) return null;
+
+  try {
+    const claims = JSON.parse(Buffer.from(encodedClaims, "base64url").toString("utf8")) as Partial<ConfirmationClaims>;
+    if (claims.version !== 1 || typeof claims.nonce !== "string" || typeof claims.expiresAt !== "number" || claims.expiresAt <= Date.now()) return null;
+    if (claims.domain !== undefined && !assistantDomainSchema.safeParse(claims.domain).success) return null;
+    if (claims.intent !== undefined && typeof claims.intent !== "string") return null;
+    if (claims.actorAuthUserId !== undefined && typeof claims.actorAuthUserId !== "string") return null;
+    return claims as ConfirmationClaims;
+  } catch {
+    return null;
+  }
+}
+
+export function newConfirmationToken(context: ConfirmationContext = {}): string {
+  const claims: ConfirmationClaims = {
+    version: 1,
+    nonce: randomBytes(12).toString("base64url"),
+    expiresAt: Date.now() + CONFIRMATION_TTL_MS,
+    ...(context.domain ? { domain: context.domain } : {}),
+    ...(context.intent !== undefined ? { intent: context.intent.trim() } : {}),
+    ...(context.actorAuthUserId ? { actorAuthUserId: context.actorAuthUserId } : {}),
+  };
+  const encodedClaims = encodeClaims(claims);
+  return `${CONFIRMATION_PREFIX}${encodedClaims}.${signClaims(encodedClaims)}`;
 }
 
 export function classifyIntent(intent: string, domain: AssistantDomain): AssistantAction {
@@ -59,11 +128,11 @@ export function classifyIntent(intent: string, domain: AssistantDomain): Assista
 }
 
 /** Step runner: pure, deterministic, provider-disabled. */
-export function runAssistantStep(intent: string, domain: AssistantDomain): AssistantStepResult {
+export function runAssistantStep(intent: string, domain: AssistantDomain, actorAuthUserId?: string): AssistantStepResult {
   const action = classifyIntent(intent, domain);
   const protectedAction = action === "Execute";
   const requiresConfirmation = protectedAction;
-  const confirmationToken = protectedAction ? newConfirmationToken() : undefined;
+  const confirmationToken = protectedAction ? newConfirmationToken({ domain, intent, actorAuthUserId }) : undefined;
   const summary = protectedAction
     ? "Protected action prepared — exact preview and confirmation required."
     : `Prepared an ${action} response for ${domain}.`;
@@ -78,17 +147,18 @@ export function runAssistantStep(intent: string, domain: AssistantDomain): Assis
   };
 }
 
-/** Protected actions must be re-confirmed with the exact issued token. */
+/** Protected actions must be re-confirmed with a server-signed, context-bound token. */
 export function confirmExecute(input: ExecuteIntent): { ok: boolean; reason?: string } {
   if (input.action !== "Execute") return { ok: false, reason: "Not an Execute action" };
-  const provided = Buffer.from(input.providedToken);
-  const expected = Buffer.from(input.confirmationToken);
-  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
-    return { ok: false, reason: "Confirmation token mismatch" };
-  }
   if (input.preview.trim().length === 0) {
     return { ok: false, reason: "Exact preview is required" };
   }
+
+  const claims = verifyConfirmationToken(input.providedToken);
+  if (!claims || claims.domain !== input.domain) return { ok: false, reason: "Confirmation token mismatch" };
+  if (input.intent !== undefined && claims.intent !== input.intent.trim()) return { ok: false, reason: "Confirmation context mismatch" };
+  if (input.actorAuthUserId !== undefined && claims.actorAuthUserId !== input.actorAuthUserId) return { ok: false, reason: "Confirmation context mismatch" };
+
   return { ok: true };
 }
 

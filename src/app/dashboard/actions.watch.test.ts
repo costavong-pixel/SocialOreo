@@ -11,12 +11,18 @@ const mocks = vi.hoisted(() => {
   return {
     prisma,
     getSessionUser: vi.fn(),
+    getAcceptedSessionUser: vi.fn(),
+    getVerifiedSessionUser: vi.fn(),
     revalidatePath: vi.fn(),
   };
 });
 
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
-vi.mock("@/lib/auth/current-user", () => ({ getSessionUser: mocks.getSessionUser }));
+vi.mock("@/lib/auth/current-user", () => ({
+  getSessionUser: mocks.getSessionUser,
+  getAcceptedSessionUser: mocks.getAcceptedSessionUser,
+  getVerifiedSessionUser: mocks.getVerifiedSessionUser,
+}));
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/snapshots/public-profile-snapshots", () => ({ enablePublicSnapshotMonitor: vi.fn(), pausePublicSnapshotMonitor: vi.fn() }));
 vi.mock("@/lib/trends/trend-scans", () => ({ runInstagramTrendScan: vi.fn(), runTikTokTrendScan: vi.fn(), runYouTubeTrendScan: vi.fn() }));
@@ -25,6 +31,8 @@ describe("competitor Watch actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getSessionUser.mockResolvedValue({ id: "auth-1" });
+    mocks.getAcceptedSessionUser.mockResolvedValue({ id: "auth-1", email: "owner@example.com", emailVerified: true, acceptance: "provider-verified" });
+    mocks.getVerifiedSessionUser.mockResolvedValue({ id: "auth-1", email: "owner@example.com", emailVerified: true });
     mocks.prisma.user.findUnique.mockResolvedValue({ id: "user-1", accessPlan: "MONTHLY" });
     mocks.prisma.competitorBoardEntry.findFirst.mockResolvedValue({
       auditJob: { profileUrl: "https://www.instagram.com/competitor/", platform: "instagram", provider: "apify", reelLimit: 30 },

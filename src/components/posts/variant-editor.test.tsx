@@ -51,6 +51,7 @@ describe("VariantEditor", () => {
       hashtags: ["#coffee", "#baking"],
       cta: "Learn more",
       isFinal: true,
+      mediaAssetIds: [],
     });
     expect(refreshMock).toHaveBeenCalled();
   });

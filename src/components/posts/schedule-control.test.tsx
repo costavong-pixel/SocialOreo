@@ -48,7 +48,7 @@ describe("ScheduleControl", () => {
 
     fireEvent.click(scheduleButton);
 
-    expect(await screen.findByText(/Your schedule is saved; live delivery is not enabled in staging/)).toBeTruthy();
+    expect(await screen.findByText(/Durable schedule persisted; live delivery is not enabled in staging/)).toBeTruthy();
     expect(m2SchedulePostMock).toHaveBeenCalledWith({
       postRequestExternalId: "req_1",
       scheduleAt: "2026-08-10T15:30:00.000Z",
@@ -64,5 +64,6 @@ describe("ScheduleControl", () => {
     expect(screen.getByText("Scheduled slots:")).toBeTruthy();
     expect(screen.getByText(/UTC · status/)).toBeTruthy();
     expect(screen.getByText("SCHEDULED")).toBeTruthy();
+    expect(screen.getByText(/durable schedule persisted/)).toBeTruthy();
   });
 });

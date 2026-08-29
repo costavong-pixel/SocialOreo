@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { buildReelStructures } from "@/lib/reports/reel-structures";
 import type { PerformancePattern, PublicMetrics } from "@/lib/reports/public-metrics";
+import { safeHttpsUrl } from "@/lib/validators/external-url";
 
 type ReportSummary = {
   headline?: string;
@@ -105,15 +106,16 @@ function PatternList({ title, patterns }: { title: string; patterns: Performance
 
 function ProfileAvatar({ imageUrl, username }: { imageUrl?: string | null; username?: string | null }) {
   const fallback = username?.slice(0, 1).toUpperCase() ?? "R";
+  const safeImageUrl = safeHttpsUrl(imageUrl);
 
   return (
     <div
       aria-label={username ? `Profile image for @${username}` : "Profile image"}
       className="grid size-11 shrink-0 place-items-center rounded-full border border-white/15 bg-white/10 text-sm font-black text-orange-200"
       role="img"
-      style={imageUrl ? { backgroundImage: `url(${imageUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
+      style={safeImageUrl ? { backgroundImage: `url(${safeImageUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
     >
-      {imageUrl ? null : fallback}
+      {safeImageUrl ? null : fallback}
     </div>
   );
 }
@@ -134,29 +136,34 @@ function ReelEvidenceTable({ metrics }: { metrics: PublicMetrics }) {
       <p className="mt-2 max-w-[65ch] text-base leading-7 text-white/75">Ranked by public views. Every reel includes one practical next test.</p>
       {evidence.length ? (
         <ol className="mt-5 grid gap-3">
-          {evidence.map((reel) => (
-            <li key={reel.id} className="grid gap-4 rounded-md border border-white/8 bg-white/[0.025] p-4 lg:grid-cols-[2rem_4rem_minmax(0,1fr)_minmax(15rem,.8fr)]">
-              <span className="text-sm font-black text-orange-300">{reel.rank ? String(reel.rank).padStart(2, "0") : "—"}</span>
-              <div
-                aria-label="Public reel thumbnail"
-                className="aspect-[3/4] rounded-sm border border-white/10 bg-white/10"
-                role="img"
-                style={reel.thumbnailUrl ? { backgroundImage: `url(${reel.thumbnailUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
-              />
-              <div className="min-w-0">
-                <a className="line-clamp-2 text-sm font-semibold leading-6 text-white hover:text-orange-200" href={reel.url} target="_blank" rel="noreferrer">{reel.caption}</a>
-                <p className="mt-2 text-sm leading-6 text-white/65">{reel.evidence}</p>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/65">
-                  <span>{reel.durationSeconds === undefined ? "Length unavailable" : `${reel.durationSeconds} sec`}</span><span>·</span><span>{reel.captionWordCount}-word caption</span><span>·</span><span>{reel.hashtagCount} hashtags</span>
+          {evidence.map((reel) => {
+            const safeUrl = safeHttpsUrl(reel.url);
+            const safeThumbnailUrl = safeHttpsUrl(reel.thumbnailUrl);
+
+            return (
+              <li key={reel.id} className="grid gap-4 rounded-md border border-white/8 bg-white/[0.025] p-4 lg:grid-cols-[2rem_4rem_minmax(0,1fr)_minmax(15rem,.8fr)]">
+                <span className="text-sm font-black text-orange-300">{reel.rank ? String(reel.rank).padStart(2, "0") : "—"}</span>
+                <div
+                  aria-label="Public reel thumbnail"
+                  className="aspect-[3/4] rounded-sm border border-white/10 bg-white/10"
+                  role="img"
+                  style={safeThumbnailUrl ? { backgroundImage: `url(${safeThumbnailUrl})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}
+                />
+                <div className="min-w-0">
+                  {safeUrl ? <a className="line-clamp-2 text-sm font-semibold leading-6 text-white hover:text-orange-200" href={safeUrl} target="_blank" rel="noreferrer">{reel.caption}</a> : <span className="line-clamp-2 text-sm font-semibold leading-6 text-white">{reel.caption}</span>}
+                  <p className="mt-2 text-sm leading-6 text-white/65">{reel.evidence}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/65">
+                    <span>{reel.durationSeconds === undefined ? "Length unavailable" : `${reel.durationSeconds} sec`}</span><span>·</span><span>{reel.captionWordCount}-word caption</span><span>·</span><span>{reel.hashtagCount} hashtags</span>
+                  </div>
                 </div>
-              </div>
-              <div className="grid content-start gap-3">
-                <div className={`rounded-md border px-3 py-2 text-xs font-black uppercase tracking-wide ${recommendationStyles[reel.recommendation]}`}>{reel.recommendation}</div>
-                <div className="text-xs text-white/65"><p className="font-bold tabular-nums text-white">{formatNumber(reel.views)}</p><p>public views</p>{reel.engagementPerView !== undefined ? <p className="mt-1 text-emerald-300">{formatPercent(reel.engagementPerView)} EPV</p> : null}</div>
-                <p className="border-t border-white/10 pt-3 text-sm leading-6 text-white/75"><span className="font-semibold text-white">Next test:</span> {reel.nextTest}</p>
-              </div>
-            </li>
-          ))}
+                <div className="grid content-start gap-3">
+                  <div className={`rounded-md border px-3 py-2 text-xs font-black uppercase tracking-wide ${recommendationStyles[reel.recommendation]}`}>{reel.recommendation}</div>
+                  <div className="text-xs text-white/65"><p className="font-bold tabular-nums text-white">{formatNumber(reel.views)}</p><p>public views</p>{reel.engagementPerView !== undefined ? <p className="mt-1 text-emerald-300">{formatPercent(reel.engagementPerView)} EPV</p> : null}</div>
+                  <p className="border-t border-white/10 pt-3 text-sm leading-6 text-white/75"><span className="font-semibold text-white">Next test:</span> {reel.nextTest}</p>
+                </div>
+              </li>
+            );
+          })}
         </ol>
       ) : <p className="mt-5 text-white/55">No public reels were saved with this audit.</p>}
     </article>
@@ -183,12 +190,25 @@ function ContentIntelligenceSection({ metrics, enrichmentStatus }: { metrics: Pu
           <h3 className="font-bold">Spoken openings</h3>
           {intelligence.transcriptOpenings.length ? (
             <div className="mt-3 grid gap-3">
-              {intelligence.transcriptOpenings.map((reel) => (
-                <a className="rounded-md border border-white/8 bg-black/10 p-3 transition hover:border-orange-300/50" href={reel.url} key={reel.id} rel="noreferrer" target="_blank">
-                  <p className="text-sm font-semibold leading-6 text-white">“{reel.opening}”</p>
-                  <p className="mt-2 text-xs leading-5 text-white/50">{reel.caption} {reel.views === undefined ? "" : `· ${formatNumber(reel.views)} public views`}</p>
-                </a>
-              ))}
+              {intelligence.transcriptOpenings.map((reel) => {
+                const safeUrl = safeHttpsUrl(reel.url);
+                const content = (
+                  <>
+                    <p className="text-sm font-semibold leading-6 text-white">“{reel.opening}”</p>
+                    <p className="mt-2 text-xs leading-5 text-white/50">{reel.caption} {reel.views === undefined ? "" : `· ${formatNumber(reel.views)} public views`}</p>
+                  </>
+                );
+
+                return safeUrl ? (
+                  <a className="rounded-md border border-white/8 bg-black/10 p-3 transition hover:border-orange-300/50" href={safeUrl} key={reel.id} rel="noreferrer" target="_blank">
+                    {content}
+                  </a>
+                ) : (
+                  <div className="rounded-md border border-white/8 bg-black/10 p-3" key={reel.id}>
+                    {content}
+                  </div>
+                );
+              })}
             </div>
           ) : <p className="mt-3 text-sm leading-6 text-white/55">No transcript was returned for these public reels. Spoken-hook analysis will appear when a transcript source is available.</p>}
         </article>

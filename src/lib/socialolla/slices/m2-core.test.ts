@@ -6,10 +6,12 @@ const mocks = vi.hoisted(() => {
     workspace: { findUnique: vi.fn(), create: vi.fn() },
     destination: { findFirst: vi.fn(), create: vi.fn() },
     profile: { upsert: vi.fn() },
-    postRequest: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    postRequest: { create: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     postVariant: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     postOccurrence: { create: vi.fn(), updateMany: vi.fn() },
-    scheduleSlot: { create: vi.fn(), findMany: vi.fn() },
+    postDestination: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    mediaAsset: { findMany: vi.fn() },
+    scheduleSlot: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     sevenDayPlan: { create: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
     creditBatch: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
@@ -36,7 +38,7 @@ vi.mock("@/lib/socialolla/content-factory/client", () => ({
       createdAt: new Date().toISOString(),
     })),
     getRequest: vi.fn(),
-    health: vi.fn(),
+    health: vi.fn().mockResolvedValue({ status: "ok", contract: "v1", data_reachable: true }),
   }),
 }));
 
@@ -75,17 +77,23 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
       label: "Work Instagram",
       platform: "instagram",
       providerDisabled: true,
+      status: "CONNECTED",
     }));
     mocks.prisma.destination.create.mockResolvedValue({ id: "dst-2", externalId: "dst_newsandbox0000000" });
     mocks.prisma.profile.upsert.mockResolvedValue({ id: "p-1", externalId: "prf_slice000000000000" });
     mocks.prisma.postRequest.create.mockResolvedValue({ id: "pr-1", externalId: "req_slice000000000000", workspaceId: "ws-1", status: "REVIEW" });
-    mocks.prisma.postRequest.findFirst.mockResolvedValue({ id: "pr-1", externalId: "req_slice000000000000", workspaceId: "ws-1", status: "REVIEW" });
+    mocks.prisma.postRequest.findFirst.mockResolvedValue({ id: "pr-1", externalId: "req_slice000000000000", workspaceId: "ws-1", status: "REVIEW", destinationRef: "dst_slice000000000000", destinations: [] });
+    mocks.prisma.postRequest.findUnique.mockResolvedValue(null);
     mocks.prisma.postRequest.update.mockResolvedValue({});
     mocks.prisma.postVariant.create.mockResolvedValue({ id: "v-1" });
     mocks.prisma.postVariant.findFirst.mockResolvedValue({ id: "v-1", postRequestId: "pr-1", isFinal: true });
     mocks.prisma.postVariant.update.mockResolvedValue({});
     mocks.prisma.postOccurrence.create.mockResolvedValue({ id: "o-1" });
     mocks.prisma.postOccurrence.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.postDestination.create.mockResolvedValue({ id: "pd-1", externalId: "postdst_slice000000000000" });
+    mocks.prisma.mediaAsset.findMany.mockResolvedValue([]);
+    mocks.prisma.scheduleSlot.findFirst.mockResolvedValue(null);
+    mocks.prisma.scheduleSlot.update.mockResolvedValue({});
     mocks.prisma.sevenDayPlan.create.mockResolvedValue({ id: "plan-1" });
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, watchCreditsPerRequest: 1, includedMonthlyCredits: 20 });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH]);
@@ -103,7 +111,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.auditEvent.findMany.mockResolvedValue([]);
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
-      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
+      if (typeof arg === "function") return arg({ ...mocks.prisma });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected");
     });
@@ -131,13 +139,13 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     const result = await approveAndSchedulePost({
       authUserId: "user-1",
       postRequestExternalId: "req_slice000000000000",
-      scheduleAt: new Date(),
+      scheduleAt: new Date(Date.now() + 60_000),
       timezone: "UTC",
       confirmed: true,
     });
     expect(result.status).toBe("SCHEDULED");
     await expect(
-      approveAndSchedulePost({ authUserId: "user-1", postRequestExternalId: "req_slice000000000000", scheduleAt: new Date(), timezone: "UTC", confirmed: false }),
+      approveAndSchedulePost({ authUserId: "user-1", postRequestExternalId: "req_slice000000000000", scheduleAt: new Date(Date.now() + 60_000), timezone: "UTC", confirmed: false }),
     ).rejects.toThrow("confirmation");
   });
 

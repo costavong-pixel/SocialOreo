@@ -9,7 +9,6 @@ import {
   selectSpendableBatch,
 } from "@/lib/socialolla/credits/batch-service";
 import type { PostRequestContract, PostStatus } from "@/lib/socialolla/contracts";
-import { assertProviderDisabledMode } from "@/lib/providers/social/provider-guard";
 
 export interface PostCostPreview {
   estimatedCredits: number;
@@ -29,7 +28,7 @@ export interface PostExecutionInput {
 }
 
 /**
- * Post service orchestrator (provider-disabled by default). Enforces:
+ * Post service orchestrator. Enforces:
  * - authenticated workspace binding (server-derived from the session user);
  * - destination selection + profile context;
  * - plan/entitlement checks and a cost preview;
@@ -61,15 +60,24 @@ export function createPostService(client?: ContentFactoryClient) {
 
   async function execute(input: PostExecutionInput): Promise<PostRequestContract> {
     if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
-    // SECURITY-05: fail-closed at the top of execute(), before any side effect
-    // (same chokepoint guard Watch uses; the Content Factory must never be
-    // reached outside provider-disabled mode in Milestone 2).
-    assertProviderDisabledMode();
+    // Content Factory must prove its own durable data path before any credit
+    // hold or request side effect. Provider availability is a separate gate:
+    // Post creation must remain usable when real Instagram publishing is
+    // enabled, while publishing itself still fails closed when disabled.
+    const health = await cf.health();
+    if (health.status !== "ok" || health.contract !== "v1" || !health.data_reachable) {
+      throw new Error("Content Factory data path is unavailable; no Post was created.");
+    }
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
     const destination = await prisma.destination.findFirst({
       where: { externalId: input.destinationExternalId, workspace: { ownerUserId: input.authUserId } },
     });
     if (!destination) throw new Error("Destination not found for this workspace");
+    const profileExternalId = input.profileExternalId?.trim() || undefined;
+    if (profileExternalId) {
+      const profile = await prisma.profile.findFirst({ where: { externalId: profileExternalId, workspaceId: workspace.dbId }, select: { externalId: true } });
+      if (!profile) throw new Error("Profile not found for this workspace");
+    }
     const entitlement = await prisma.entitlementSnapshot.findFirst({
       where: { workspace: { ownerUserId: input.authUserId } },
       orderBy: { validFrom: "desc" },
@@ -95,7 +103,7 @@ export function createPostService(client?: ContentFactoryClient) {
       request = await cf.createRequest({
         workspaceExternalId: workspace.id,
         destinationRef: destination.externalId,
-        profileRef: input.profileExternalId,
+        profileRef: profileExternalId,
         language: input.language,
         requestedCount: input.requestedCount,
         idempotencyKey: intent,

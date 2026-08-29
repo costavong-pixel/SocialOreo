@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
       findFirst: vi.fn(),
     },
     destination: { findFirst: vi.fn() },
+    profile: { findFirst: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
     creditBatch: {
       findFirst: vi.fn(),
@@ -110,7 +111,7 @@ describe("Slice C — SocialOreo Post integration", () => {
     ).rejects.toThrow("confirmation");
   });
 
-  it("refuses to execute when provider-disabled mode is off (fail-closed guard, before any side effect)", async () => {
+  it("does not couple Content Factory Post creation to the social provider flag", async () => {
     vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
     const { createPostService } = await import("./post-service");
     const service = createPostService();
@@ -123,10 +124,8 @@ describe("Slice C — SocialOreo Post integration", () => {
         confirmed: true,
         contentIntent: "opening promo",
       }),
-    ).rejects.toThrow("Live provider calls are disabled");
-    // No side effects happened: no hold, no request, no refund, no audit.
-    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
-    expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ status: "review" });
+    expect(mocks.prisma.creditTransaction.create).toHaveBeenCalled();
   });
 
   it("rejects a destination that is not bound to the workspace", async () => {
@@ -136,6 +135,34 @@ describe("Slice C — SocialOreo Post integration", () => {
     await expect(
       service.preview("user-1", "dst_abcdefghijklmnop", 10),
     ).rejects.toThrow("Destination not found");
+  });
+
+  it("rejects a profile reference that is not bound to the workspace before holding credits", async () => {
+    mocks.prisma.profile.findFirst.mockResolvedValue(null);
+    const { createPostService } = await import("./post-service");
+    const service = createPostService();
+    await expect(service.execute({
+      authUserId: "user-1",
+      destinationExternalId: "dst_abcdefghijklmnop",
+      profileExternalId: "profile_foreign",
+      language: "en",
+      requestedCount: 1,
+      confirmed: true,
+    })).rejects.toThrow("Profile not found");
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks before credit hold when Content Factory data is unreachable", async () => {
+    const { createPostService } = await import("./post-service");
+    const unhealthyClient = {
+      createRequest: vi.fn(),
+      getRequest: vi.fn(),
+      health: vi.fn().mockResolvedValue({ status: "ok", contract: "v1", data_reachable: false }),
+    };
+    const service = createPostService(unhealthyClient as never);
+    await expect(service.execute({ authUserId: "user-1", destinationExternalId: "dst_abcdefghijklmnop", language: "en", requestedCount: 1, confirmed: true })).rejects.toThrow("data path");
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+    expect(unhealthyClient.createRequest).not.toHaveBeenCalled();
   });
 
   it("creates a staged post request and charges exactly one credit hold", async () => {
@@ -199,7 +226,7 @@ describe("Slice C — SocialOreo Post integration", () => {
     const failingClient = {
       createRequest: vi.fn().mockRejectedValue(new Error("upstream down")),
       getRequest: vi.fn(),
-      health: vi.fn(),
+      health: vi.fn().mockResolvedValue({ status: "ok", contract: "v1", data_reachable: true }),
     };
     const service = createPostService(failingClient as never);
     await expect(

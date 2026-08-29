@@ -32,7 +32,7 @@ export async function proxy(request: NextRequest) {
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 365,
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production" || ["staging", "production"].includes(process.env.SOCIALOLLA_ENV?.trim().toLowerCase() ?? ""),
     });
     return next;
   }

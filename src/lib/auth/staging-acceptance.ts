@@ -40,12 +40,16 @@ export function normalizeStagingAcceptanceEmail(email: string): string {
 }
 
 export function isStagingAcceptanceRuntime(env: NodeJS.ProcessEnv = process.env): boolean {
+  // A production Node runtime is an unconditional deny boundary. The staging
+  // service uses NODE_ENV=staging while still serving the immutable production
+  // build, so a production runtime can never accidentally activate this path.
+  if (configuredValue(env, "NODE_ENV").toLowerCase() === "production") return false;
+
   const configuredEnvironment = configuredValue(env, "SOCIALOLLA_ENV").toLowerCase();
   const configuredOrigin = configuredValue(env, "APP_BASE_URL").replace(/\/$/, "");
 
-  // The staging service intentionally runs Next with NODE_ENV=production for a
-  // production build. SOCIALOLLA_ENV and the exact staging origin are the
-  // deployment boundary; a production SOCIALOLLA_ENV can never pass.
+  // SOCIALOLLA_ENV and the exact staging origin are the deployment boundary;
+  // a production SOCIALOLLA_ENV can never pass.
   return configuredEnvironment === STAGING_ENVIRONMENT && configuredOrigin === STAGING_ORIGIN;
 }
 
