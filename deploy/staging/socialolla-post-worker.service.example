@@ -14,7 +14,9 @@ Environment=NODE_ENV=staging
 Environment=SOCIALOLLA_ENV=staging
 Environment=SOCIALOLLA_PROVIDER_DISABLED=true
 Environment=SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED=false
-ExecStart=/usr/bin/npm run post-worker:once
+# Provider-disabled staging installation is an observable validation loop only.
+# Deliberate dry-run keeps queued customer work and credits untouched.
+ExecStart=/usr/bin/npm run post-worker:once -- --dry-run
 TimeoutStartSec=120
 TimeoutStopSec=30
 NoNewPrivileges=true
