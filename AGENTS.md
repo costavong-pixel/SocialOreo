@@ -1,20 +1,27 @@
 # SocialOreo Agent Instructions
 
-This file is the permanent repository policy for Hermes, Codex Desktop, and
-GPT-5.3 Codex Spark workers. The current Hermes GitHub task issue supplies
-only the changing feature scope.
+This is the permanent repository policy for the SocialOreo/SocialOlla
+engineering workflow. A current task packet supplies only the changing,
+bounded feature scope; it does not override these controls.
 
-## Model roles
+## Model roles and authority
 
-- Hermes using GPT-5.6 Luna is the project and product coordinator.
-- GPT-5.3 Codex Spark is the bounded implementation worker.
-- Spark cannot redefine scope, approve its own work, declare product
-  completion, merge a pull request, or authorize production.
+- GPT-5.6 Luna is the Manager: coordinator, integrator, architecture owner,
+  actual-diff reviewer, PR authority, staging authority, and final reporter.
+- Hermes is the bounded worker dispatcher. When a qualified worker is
+  available, Hermes may invoke the isolated DeepSeek API worker under the
+  `socialolla-ai` identity for a specific implementation or forensic task.
+- GPT-5.3 Codex Spark is not an active assignment lane for this program.
+- Workers may propose code, tests, or bounded analysis only. Workers cannot
+  redefine scope, approve their own work, declare product completion, merge a
+  pull request, authorize staging promotion, or authorize production.
+- Requested, actual, and attested model identities must remain distinct in
+  evidence. Registration or routing metadata is not execution proof.
 
 ## Customer-feature completion
 
 Backend or engine implementation alone is not a finished customer feature.
-The applicable Hermes acceptance contract must pass all relevant gates:
+The applicable acceptance contract must pass every relevant gate:
 
 - engine;
 - usable customer UI;
@@ -37,8 +44,8 @@ the runtime foundation delivered by PR #23.
 ## Hermes task contract
 
 Every implementation worker must read this file and the repository-authoritative
-documents it references before reading the current Hermes GitHub task issue.
-The issue is the only variable scope and should contain only:
+documents it references before reading a changing task packet. The packet must
+contain only the bounded task and these fields:
 
 ```text
 FEATURE_ID
@@ -56,22 +63,40 @@ ALLOWED_AREAS
 KNOWN_BLOCKERS
 ```
 
-If the issue conflicts with this policy, the worker must mark the task
-`BLOCKED` and return the exact conflict to Hermes/Luna. Do not silently choose
-which instruction to ignore.
+If the packet conflicts with this policy, the worker must return `BLOCKED` and
+the exact conflict to Luna. It must not silently choose which instruction to
+ignore. Task packets must not contain credentials, provider tokens, raw
+customer data, or secret-like fields.
+
+## Evidence and provider boundaries
+
+- Use `VERIFIED`, `REPORTED`, `INFERENCE`, `BLOCKED`, or `UNKNOWN` truth labels
+  where evidence is not direct. Do not convert provider-disabled behavior into
+  real provider success.
+- Staging qualification must record the exact runtime revision, release,
+  health, service, worker result, and relevant side effects.
+- Provider-disabled means zero calls to Meta, Instagram, Apify, Square, email,
+  payment, or other external providers; it must never display a delivered,
+  captured, or paid-success result.
+- No real posts, real Watch captures, real payments, refunds, customer-data
+  changes, or production database writes are allowed in ordinary worker work.
+- Preserve ownership isolation, fail-closed behavior, bounded logs, sanitized
+  errors, and replay/idempotency protections.
 
 ## Work and delivery rules
 
-- Implement only the bounded task issue.
-- Work only on `codex/*` branches.
+- Implement only the bounded task packet on a `codex/*` development branch.
 - Never push directly to `main`.
 - Never force-push, self-approve, self-merge, or enable auto-merge.
-- Never change repository settings, security controls, secrets, or workflows as
-  ordinary feature work.
-- Never deploy production without separate owner authorization.
-- Create or update a Draft PR and return control to Hermes/Luna.
-- Hermes/Luna determines PASS/FAIL and chooses the next task.
+- Never change repository settings, security controls, credentials, or CI
+  workflow policy as ordinary feature work.
+- Never deploy production without a separate owner gate.
+- Staging writes require a pre-change backup/pointer and exact rollback path.
+- Create or update a Draft PR and return control to Luna.
+- Luna reviews the whole diff, reruns required tests, and chooses PASS/FAIL and
+  the next task. A passing local test is not runtime or customer evidence.
 
-The dispatcher must fail closed when this file is absent and must complete the
+The dispatcher must fail closed when this file is absent and must complete
 repository-policy/bootstrap checks before allowing a worker to read or execute
-the task issue.
+a task packet. No worker may bypass the dispatcher or write outside its
+approved worktree.
