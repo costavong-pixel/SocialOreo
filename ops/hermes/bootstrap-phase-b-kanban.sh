@@ -15,9 +15,11 @@ ISSUE_NUMBER="25"
 EXPECTED_MAIN="45387435fc70f86777bde1c25366977bac58bcbd"
 ISSUE_API="https://api.github.com/repos/${REPO}/issues/${ISSUE_NUMBER}"
 BRANCH_API="https://api.github.com/repos/${REPO}/branches/main"
-PIDFILE="/home/hermes/.hermes/profiles/${PROFILE}/kanban-phase-b.pid"
-LOGFILE="/home/hermes/.hermes/profiles/${PROFILE}/logs/phase-b-kanban-daemon.log"
-DEEPSEEK_USAGE="/home/hermes/.hermes/profiles/${PROFILE}/logs/phase-b-deepseek-probe.json"
+PROFILE_HOME="/home/hermes/.hermes/profiles/${PROFILE}"
+PIDFILE="${PROFILE_HOME}/kanban-phase-b.pid"
+TASK_ID_FILE="${PROFILE_HOME}/phase-b-task-id"
+LOGFILE="${PROFILE_HOME}/logs/phase-b-kanban-daemon.log"
+DEEPSEEK_USAGE="${PROFILE_HOME}/logs/phase-b-deepseek-probe.json"
 TASK_KEY="socialolla-phase-b-issue-${ISSUE_NUMBER}"
 
 fail() {
@@ -62,6 +64,7 @@ printf 'REMOTE_MAIN=%s\n' "$REMOTE_MAIN"
 printf 'STEP=ENSURE_ISOLATED_PROFILE\n'
 if ! hr profile show "$PROFILE" >/dev/null 2>&1; then
   hr profile create "$PROFILE" \
+    --clone \
     --clone-from default \
     --description "SocialOlla Phase B staging qualification coordinator. Bounded to GitHub Issue #25; no production, live provider effects, real payments, DNS changes, or self-merge."
 fi
@@ -74,8 +77,14 @@ printf '%s\n' "$MAIN_MODEL_LINE" | grep -Eqi 'gpt[- ]?5\.6.*luna|luna.*gpt[- ]?5
   || fail "MAIN_MODEL_NOT_GPT_5_6_LUNA"
 
 printf 'STEP=CONFIGURE_DEEPSEEK_DELEGATION\n'
-pr config set auxiliary.delegation.provider deepseek >/dev/null
-pr config set auxiliary.delegation.model deepseek-v4-flash >/dev/null
+# Hermes delegate_task routing is configured under delegation.*, not auxiliary.*.
+pr config set delegation.provider deepseek >/dev/null
+pr config set delegation.model deepseek-v4-flash >/dev/null
+pr config set delegation.max_concurrent_children 1 >/dev/null
+# One durable Phase B worker at a time on this dedicated board/profile.
+pr config set kanban.max_in_progress 1 >/dev/null
+pr config set kanban.max_in_progress_per_profile 1 >/dev/null
+pr config set kanban.auto_promote_children false >/dev/null
 # Human/owner review remains the completion gate. Do not let a review worker
 # review the implementation worker automatically.
 pr config set kanban.review_dispatch false >/dev/null
@@ -84,7 +93,7 @@ pr config set kanban.review_dispatch false >/dev/null
 pr config set kanban.dispatch_in_gateway false >/dev/null
 
 mkdir -p "$(dirname "$LOGFILE")"
-chown -R hermes:hermes "/home/hermes/.hermes/profiles/${PROFILE}/logs"
+chown -R hermes:hermes "${PROFILE_HOME}/logs"
 
 printf 'STEP=DEEPSEEK_MINIMAL_PROBE\n'
 # --safe-mode is used ONLY for this no-tools provider smoke probe. It must not
@@ -121,14 +130,23 @@ Read the complete task below before any action. Treat it as the bounded owner-ap
 
 EXECUTION MODEL FOR THIS RUN:
 - Main/coordinator model must remain GPT-5.6 Luna (bootstrap already verified this before dispatch).
-- Use Hermes delegation for bounded implementation/forensic subtasks; this profile pins auxiliary.delegation to DeepSeek/deepseek-v4-flash.
+- Use delegate_task for bounded implementation/forensic subtasks; this dedicated profile pins delegation.provider=deepseek and delegation.model=deepseek-v4-flash.
 - Verify any pre-existing isolated /opt/socialolla-deepseek-worker path before using it; never assume it exists.
-- Do not use GPT-5.3 Codex Spark unless DeepSeek is genuinely unavailable and the task becomes blocked without fallback; if fallback is considered, record it explicitly in evidence.
+- Do NOT silently fall back to GPT-5.3 Codex Spark. If DeepSeek is unavailable, record the blocker and let Luna decide only whether a small coordinator-level diagnostic can continue safely.
 - Do not use Codex UI as a dependency.
+
+WORKSPACE BOOTSTRAP:
+- The Kanban task starts in an isolated scratch workspace. Do not modify an existing project checkout just to begin the task.
+- Verify Git/GitHub access without printing credentials. Clone ${REPO} into the scratch workspace or create another isolated checkout there, verify main is exactly ${EXPECTED_MAIN}, and work from that evidence.
+- If a source fix is required, create a codex/* branch from the verified base and a Draft PR. Push only the bounded fix and evidence.
+- Verify SocialOlla staging server identity and existing SSH access before any remote write. Do not request or print secrets. If safe existing access is unavailable, mark the staging step BLOCKED rather than inventing access.
+
+DURABLE PROGRESS:
+- After each major Phase B gate, append a concise, sanitized progress comment to GitHub Issue #25 when existing GitHub credentials permit it. Include gate/status, relevant exact SHA/revision, test/result summary, and blocker if any. Never post tokens, env values, cookies, raw Auth0 subjects, customer data, or full logs.
+- Also use Kanban comments/heartbeats during long operations so the task survives context/process interruptions.
 
 KANBAN/HUMAN GATE:
 - Work until the Phase B evidence is complete or a protected blocker is reached.
-- If code changes are needed, use only a codex/* branch and Draft PR.
 - Never merge or enable auto-merge.
 - When work is ready for owner review, request review / leave the task in review. Do not self-review or mark owner approval on your own.
 - Maintain bounded checkpoints/heartbeats during long operations.
@@ -146,7 +164,7 @@ TASK_JSON="$(pr kanban --board "$BOARD" create \
   --priority 1 \
   --idempotency-key "$TASK_KEY" \
   --max-runtime 12h \
-  --max-retries 1 \
+  --max-retries 2 \
   --json)" || fail "KANBAN_TASK_CREATE_FAILED"
 TASK_ID="$(printf '%s' "$TASK_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or d.get("task_id") or "")' 2>/dev/null || true)"
 if [[ -z "$TASK_ID" ]]; then
@@ -165,13 +183,21 @@ for x in items:
 ' "$TASK_KEY")"
 fi
 [[ -n "$TASK_ID" ]] || fail "KANBAN_TASK_ID_NOT_FOUND"
+printf '%s\n' "$TASK_ID" > "$TASK_ID_FILE"
+chown hermes:hermes "$TASK_ID_FILE"
+chmod 600 "$TASK_ID_FILE"
 printf 'KANBAN_TASK_ID=%s\n' "$TASK_ID"
 
 printf 'STEP=ENSURE_NO_PROFILE_GATEWAY_DISPATCH\n'
 GATEWAY_STATUS="$(pr gateway status 2>&1 || true)"
-if printf '%s\n' "$GATEWAY_STATUS" | grep -Eqi 'running|active'; then
+if printf '%s\n' "$GATEWAY_STATUS" | grep -Eqi 'status:[[:space:]]*(running|active)|gateway[[:space:]]+(is[[:space:]]+)?(running|active)'; then
   fail "PROFILE_GATEWAY_ALREADY_RUNNING_STOP_IT_BEFORE_STANDALONE_DISPATCH"
 fi
+
+printf 'STEP=LIFT_DEDICATED_PROFILE_PAUSE\n'
+# This profile is dedicated to Phase B. If the safe stop helper paused it on a
+# previous attempt, lift that pause before starting the dispatcher.
+pr resume >/dev/null 2>&1 || true
 
 printf 'STEP=START_DURABLE_DISPATCHER\n'
 if [[ -f "$PIDFILE" ]]; then
@@ -185,9 +211,9 @@ fi
 
 if [[ ! -f "$PIDFILE" ]]; then
   # Hermes v0.20.6 still supports the standalone Kanban daemon as a headless
-  # escape hatch. It is safe here because this dedicated profile has gateway
-  # dispatch disabled and no profile gateway is running. Do not also start a
-  # dispatcher-enabled gateway for this profile while this daemon is active.
+  # escape hatch. It is used here because this isolated profile does not run a
+  # messaging gateway. Do not also start a dispatcher-enabled gateway for this
+  # profile while this daemon is active.
   runuser -u hermes -- bash -c \
     "nohup '$PROFILE_BIN' kanban --board '$BOARD' daemon --force --failure-limit 2 --pidfile '$PIDFILE' >'$LOGFILE' 2>&1 </dev/null &"
   sleep 2
