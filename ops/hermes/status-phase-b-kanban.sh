@@ -6,7 +6,7 @@ PROFILE_BIN="/home/hermes/.local/bin/${PROFILE}"
 BOARD="socialolla-phase-b"
 PROFILE_HOME="/home/hermes/.hermes/profiles/${PROFILE}"
 PIDFILE="${PROFILE_HOME}/kanban-phase-b.pid"
-TASK_ID_FILE="${PROFILE_HOME}/phase-b-task-id"
+TASK_MANIFEST_FILE="${PROFILE_HOME}/phase-b-task-manifest"
 
 fail() {
   printf 'PHASE_B_STATUS=BLOCKED\nREASON=%s\n' "$1" >&2
@@ -15,6 +15,7 @@ fail() {
 
 [[ "$(id -u)" -eq 0 ]] || fail "RUN_AS_ROOT_REQUIRED_FOR_RUNUSER"
 [[ -x "$PROFILE_BIN" ]] || fail "PROFILE_ALIAS_NOT_FOUND:${PROFILE_BIN}"
+command -v python3 >/dev/null 2>&1 || fail "PYTHON3_NOT_FOUND"
 
 pr() {
   runuser -u hermes -- "$PROFILE_BIN" "$@"
@@ -37,34 +38,61 @@ fi
 printf '\nBOARD_STATS\n'
 pr kanban --board "$BOARD" stats || true
 
-if [[ -f "$TASK_ID_FILE" ]]; then
-  TASK_ID="$(cat "$TASK_ID_FILE" 2>/dev/null || true)"
-  printf '\nTASK_ID=%s\n' "$TASK_ID"
-  if [[ -n "$TASK_ID" ]]; then
-    SHOW_JSON="$(pr kanban --board "$BOARD" show "$TASK_ID" --json 2>/dev/null || true)"
-    if [[ -n "$SHOW_JSON" ]]; then
-      printf '%s' "$SHOW_JSON" | python3 -c '
-import json, sys
-try:
-    d = json.load(sys.stdin)
-except Exception:
-    print("TASK_METADATA=UNPARSEABLE")
-    raise SystemExit(0)
-t = d.get("task", d) if isinstance(d, dict) else {}
-for key in ("id", "title", "status", "assignee", "workspace_kind", "branch", "attempts", "max_retries", "created_at", "updated_at"):
-    value = t.get(key)
-    if value is not None:
-        print(f"{key.upper()}={value}")
-'
-    else
-      printf 'TASK_METADATA=UNAVAILABLE\n'
-    fi
+[[ -f "$TASK_MANIFEST_FILE" ]] || fail "TASK_MANIFEST_NOT_FOUND"
 
-    printf '\nRECENT_RUNS\n'
-    pr kanban --board "$BOARD" runs "$TASK_ID" 2>/dev/null || true
+printf '\nPHASE_B_CHAIN\n'
+while IFS='=' read -r CODE TASK_ID; do
+  [[ -n "$CODE" && -n "$TASK_ID" ]] || continue
+  SHOW_JSON="$(pr kanban --board "$BOARD" show "$TASK_ID" --json 2>/dev/null || true)"
+  if [[ -z "$SHOW_JSON" ]]; then
+    printf '%s=%s STATUS=UNAVAILABLE\n' "$CODE" "$TASK_ID"
+    continue
   fi
-else
-  printf 'TASK_ID=NOT_RECORDED\n'
-fi
+  META="$(printf '%s' "$SHOW_JSON" | python3 -c '
+import json, sys
+text = sys.stdin.read()
+d = None
+for line in reversed([x.strip() for x in text.splitlines() if x.strip()]):
+    try:
+        candidate = json.loads(line)
+    except Exception:
+        continue
+    d = candidate
+    break
+if not isinstance(d, dict):
+    print("STATUS=UNPARSEABLE")
+    raise SystemExit(0)
+t = d.get("task", d) if isinstance(d.get("task", d), dict) else {}
+parts=[]
+for key in ("status", "assignee", "workspace_kind", "branch_name", "max_retries", "started_at", "completed_at"):
+    value=t.get(key)
+    if value is not None:
+        parts.append(f"{key.upper()}={value}")
+print(" ".join(parts) if parts else "STATUS=UNAVAILABLE")
+')"
+  printf '%s=%s %s\n' "$CODE" "$TASK_ID" "$META"
+done < "$TASK_MANIFEST_FILE"
 
-printf '\nNOTE=Use GitHub Issue_25 comments and any Draft PR as the durable externally-visible progress record.\n'
+printf '\nACTIVE_OR_BLOCKED_RUN_HISTORY\n'
+while IFS='=' read -r CODE TASK_ID; do
+  [[ -n "$CODE" && -n "$TASK_ID" ]] || continue
+  SHOW_JSON="$(pr kanban --board "$BOARD" show "$TASK_ID" --json 2>/dev/null || true)"
+  STATUS="$(printf '%s' "$SHOW_JSON" | python3 -c '
+import json, sys
+text=sys.stdin.read()
+for line in reversed([x.strip() for x in text.splitlines() if x.strip()]):
+    try: d=json.loads(line)
+    except Exception: continue
+    if isinstance(d, dict) and isinstance(d.get("task"), dict): d=d["task"]
+    if isinstance(d, dict): print(d.get("status", "")); raise SystemExit(0)
+print("")
+' 2>/dev/null || true)"
+  case "$STATUS" in
+    running|blocked|review)
+      printf '\n[%s %s %s]\n' "$CODE" "$TASK_ID" "$STATUS"
+      pr kanban --board "$BOARD" runs "$TASK_ID" 2>/dev/null || true
+      ;;
+  esac
+done < "$TASK_MANIFEST_FILE"
+
+printf '\nNOTE=GitHub Issue #25 comments and any Draft PR are the durable externally-visible progress record.\n'
