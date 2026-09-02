@@ -57,6 +57,19 @@ print(data)
 PY
 }
 
+json_task_status() {
+  python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    raise SystemExit(2)
+if isinstance(d, dict) and isinstance(d.get("task"), dict):
+    d = d["task"]
+print(d.get("status", "") if isinstance(d, dict) else "")
+'
+}
+
 printf 'STEP=HERMES_VERSION\n'
 HERMES_VERSION_RAW="$(hr --version)" || fail "HERMES_VERSION_FAILED"
 printf '%s\n' "$HERMES_VERSION_RAW"
@@ -123,6 +136,11 @@ if ! printf '%s' "$BOARDS_JSON" | grep -q "\"${BOARD}\""; then
     --name "SocialOlla Phase B" \
     --description "Durable staging-acceptance execution for GitHub Issue #25; owner review before live providers."
 fi
+
+printf 'STEP=VERIFY_PROFILE_WORKER_LANE\n'
+ASSIGNEES_JSON="$(pr kanban --board "$BOARD" assignees --json 2>/dev/null || true)"
+printf '%s' "$ASSIGNEES_JSON" | grep -Fq "$PROFILE" \
+  || fail "KANBAN_PROFILE_NOT_SPAWNABLE:${PROFILE}"
 
 printf 'STEP=LOAD_ISSUE_25\n'
 ISSUE_JSON="$(http_json "$ISSUE_API")" || fail "GITHUB_ISSUE_LOOKUP_FAILED"
@@ -197,6 +215,29 @@ chown hermes:hermes "$TASK_ID_FILE"
 chmod 600 "$TASK_ID_FILE"
 printf 'KANBAN_TASK_ID=%s\n' "$TASK_ID"
 
+TASK_SHOW_JSON="$(pr kanban --board "$BOARD" show "$TASK_ID" --json 2>/dev/null || true)"
+[[ -n "$TASK_SHOW_JSON" ]] || fail "KANBAN_TASK_SHOW_FAILED"
+TASK_STATUS="$(printf '%s' "$TASK_SHOW_JSON" | json_task_status)" || fail "KANBAN_TASK_STATUS_UNPARSEABLE"
+printf 'KANBAN_TASK_STATUS=%s\n' "$TASK_STATUS"
+case "$TASK_STATUS" in
+  ready)
+    ;;
+  running)
+    printf 'PHASE_B_HERMES_BOOTSTRAP=ALREADY_RUNNING\n'
+    exit 0
+    ;;
+  review|done|archived)
+    printf 'PHASE_B_HERMES_BOOTSTRAP=OWNER_REVIEW_OR_COMPLETE\n'
+    exit 0
+    ;;
+  blocked)
+    fail "KANBAN_TASK_BLOCKED_REVIEW_TASK_BEFORE_RETRY"
+    ;;
+  *)
+    fail "KANBAN_TASK_NOT_READY:${TASK_STATUS:-UNKNOWN}"
+    ;;
+esac
+
 printf 'STEP=ENSURE_NO_PROFILE_GATEWAY_DISPATCH\n'
 GATEWAY_STATUS="$(pr gateway status 2>&1 || true)"
 if printf '%s\n' "$GATEWAY_STATUS" | grep -Eqi 'status:[[:space:]]*(running|active)|gateway[[:space:]]+(is[[:space:]]+)?(running|active)'; then
@@ -207,6 +248,10 @@ printf 'STEP=LIFT_DEDICATED_PROFILE_PAUSE\n'
 # This profile is dedicated to Phase B. If the safe stop helper paused it on a
 # previous attempt, lift that pause before starting the dispatcher.
 pr resume >/dev/null 2>&1 || true
+
+printf 'STEP=DISPATCH_PREFLIGHT_DRY_RUN\n'
+pr kanban --board "$BOARD" dispatch --dry-run --max 1 >/dev/null \
+  || fail "KANBAN_DISPATCH_DRY_RUN_FAILED"
 
 printf 'STEP=START_DURABLE_DISPATCHER\n'
 if [[ -f "$PIDFILE" ]]; then
