@@ -3,11 +3,12 @@ set -Eeuo pipefail
 
 # SocialOlla Phase B Hermes launcher.
 # Creates an isolated Hermes profile + durable Kanban task for GitHub Issue #25.
-# It intentionally does NOT use --safe-mode, --oneshot, --yolo, auto-merge,
+# It intentionally does NOT use --oneshot for the real job, --yolo, auto-merge,
 # production access, live providers, payments, or DNS changes.
 
 HERMES_BIN="/home/hermes/.local/bin/hermes"
 PROFILE="socialolla-phase-b"
+PROFILE_BIN="/home/hermes/.local/bin/${PROFILE}"
 BOARD="socialolla-phase-b"
 REPO="costavong-pixel/SocialOreo"
 ISSUE_NUMBER="25"
@@ -30,6 +31,11 @@ command -v python3 >/dev/null 2>&1 || fail "PYTHON3_NOT_FOUND"
 
 hr() {
   runuser -u hermes -- "$HERMES_BIN" "$@"
+}
+
+pr() {
+  [[ -x "$PROFILE_BIN" ]] || fail "PROFILE_ALIAS_NOT_FOUND:${PROFILE_BIN}"
+  runuser -u hermes -- "$PROFILE_BIN" "$@"
 }
 
 http_json() {
@@ -59,22 +65,23 @@ if ! hr profile show "$PROFILE" >/dev/null 2>&1; then
     --clone-from default \
     --description "SocialOlla Phase B staging qualification coordinator. Bounded to GitHub Issue #25; no production, live provider effects, real payments, DNS changes, or self-merge."
 fi
+[[ -x "$PROFILE_BIN" ]] || fail "PROFILE_CREATED_BUT_ALIAS_MISSING"
 
 PROFILE_INFO="$(hr profile show "$PROFILE")" || fail "PROFILE_SHOW_FAILED"
-MAIN_MODEL_LINE="$(printf '%s\n' "$PROFILE_INFO" | awk 'tolower($0) ~ /^model:/ {print; exit}')"
+MAIN_MODEL_LINE="$(printf '%s\n' "$PROFILE_INFO" | awk 'tolower($0) ~ /^[[:space:]]*model:/ {print; exit}')"
 printf 'PROFILE_MODEL=%s\n' "${MAIN_MODEL_LINE:-UNKNOWN}"
 printf '%s\n' "$MAIN_MODEL_LINE" | grep -Eqi 'gpt[- ]?5\.6.*luna|luna.*gpt[- ]?5\.6' \
   || fail "MAIN_MODEL_NOT_GPT_5_6_LUNA"
 
 printf 'STEP=CONFIGURE_DEEPSEEK_DELEGATION\n'
-hr -p "$PROFILE" config set auxiliary.delegation.provider deepseek >/dev/null
-hr -p "$PROFILE" config set auxiliary.delegation.model deepseek-v4-flash >/dev/null
+pr config set auxiliary.delegation.provider deepseek >/dev/null
+pr config set auxiliary.delegation.model deepseek-v4-flash >/dev/null
 # Human/owner review remains the completion gate. Do not let a review worker
 # review the implementation worker automatically.
-hr -p "$PROFILE" config set kanban.review_dispatch false >/dev/null
+pr config set kanban.review_dispatch false >/dev/null
 # This profile uses the dedicated standalone Kanban dispatcher below. Keeping
 # gateway dispatch disabled prevents a future profile gateway from double-claiming.
-hr -p "$PROFILE" config set kanban.dispatch_in_gateway false >/dev/null
+pr config set kanban.dispatch_in_gateway false >/dev/null
 
 mkdir -p "$(dirname "$LOGFILE")"
 chown -R hermes:hermes "/home/hermes/.hermes/profiles/${PROFILE}/logs"
@@ -82,7 +89,7 @@ chown -R hermes:hermes "/home/hermes/.hermes/profiles/${PROFILE}/logs"
 printf 'STEP=DEEPSEEK_MINIMAL_PROBE\n'
 # --safe-mode is used ONLY for this no-tools provider smoke probe. It must not
 # be used for the real task because it disables config/rules/skills.
-PROBE="$(runuser -u hermes -- "$HERMES_BIN" -p "$PROFILE" \
+PROBE="$(runuser -u hermes -- "$PROFILE_BIN" \
   --safe-mode \
   --provider deepseek \
   --model deepseek-v4-flash \
@@ -92,9 +99,9 @@ PROBE="$(runuser -u hermes -- "$HERMES_BIN" -p "$PROFILE" \
 printf 'DEEPSEEK_PROBE=PASS\n'
 
 printf 'STEP=ENSURE_KANBAN_BOARD\n'
-BOARDS_JSON="$(hr -p "$PROFILE" kanban boards list --json 2>/dev/null || true)"
+BOARDS_JSON="$(pr kanban boards list --json 2>/dev/null || true)"
 if ! printf '%s' "$BOARDS_JSON" | grep -q "\"${BOARD}\""; then
-  hr -p "$PROFILE" kanban boards create "$BOARD" \
+  pr kanban boards create "$BOARD" \
     --name "SocialOlla Phase B" \
     --description "Durable staging-acceptance execution for GitHub Issue #25; owner review before live providers."
 fi
@@ -131,7 +138,7 @@ EOF
 )
 
 printf 'STEP=CREATE_OR_REUSE_TASK\n'
-TASK_JSON="$(hr -p "$PROFILE" kanban --board "$BOARD" create \
+TASK_JSON="$(pr kanban --board "$BOARD" create \
   "SocialOlla Phase B exact-main staging acceptance" \
   --body "$TASK_BODY" \
   --assignee "$PROFILE" \
@@ -143,10 +150,10 @@ TASK_JSON="$(hr -p "$PROFILE" kanban --board "$BOARD" create \
   --json)" || fail "KANBAN_TASK_CREATE_FAILED"
 TASK_ID="$(printf '%s' "$TASK_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("id") or d.get("task_id") or "")' 2>/dev/null || true)"
 if [[ -z "$TASK_ID" ]]; then
-  # Keep the raw JSON off stdout if its shape changed; recover the id from a
-  # board listing rather than guessing.
-  LIST_JSON="$(hr -p "$PROFILE" kanban --board "$BOARD" list --json)" || fail "KANBAN_LIST_FAILED"
-  TASK_ID="$(printf '%s' "$LIST_JSON" | python3 - "$TASK_KEY" <<'PY'
+  # At task creation time there is no running claim yet, so v0.20.6 list --json
+  # is safe from the known active-claim banner issue. Use it only as fallback.
+  LIST_JSON="$(pr kanban --board "$BOARD" list --json)" || fail "KANBAN_LIST_FAILED"
+  TASK_ID="$(printf '%s' "$LIST_JSON" | python3 -c '
 import json, sys
 key = sys.argv[1]
 d = json.load(sys.stdin)
@@ -155,14 +162,13 @@ for x in items:
     if x.get("idempotency_key") == key or x.get("title") == "SocialOlla Phase B exact-main staging acceptance":
         print(x.get("id", ""))
         break
-PY
-)"
+' "$TASK_KEY")"
 fi
 [[ -n "$TASK_ID" ]] || fail "KANBAN_TASK_ID_NOT_FOUND"
 printf 'KANBAN_TASK_ID=%s\n' "$TASK_ID"
 
 printf 'STEP=ENSURE_NO_PROFILE_GATEWAY_DISPATCH\n'
-GATEWAY_STATUS="$(hr -p "$PROFILE" gateway status 2>&1 || true)"
+GATEWAY_STATUS="$(pr gateway status 2>&1 || true)"
 if printf '%s\n' "$GATEWAY_STATUS" | grep -Eqi 'running|active'; then
   fail "PROFILE_GATEWAY_ALREADY_RUNNING_STOP_IT_BEFORE_STANDALONE_DISPATCH"
 fi
@@ -178,11 +184,12 @@ if [[ -f "$PIDFILE" ]]; then
 fi
 
 if [[ ! -f "$PIDFILE" ]]; then
-  # v0.20.6 still supports the standalone Kanban daemon as a headless escape
-  # hatch. It is safe here because this dedicated profile has gateway dispatch
-  # disabled and no profile gateway is running.
+  # Hermes v0.20.6 still supports the standalone Kanban daemon as a headless
+  # escape hatch. It is safe here because this dedicated profile has gateway
+  # dispatch disabled and no profile gateway is running. Do not also start a
+  # dispatcher-enabled gateway for this profile while this daemon is active.
   runuser -u hermes -- bash -c \
-    "nohup '$HERMES_BIN' -p '$PROFILE' kanban --board '$BOARD' daemon --force --failure-limit 2 --pidfile '$PIDFILE' >'$LOGFILE' 2>&1 </dev/null &"
+    "nohup '$PROFILE_BIN' kanban --board '$BOARD' daemon --force --failure-limit 2 --pidfile '$PIDFILE' >'$LOGFILE' 2>&1 </dev/null &"
   sleep 2
 fi
 
@@ -191,7 +198,7 @@ PID="$(cat "$PIDFILE" 2>/dev/null || true)"
 [[ "$PID" =~ ^[0-9]+$ ]] && kill -0 "$PID" 2>/dev/null || fail "KANBAN_DISPATCHER_NOT_RUNNING"
 
 printf 'STEP=FINAL_STATUS\n'
-hr -p "$PROFILE" kanban --board "$BOARD" stats || true
+pr kanban --board "$BOARD" stats || true
 printf 'PHASE_B_HERMES_BOOTSTRAP=STARTED\n'
 printf 'PROFILE=%s\nBOARD=%s\nTASK_ID=%s\nDISPATCHER_PID=%s\nLOG=%s\n' \
   "$PROFILE" "$BOARD" "$TASK_ID" "$PID" "$LOGFILE"
