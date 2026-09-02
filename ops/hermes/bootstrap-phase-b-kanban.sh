@@ -7,6 +7,8 @@ set -Eeuo pipefail
 # production access, live providers, payments, or DNS changes.
 
 HERMES_BIN="/home/hermes/.local/bin/hermes"
+EXPECTED_HERMES_HOST="slab-prompt-ola"
+EXPECTED_HERMES_VERSION="0.20.6"
 PROFILE="socialolla-phase-b"
 PROFILE_BIN="/home/hermes/.local/bin/${PROFILE}"
 BOARD="socialolla-phase-b"
@@ -31,6 +33,9 @@ fail() {
 [[ -x "$HERMES_BIN" ]] || fail "HERMES_BINARY_NOT_FOUND:${HERMES_BIN}"
 command -v python3 >/dev/null 2>&1 || fail "PYTHON3_NOT_FOUND"
 
+SHORT_HOST="$(hostname -s 2>/dev/null || hostname)"
+[[ "$SHORT_HOST" == "$EXPECTED_HERMES_HOST" ]] || fail "WRONG_HERMES_HOST:${SHORT_HOST}"
+
 hr() {
   runuser -u hermes -- "$HERMES_BIN" "$@"
 }
@@ -53,7 +58,10 @@ PY
 }
 
 printf 'STEP=HERMES_VERSION\n'
-hr --version
+HERMES_VERSION_RAW="$(hr --version)" || fail "HERMES_VERSION_FAILED"
+printf '%s\n' "$HERMES_VERSION_RAW"
+printf '%s\n' "$HERMES_VERSION_RAW" | grep -Fq "$EXPECTED_HERMES_VERSION" \
+  || fail "UNEXPECTED_HERMES_VERSION:${HERMES_VERSION_RAW}"
 
 printf 'STEP=VERIFY_REMOTE_MAIN\n'
 BRANCH_JSON="$(http_json "$BRANCH_API")" || fail "GITHUB_MAIN_LOOKUP_FAILED"
@@ -71,10 +79,11 @@ fi
 [[ -x "$PROFILE_BIN" ]] || fail "PROFILE_CREATED_BUT_ALIAS_MISSING"
 
 PROFILE_INFO="$(hr profile show "$PROFILE")" || fail "PROFILE_SHOW_FAILED"
-MAIN_MODEL_LINE="$(printf '%s\n' "$PROFILE_INFO" | awk 'tolower($0) ~ /^[[:space:]]*model:/ {print; exit}')"
-printf 'PROFILE_MODEL=%s\n' "${MAIN_MODEL_LINE:-UNKNOWN}"
-printf '%s\n' "$MAIN_MODEL_LINE" | grep -Eqi 'gpt[- ]?5\.6.*luna|luna.*gpt[- ]?5\.6' \
+MODEL_CONFIG="$(pr config get model --json 2>/dev/null || true)"
+MODEL_EVIDENCE="${MODEL_CONFIG}\n${PROFILE_INFO}"
+printf '%s\n' "$MODEL_EVIDENCE" | grep -Eqi 'gpt[- ]?5\.6.*luna|luna.*gpt[- ]?5\.6' \
   || fail "MAIN_MODEL_NOT_GPT_5_6_LUNA"
+printf 'PROFILE_MAIN_MODEL_CHECK=PASS\n'
 
 printf 'STEP=CONFIGURE_DEEPSEEK_DELEGATION\n'
 # Hermes delegate_task routing is configured under delegation.*, not auxiliary.*.
