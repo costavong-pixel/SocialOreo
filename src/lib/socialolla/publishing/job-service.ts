@@ -140,22 +140,48 @@ export async function markPublishReconciliationRequired(input: { jobId: string; 
 
 export async function cancelPublishJob(input: { authUserId: string; jobId: string }): Promise<boolean> {
   const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
-  const job = await prisma.publishJob.findFirst({ where: { id: input.jobId, status: "QUEUED", postDestination: { postRequest: { workspaceId: workspace.dbId } } }, select: { id: true, postDestinationId: true } });
+  const job = await prisma.publishJob.findFirst({
+    where: { id: input.jobId, status: "QUEUED", postDestination: { postRequest: { workspaceId: workspace.dbId } } },
+    select: { id: true, postDestinationId: true, postDestination: { select: { postRequestId: true } } },
+  });
   if (!job) return false;
-  const updated = await prisma.publishJob.updateMany({ where: { id: job.id, status: "QUEUED" }, data: { status: "CANCELED", claimToken: null, claimedAt: null, nextAttemptAt: null } });
-  if (updated.count === 1) await prisma.postDestination.updateMany({ where: { id: job.postDestinationId, status: "QUEUED" }, data: { status: "CANCELED" } });
-  return updated.count === 1;
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.publishJob.updateMany({ where: { id: job.id, status: "QUEUED" }, data: { status: "CANCELED", claimToken: null, claimedAt: null, nextAttemptAt: null } });
+    if (updated.count !== 1) return false;
+    await tx.postDestination.updateMany({ where: { id: job.postDestinationId, status: "QUEUED" }, data: { status: "CANCELED" } });
+    const remainingQueued = await tx.publishJob.count({ where: { postDestination: { postRequestId: job.postDestination.postRequestId }, status: "QUEUED" } });
+    if (remainingQueued === 0) {
+      await tx.postRequest.update({ where: { id: job.postDestination.postRequestId }, data: { status: "CANCELLED" } });
+      await tx.postOccurrence.updateMany({ where: { postRequestId: job.postDestination.postRequestId, kind: "FIRST", status: "SCHEDULED" }, data: { status: "CANCELLED" } });
+    }
+    return true;
+  });
 }
 
 export async function reschedulePublishJob(input: { authUserId: string; jobId: string; scheduledFor: Date; timezone: string }) {
   if (Number.isNaN(input.scheduledFor.getTime())) throw new Error("A valid schedule time is required");
   const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
-  const job = await prisma.publishJob.findFirst({ where: { id: input.jobId, status: { in: ["FAILED", "CANCELED"] }, postDestination: { postRequest: { workspaceId: workspace.dbId } } }, select: { id: true, postDestinationId: true } });
+  const job = await prisma.publishJob.findFirst({
+    where: { id: input.jobId, status: { in: ["FAILED", "CANCELED"] }, postDestination: { postRequest: { workspaceId: workspace.dbId } } },
+    select: {
+      id: true,
+      postDestinationId: true,
+      postDestination: { select: { postRequestId: true, postRequest: { select: { workspaceId: true, destinationRef: true } } } },
+    },
+  });
   if (!job) throw new Error("Only a failed or canceled Post can be rescheduled");
-  await prisma.$transaction([
-    prisma.publishJob.update({ where: { id: job.id }, data: { status: "QUEUED", mode: "SCHEDULED", scheduledFor: input.scheduledFor, nextAttemptAt: input.scheduledFor, attemptCount: 0, claimToken: null, claimedAt: null, providerCallStartedAt: null, lastError: null } }),
-    prisma.postDestination.update({ where: { id: job.postDestinationId }, data: { status: "QUEUED", publishAt: input.scheduledFor, timezone: input.timezone } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.publishJob.update({ where: { id: job.id }, data: { status: "QUEUED", mode: "SCHEDULED", scheduledFor: input.scheduledFor, nextAttemptAt: input.scheduledFor, attemptCount: 0, claimToken: null, claimedAt: null, providerCallStartedAt: null, lastError: null } });
+    await tx.postDestination.update({ where: { id: job.postDestinationId }, data: { status: "QUEUED", publishAt: input.scheduledFor, timezone: input.timezone } });
+    await tx.postRequest.update({ where: { id: job.postDestination.postRequestId }, data: { status: "SCHEDULED" } });
+    await tx.postOccurrence.updateMany({ where: { postRequestId: job.postDestination.postRequestId, kind: "FIRST" }, data: { status: "SCHEDULED", scheduleAt: input.scheduledFor, timezone: input.timezone } });
+    const existingSlot = await tx.scheduleSlot.findFirst({ where: { workspaceId: job.postDestination.postRequest.workspaceId, postRequestId: job.postDestination.postRequestId, destinationRef: job.postDestination.postRequest.destinationRef }, select: { id: true } });
+    if (existingSlot) {
+      await tx.scheduleSlot.update({ where: { id: existingSlot.id }, data: { scheduleAt: input.scheduledFor, timezone: input.timezone } });
+    } else {
+      await tx.scheduleSlot.create({ data: { workspaceId: job.postDestination.postRequest.workspaceId, postRequestId: job.postDestination.postRequestId, destinationRef: job.postDestination.postRequest.destinationRef, scheduleAt: input.scheduledFor, timezone: input.timezone } });
+    }
+  });
   return { status: "SCHEDULED" as const };
 }
 

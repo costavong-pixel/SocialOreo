@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
-    publishJob: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
+    publishJob: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), count: vi.fn() },
     publishAttempt: { updateMany: vi.fn() },
     postDestination: { update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
+    postRequest: { update: vi.fn() },
+    postOccurrence: { updateMany: vi.fn() },
+    scheduleSlot: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
     providerReceipt: { upsert: vi.fn() },
     auditEvent: { create: vi.fn() },
     $transaction: vi.fn(),
@@ -34,6 +37,12 @@ describe("publish job reconciliation state", () => {
     mocks.prisma.postDestination.findUnique.mockResolvedValue({
       postRequest: { workspaceId: "workspace-db-1" },
     });
+    mocks.prisma.publishJob.count.mockResolvedValue(0);
+    mocks.prisma.postRequest.update.mockResolvedValue({ id: "post-1" });
+    mocks.prisma.postOccurrence.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.scheduleSlot.findFirst.mockResolvedValue({ id: "slot-1" });
+    mocks.prisma.scheduleSlot.update.mockResolvedValue({ id: "slot-1" });
+    mocks.prisma.scheduleSlot.create.mockResolvedValue({ id: "slot-1" });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "audit-1" });
   });
 
@@ -209,8 +218,11 @@ describe("publish job reconciliation state", () => {
   it("reschedules the same failed job without creating a duplicate execution", async () => {
     const { reschedulePublishJob } = await import("./job-service");
     const scheduledFor = new Date("2026-08-27T10:00:00.000Z");
-    mocks.prisma.publishJob.findFirst.mockResolvedValueOnce({ id: "job-1", postDestinationId: "post-destination-1" });
-    mocks.prisma.$transaction.mockImplementationOnce(async (operations: unknown) => Promise.all(operations as Promise<unknown>[]));
+    mocks.prisma.publishJob.findFirst.mockResolvedValueOnce({
+      id: "job-1",
+      postDestinationId: "post-destination-1",
+      postDestination: { postRequestId: "post-1", postRequest: { workspaceId: "workspace-db-1", destinationRef: "destination-1" } },
+    });
 
     await expect(reschedulePublishJob({
       authUserId: "auth-user-1",
@@ -237,7 +249,37 @@ describe("publish job reconciliation state", () => {
       where: { id: "post-destination-1" },
       data: { status: "QUEUED", publishAt: scheduledFor, timezone: "America/Los_Angeles" },
     });
+    expect(mocks.prisma.postRequest.update).toHaveBeenCalledWith({ where: { id: "post-1" }, data: { status: "SCHEDULED" } });
+    expect(mocks.prisma.postOccurrence.updateMany).toHaveBeenCalledWith({
+      where: { postRequestId: "post-1", kind: "FIRST" },
+      data: { status: "SCHEDULED", scheduleAt: scheduledFor, timezone: "America/Los_Angeles" },
+    });
+    expect(mocks.prisma.scheduleSlot.update).toHaveBeenCalledWith({
+      where: { id: "slot-1" },
+      data: { scheduleAt: scheduledFor, timezone: "America/Los_Angeles" },
+    });
     expect(mocks.prisma.publishJob.create).not.toHaveBeenCalled();
+  });
+
+  it("marks the Post and occurrence canceled when its last queued delivery is canceled", async () => {
+    const { cancelPublishJob } = await import("./job-service");
+    mocks.prisma.publishJob.findFirst.mockResolvedValueOnce({
+      id: "job-1",
+      postDestinationId: "post-destination-1",
+      postDestination: { postRequestId: "post-1" },
+    });
+
+    await expect(cancelPublishJob({ authUserId: "auth-user-1", jobId: "job-1" })).resolves.toBe(true);
+
+    expect(mocks.prisma.postDestination.updateMany).toHaveBeenCalledWith({
+      where: { id: "post-destination-1", status: "QUEUED" },
+      data: { status: "CANCELED" },
+    });
+    expect(mocks.prisma.postRequest.update).toHaveBeenCalledWith({ where: { id: "post-1" }, data: { status: "CANCELLED" } });
+    expect(mocks.prisma.postOccurrence.updateMany).toHaveBeenCalledWith({
+      where: { postRequestId: "post-1", kind: "FIRST", status: "SCHEDULED" },
+      data: { status: "CANCELLED" },
+    });
   });
 
   it("does not finalize attempts when the claim is lost after the initial read", async () => {
