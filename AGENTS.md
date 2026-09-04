@@ -129,3 +129,24 @@ If the packet conflicts with this policy, the worker must return `BLOCKED` and t
 - A passing local test is not runtime or customer evidence.
 
 The dispatcher must fail closed when this file is absent and must complete repository-policy/bootstrap checks before allowing a worker to read or execute a task packet. No worker may bypass the dispatcher or write outside its approved worktree.
+
+## Controlled DeepSeek fallback
+
+The coordinator and primary-coder roles defined above remain authoritative. If
+the current primary coding route is unavailable, Hermes may assign DeepSeek
+only a tightly bounded Draft-PR implementation task. The task packet must
+additionally state:
+
+```text
+IMPLEMENTATION_MODEL: deepseek-...
+FALLBACK_REASON: PRIMARY_CODER_UNAVAILABLE | SPARK_UNAVAILABLE | SPARK_QUOTA_EXHAUSTED | SPARK_PROVIDER_OUTAGE
+REVIEWER_PROFILE: <different named reviewer profile>
+REVIEWER_MODEL: <non-DeepSeek reviewer model>
+```
+
+Before review, the implementation handoff must record the exact final commit
+as `review_head_sha`. The reviewer must be a different named profile and model,
+verify that exact commit and Draft PR, and may request changes or block the
+task. DeepSeek cannot approve, merge, release, or declare completion. The owner
+performs the manual merge. If the independent reviewer is not configured or
+authenticated, the task is `BLOCKED`, not complete.
