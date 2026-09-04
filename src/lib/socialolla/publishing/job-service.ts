@@ -171,7 +171,9 @@ export async function reschedulePublishJob(input: { authUserId: string; jobId: s
   });
   if (!job) throw new Error("Only a failed or canceled Post can be rescheduled");
   await prisma.$transaction(async (tx) => {
-    await tx.publishJob.update({ where: { id: job.id }, data: { status: "QUEUED", mode: "SCHEDULED", scheduledFor: input.scheduledFor, nextAttemptAt: input.scheduledFor, attemptCount: 0, claimToken: null, claimedAt: null, providerCallStartedAt: null, lastError: null } });
+    // Keep the attempt counter monotonic so the next claim can append a new
+    // PublishAttempt without colliding with the prior attempt history.
+    await tx.publishJob.update({ where: { id: job.id }, data: { status: "QUEUED", mode: "SCHEDULED", scheduledFor: input.scheduledFor, nextAttemptAt: input.scheduledFor, claimToken: null, claimedAt: null, providerCallStartedAt: null, lastError: null } });
     await tx.postDestination.update({ where: { id: job.postDestinationId }, data: { status: "QUEUED", publishAt: input.scheduledFor, timezone: input.timezone } });
     await tx.postRequest.update({ where: { id: job.postDestination.postRequestId }, data: { status: "SCHEDULED" } });
     await tx.postOccurrence.updateMany({ where: { postRequestId: job.postDestination.postRequestId, kind: "FIRST" }, data: { status: "SCHEDULED", scheduleAt: input.scheduledFor, timezone: input.timezone } });

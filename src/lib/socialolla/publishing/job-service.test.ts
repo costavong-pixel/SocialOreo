@@ -215,7 +215,7 @@ describe("publish job reconciliation state", () => {
     }));
   });
 
-  it("reschedules the same failed job without creating a duplicate execution", async () => {
+  it("reschedules the same failed job while preserving append-only attempt history", async () => {
     const { reschedulePublishJob } = await import("./job-service");
     const scheduledFor = new Date("2026-08-27T10:00:00.000Z");
     mocks.prisma.publishJob.findFirst.mockResolvedValueOnce({
@@ -238,7 +238,6 @@ describe("publish job reconciliation state", () => {
         mode: "SCHEDULED",
         scheduledFor,
         nextAttemptAt: scheduledFor,
-        attemptCount: 0,
         claimToken: null,
         claimedAt: null,
         providerCallStartedAt: null,
