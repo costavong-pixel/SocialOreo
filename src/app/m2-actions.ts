@@ -23,6 +23,7 @@ import type { AssistantDomain } from "@/lib/socialolla/assistant/assistant";
 import { normalizeLocale } from "@/lib/socialolla/i18n/locales";
 import { adminAdjustCredits, adminInspectEntitlement, adminAuditEvents, adminSetLifetimePriceCents } from "@/lib/socialolla/admin/admin-actions";
 import { selectSpendableBatch, ensureMonthlyBatch } from "@/lib/socialolla/credits/batch-service";
+import { disconnectedInstagramDestinationData } from "@/lib/instagram-publishing/disconnect";
 
 const LOCALE_COOKIE = "so_locale";
 const DEMO_VISITOR_COOKIE = "so_demo_visitor";
@@ -328,4 +329,26 @@ export async function m2CalendarSlots() {
 export async function m2WorkspaceSettings() {
   const user = await requireUser();
   return getOrCreatePersonalWorkspace(user.dbId);
+}
+
+export async function m2DisconnectInstagramDestination(formData: FormData) {
+  const user = await requireUser();
+  const rawExternalId = formData.get("destinationExternalId");
+  if (typeof rawExternalId !== "string") throw new Error("Instagram destination is required.");
+  const destinationExternalId = rawExternalId.trim();
+  if (!/^dst_[A-Za-z0-9_-]+$/.test(destinationExternalId)) throw new Error("Invalid Instagram destination.");
+
+  const workspace = await getOrCreatePersonalWorkspace(user.dbId);
+  const result = await prisma.destination.updateMany({
+    where: {
+      externalId: destinationExternalId,
+      workspaceId: workspace.dbId,
+      platform: "instagram",
+    },
+    data: disconnectedInstagramDestinationData(),
+  });
+  if (result.count !== 1) throw new Error("Instagram destination not found for this workspace.");
+
+  revalidatePath("/connections");
+  revalidatePath("/home");
 }
