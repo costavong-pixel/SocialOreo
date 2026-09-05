@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => {
   return { prisma };
 });
 
+const CURRENT_PERIOD = new Date().toISOString().slice(0, 7);
+
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 
 const MONTHLY_ROW = {
@@ -20,7 +22,7 @@ const MONTHLY_ROW = {
   amount: 20,
   remaining: 20,
   expiresAt: null,
-  periodKey: "2026-08",
+  periodKey: CURRENT_PERIOD,
   createdAt: new Date("2026-08-04T00:00:00Z"),
 };
 

@@ -29,6 +29,8 @@ export type PostListView = {
     publishJobs: Array<{
       id: string;
       status: string;
+      scheduledFor: Date | null;
+      attemptCount: number;
       receipt: { providerObjectId: string | null } | null;
     }>;
   }>;
@@ -61,6 +63,8 @@ export function toPostListView(post: PostListView): PostListView {
       publishJobs: destination.publishJobs.map((job) => ({
         id: job.id,
         status: job.status,
+        scheduledFor: job.scheduledFor,
+        attemptCount: job.attemptCount,
         receipt: job.receipt ? { providerObjectId: job.receipt.providerObjectId } : null,
       })),
     })),
