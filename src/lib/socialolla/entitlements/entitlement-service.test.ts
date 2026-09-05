@@ -35,6 +35,8 @@ const WORKSPACE_ROW = {
   createdAt: new Date("2026-08-04T00:00:00Z"),
 };
 
+const CURRENT_PERIOD = new Date().toISOString().slice(0, 7);
+
 function buildTx() {
   let batchStore: BatchRow | null = null;
   let entitlementSeq = 0;
@@ -116,7 +118,7 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
     const { tx } = buildTx();
     // Pre-provisioned period batch (e.g. manual admin/dev ensure call). The
     // default create stores the row into the mock batch store.
-    await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, periodKey: "2026-08" } });
+    await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, periodKey: CURRENT_PERIOD } });
     tx.creditBatch.create.mockClear();
 
     const granted = await grantLifetimeEntitlement({ ownerUserId: "user-1", squarePaymentId: "payment-1", priceCents: 7900 }, tx as never);

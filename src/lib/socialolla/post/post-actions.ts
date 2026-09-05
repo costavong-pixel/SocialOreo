@@ -132,7 +132,7 @@ export async function listPostRequests(authUserId: string) {
       status: true,
       variants: { select: { id: true, platform: true, title: true, caption: true, hashtags: true, cta: true, isFinal: true, variantLocale: true, mediaAssetIds: true } },
       occurrences: { select: { id: true, status: true, scheduleAt: true, timezone: true, destinationRef: true } },
-      destinations: { select: { externalId: true, platform: true, status: true, publishJobs: { select: { id: true, status: true, receipt: { select: { providerObjectId: true } } } } } },
+      destinations: { select: { externalId: true, platform: true, status: true, publishJobs: { select: { id: true, status: true, scheduledFor: true, attemptCount: true, receipt: { select: { providerObjectId: true } } } } } },
     },
     take: 50,
   });
