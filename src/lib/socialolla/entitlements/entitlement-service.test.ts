@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -74,7 +74,13 @@ function buildTx() {
 
 describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T00:00:00Z"));
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("reuses the period MONTHLY batch for two same-period lifetime grants (one batch, two entitlements, no double credit)", async () => {
