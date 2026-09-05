@@ -1,94 +1,35 @@
-# SocialOreo Agent Instructions
+# SocialOreo / SocialOlla Agent Instructions
 
-This is the permanent repository policy for the SocialOreo/SocialOlla engineering workflow. A current task packet supplies only the changing, bounded feature scope; it does not override these controls.
+This is the permanent repository policy for automated work. A current Hermes GitHub issue supplies only changing, bounded task scope; it never overrides this file.
 
-## Model roles and authority
+## Roles
 
-The latest owner-approved execution hierarchy is:
+- **Hermes using GPT-5.6 Luna** is the project and product coordinator. Hermes validates repository governance and issue scope, selects bounded work, maintains evidence, and returns `PASS`, `FAIL`, or `BLOCKED`.
+- **GPT-5.3 Codex Spark** is the preferred implementation worker.
+- **DeepSeek** is an implementation fallback only when Spark is unavailable and Hermes records the fallback reason.
+- **An independent reviewer** checks the exact proposed commit, tests, acceptance contract, and draft PR. The reviewer must not be the implementation worker.
 
-1. **GPT-5.6 Terra — Project coordinator / supervisor**
-   - Owns the whole SocialOlla execution loop, roadmap order, commercial priority, architecture/risk oversight, milestone sequencing, evidence quality, and GO/BLOCK decisions.
-   - Terra is the active coordinator for long-running milestone work, including Phase C.
-   - Terra decomposes the milestone into bounded implementation, test, staging, provider, and recovery loops; checks progress between loops; prevents premature stops; and selects the next highest-value task.
-   - Terra directly inspects repository state, diffs, test evidence, staging evidence, and provider evidence when needed.
-   - Terra does not normally write feature code and cannot self-merge, bypass protected branches, or bypass owner gates.
+No implementation worker may redefine scope, approve its own work, declare product completion, merge, authorize production, or bypass repository governance.
 
-2. **GPT-5.6 Luna — Primary implementation coder / engineering worker**
-   - Luna is the primary coding lane for SocialOlla feature implementation, fixes, tests, migrations, scripts, UI, provider integration, staging tooling, and bounded engineering for the active Terra-approved task.
-   - Luna works only inside Terra-approved scope and approved `codex/*` worktrees/branches.
-   - Luna must investigate and repair ordinary engineering failures rather than returning early for fixable problems.
-   - Luna returns exact diffs, tests, runtime evidence, blockers, and side-effect counts to Terra after each loop.
-   - Luna cannot redefine milestone scope, self-approve, self-merge, authorize production, or bypass owner gates.
+## Required dispatcher order
 
-3. **Hermes — Optional long-running helper / durable dispatcher**
-   - Hermes may sustain long tests, log inspection, repetitive QA, checkpointed work, and bounded worker dispatch when actually available.
-   - Hermes is an accelerator, not a customer-feature requirement.
-   - Do not build a new Hermes control framework as part of ordinary SocialOlla feature work.
+Every automated task must:
 
-4. **DeepSeek direct API — optional fallback helper**
-   - DeepSeek is not the primary coder while Luna is available.
-   - Use it only when Terra determines a bounded fallback/forensic task benefits from it and the current environment has passed a safe DeepSeek smoke.
-   - Never print or log its API key and never fabricate model execution evidence.
+1. Identify the repository.
+2. Read this root `AGENTS.md`.
+3. Read every repository-authoritative document referenced here.
+4. Read the current Hermes GitHub issue/task contract.
+5. Validate that the issue does not conflict with this policy.
+6. Implement only the approved bounded scope.
+7. Run required validation.
+8. Create or update a draft PR.
+9. Return control to Hermes and the independent reviewer.
 
-Requested, routed, actual, and attested model identities must remain distinct in evidence. If Terra or Luna is not actually callable in the execution environment, report the real model/tool used rather than inventing the requested identity.
+If this file is absent, fail closed. If an issue conflicts with this policy, return `BLOCKED` and the exact conflict; never silently choose which instruction to ignore.
 
-## Loop engineering operating model
+## Task contracts
 
-The owner prefers long, low-interruption runs. Each milestone uses a durable loop rather than a one-shot checklist:
-
-`REFRESH_REMOTE -> LOAD_EVIDENCE -> INSPECT -> RECONCILE_GAPS -> PLAN_NEXT_LOOP -> LUNA_IMPLEMENT/INVESTIGATE -> FOCUSED_TEST -> TERRA_REVIEW -> FIX/RETEST -> STAGING/PROVIDER_EVIDENCE -> CHECKPOINT -> NEXT_LOOP`
-
-Rules:
-
-- Terra owns loop state and must not restart already-passed gates without evidence that they became stale.
-- Luna owns bounded implementation/investigation inside the current loop.
-- Ordinary test failures, lint/type errors, fixable staging problems, recoverable provider errors, and implementation defects do not justify ending the long run. Diagnose, repair, retest, and continue.
-- Ask the owner only for a genuine non-resolvable gate: interactive account login/consent, a secret that cannot be safely recovered from approved stores, new live-provider/payment/production authorization, destructive action, or a genuine business/architecture decision.
-- Before reporting a missing secret, inspect approved staging configuration sources, systemd EnvironmentFile/drop-ins, deployment config, approved staging backups, and documented secret stores for key PRESENCE without printing secret values. Do not scrape shell history or logs for secret values.
-- A recoverable staging configuration problem should be repaired from approved staging evidence after recording backup/rollback, not returned immediately as `BLOCKED`.
-- For staging token-encryption material: if the required key is absent and there is no existing ciphertext/token state that must remain decryptable, Luna may generate a new high-entropy staging-only encryption key with a standard cryptographic generator, store it with restrictive permissions, never print it, and record only that generation/storage succeeded. If existing ciphertext depends on an unknown old key, stop rather than rotating blindly.
-- Do not burn CI minutes on trivial checkpoint commits. Qualify locally, consolidate, then push an exact candidate.
-- At every major loop checkpoint Luna reports exact base/head, files changed, tests, runtime/provider evidence, side-effect counts, rollback, and blockers. Terra then returns `GO`, `REWORK`, or `OWNER_GATE` with the next loop.
-
-## Commercial / release sequencing
-
-The program is optimized for reaching a sellable individual-user product quickly. Do not spend time on deferred agency/team features, Reply Agent work, additional platforms, or broad refactors unless an active sellability blocker requires them.
-
-Use this order unless the owner explicitly changes it:
-
-1. Complete the normal individual-user customer shell and authentication acceptance.
-2. Complete provider-disabled Post end to end, including durable jobs/workers and truthful UI.
-3. Prove controlled real Instagram connection/publishing on staging when separately owner-authorized.
-4. Complete Watch customer flow, automatic worker execution, credit settlement, and truthful history.
-5. Reconcile canonical credits and entitlements; prove payment/checkout mechanics in sandbox and the customer-visible purchase/entitlement journey. Payment mechanics may be implemented and tested before final pricing is chosen.
-6. Complete remaining launch-critical customer UX, recovery/operations, exact-release staging and final customer acceptance. Freeze substantive feature scope.
-7. **SECOND-TO-LAST substantive gate — final security audit.** Run the comprehensive security, isolation, dependency, secret, provider-boundary, payment-boundary, migration/rollback, abuse, idempotency/replay, and exact-release audit against the frozen candidate. Material code changes after this audit invalidate the affected security evidence and require an appropriate re-audit.
-8. **LAST product/business adjustment — final pricing/offer decision.** Until then, existing pricing is provisional working configuration. Final pricing changes must be limited to the canonical price/offer configuration and matching customer copy whenever possible; do not redesign auth, payment, entitlement, or security logic during the pricing gate. Run focused pricing/checkout regression after the adjustment. If a pricing change materially alters security-sensitive code, the affected security checks must be rerun before launch.
-9. Owner launch gate: exact release identity, rollback, live-provider/payment authorization and launch/no-launch decision.
-
-Do not repeatedly tune price while core functionality is still changing. Do not perform the final security audit against a moving implementation.
-
-## Customer-feature completion
-
-Backend or engine implementation alone is not a finished customer feature. The applicable acceptance contract must pass every relevant gate:
-
-- engine;
-- usable customer UI;
-- integration;
-- persistence/state;
-- success flow;
-- failure/error flow;
-- customer discoverability and usability;
-- required tests; and
-- required runtime evidence.
-
-An API endpoint, unit test, worker, service, database model, or merged backend PR does not by itself make a customer-facing capability DONE. If an existing engine capability is not exposed through usable UI, the feature is incomplete.
-
-Before adding backend architecture, inspect current `main` and reuse existing Post, Watch, provider, and runtime functionality. Do not unnecessarily rebuild the runtime foundation delivered by PR #23.
-
-## Task contract
-
-Every implementation worker must read this file and the repository-authoritative documents it references before reading a changing task packet. The packet must contain only the bounded task and these fields:
+Hermes issues contain only task-specific information:
 
 ```text
 FEATURE_ID
@@ -106,36 +47,39 @@ ALLOWED_AREAS
 KNOWN_BLOCKERS
 ```
 
-If the packet conflicts with this policy, the worker must return `BLOCKED` and the exact conflict to Terra. It must not silently choose which instruction to ignore. Task packets must not contain credentials, provider tokens, raw customer data, or secret-like fields.
+Do not place credentials, tokens, raw customer data, or permanent repository policy in a task issue.
 
-## Evidence and provider boundaries
+## Product completion
 
-- Use `VERIFIED`, `REPORTED`, `INFERENCE`, `BLOCKED`, or `UNKNOWN` truth labels where evidence is not direct. Do not convert provider-disabled behavior into real provider success.
-- Staging qualification must record the exact runtime revision, release, health, service, worker result, and relevant side effects.
-- Provider-disabled means zero calls to Meta, Instagram, Apify, Square, email, payment, or other external providers; it must never display a delivered, captured, or paid-success result.
-- Real provider effects require the current owner-authorized gate and must be bounded to the approved account/environment/call count.
-- Preserve ownership isolation, fail-closed behavior, bounded logs, sanitized errors, secret confidentiality, and replay/idempotency protections.
+Backend or engine implementation alone is not a finished customer feature. A feature is complete only when its applicable acceptance contract covers:
 
-## Work and delivery rules
+- engine;
+- usable customer UI;
+- integration;
+- persistence/state;
+- success flow;
+- failure/error flow;
+- customer discoverability and usability;
+- required tests; and
+- required runtime evidence.
 
-- Implement only the bounded task packet on a `codex/*` development branch.
-- Never push directly to `main`.
-- Never force-push, self-approve, self-merge, or enable auto-merge.
-- Never change repository settings, security controls, credentials, or CI workflow policy as ordinary feature work.
-- Never deploy production without a separate owner gate.
-- Staging writes require a pre-change backup/pointer and exact rollback path.
-- Create or update a Draft PR and return loop evidence to Terra.
-- Terra reviews the whole milestone state and chooses `GO`, `REWORK`, or `OWNER_GATE` for the next loop.
-- A passing local test is not runtime or customer evidence.
+An API endpoint, unit test, worker, service, database model, or merged backend PR does not by itself make a customer-facing capability complete. If existing engine functionality has no usable UI, the feature remains incomplete.
 
-The dispatcher must fail closed when this file is absent and must complete repository-policy/bootstrap checks before allowing a worker to read or execute a task packet. No worker may bypass the dispatcher or write outside its approved worktree.
+Before adding backend architecture, inspect current `main` and reuse existing Post, Watch, provider, and runtime functionality. Do not unnecessarily rebuild the runtime foundation from PR #23.
 
-## Controlled DeepSeek fallback
+## Work and delivery boundaries
 
-The coordinator and primary-coder roles defined above remain authoritative. If
-the current primary coding route is unavailable, Hermes may assign DeepSeek
-only a tightly bounded Draft-PR implementation task. The task packet must
-additionally state:
+- Work only on `codex/*` branches and only within the task issue's allowed areas.
+- Never push directly to `main` or force-push.
+- Never self-approve, self-merge, or enable auto-merge.
+- Never modify GitHub workflows, security settings, repository settings, secrets, DNS, billing, or deployment configuration as ordinary feature work.
+- Never deploy production or enable live social, payment, or other provider effects without a separate current owner authorization.
+- Create or update a draft PR and return exact diffs, tests, runtime evidence, side-effect counts, rollback information, and blockers to Hermes.
+- Hermes and the independent reviewer decide whether the proposed work passes; the owner retains merge and production authority.
+
+## DeepSeek fallback
+
+When Spark is unavailable, Hermes may assign DeepSeek a tightly bounded implementation task only when the issue records:
 
 ```text
 IMPLEMENTATION_MODEL: deepseek-...
@@ -144,9 +88,4 @@ REVIEWER_PROFILE: <different named reviewer profile>
 REVIEWER_MODEL: <non-DeepSeek reviewer model>
 ```
 
-Before review, the implementation handoff must record the exact final commit
-as `review_head_sha`. The reviewer must be a different named profile and model,
-verify that exact commit and Draft PR, and may request changes or block the
-task. DeepSeek cannot approve, merge, release, or declare completion. The owner
-performs the manual merge. If the independent reviewer is not configured or
-authenticated, the task is `BLOCKED`, not complete.
+The exact final commit must be recorded as `review_head_sha`. DeepSeek may not approve, merge, release, or declare completion. If the independent reviewer is unavailable, the task is `BLOCKED`.
