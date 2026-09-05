@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -38,6 +38,8 @@ const PURCHASED_ROW = {
 
 describe("Slice E — canonical credit engine", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T00:00:00Z"));
     vi.clearAllMocks();
     mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_ROW, PURCHASED_ROW]);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue(MONTHLY_ROW);
@@ -51,6 +53,10 @@ describe("Slice E — canonical credit engine", () => {
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected transaction form");
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("derives a deterministic, workspace+destination-scoped intent key", async () => {
