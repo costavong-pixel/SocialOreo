@@ -4,10 +4,11 @@ This is the permanent repository policy for automated work. A current Hermes Git
 
 ## Roles
 
-- **Hermes using GPT-5.6 Luna** is the project and product coordinator. Hermes validates repository governance and issue scope, selects bounded work, maintains evidence, and returns `PASS`, `FAIL`, or `BLOCKED`.
-- **GPT-5.3 Codex Spark** is the preferred implementation worker.
-- **DeepSeek** is an implementation fallback only when Spark is unavailable and Hermes records the fallback reason.
-- **An independent reviewer** checks the exact proposed commit, tests, acceptance contract, and draft PR. The reviewer must not be the implementation worker.
+- **Hermes using GPT-5.6 Terra through the ChatGPT/Codex subscription** is the project and product manager. Hermes validates repository governance and issue scope, selects bounded work, coordinates delivery, maintains evidence, and returns `PASS`, `FAIL`, or `BLOCKED`.
+- **GPT-5.3 Codex Spark through the ChatGPT/Codex subscription** is the primary implementation worker.
+- **GPT-5.6 Luna through the OpenAI API** is the first implementation fallback.
+- **DeepSeek V4 Flash through the DeepSeek API** is the second implementation fallback.
+- **Z.ai GLM 5.3 Flash through OpenRouter** is the independent reviewer of the exact proposed commit, tests, acceptance contract, and draft PR. It must not be the implementation worker.
 
 No implementation worker may redefine scope, approve its own work, declare product completion, merge, authorize production, or bypass repository governance.
 
@@ -77,15 +78,27 @@ Before adding backend architecture, inspect current `main` and reuse existing Po
 - Create or update a draft PR and return exact diffs, tests, runtime evidence, side-effect counts, rollback information, and blockers to Hermes.
 - Hermes and the independent reviewer decide whether the proposed work passes; the owner retains merge and production authority.
 
-## DeepSeek fallback
+## Automatic model fallback and review evidence
 
-When Spark is unavailable, Hermes may assign DeepSeek a tightly bounded implementation task only when the issue records:
+Hermes must route implementation in this order:
+
+1. GPT-5.3 Codex Spark.
+2. GPT-5.6 Luna only when Spark has a genuine quota, rate-limit, overload, connection, or provider-availability failure.
+3. DeepSeek V4 Flash only when Spark and Luna have genuine quota, rate-limit, overload, connection, or provider-availability failures.
+
+Hermes must not switch models because code, tests, validation, or review failed. Those failures require repair within the approved scope. A fallback is allowed only for model/provider availability, and Hermes must record the failed stage and evidence-based reason.
+
+Every implementation task must record:
 
 ```text
-IMPLEMENTATION_MODEL: deepseek-...
-FALLBACK_REASON: PRIMARY_CODER_UNAVAILABLE | SPARK_UNAVAILABLE | SPARK_QUOTA_EXHAUSTED | SPARK_PROVIDER_OUTAGE
-REVIEWER_PROFILE: <different named reviewer profile>
-REVIEWER_MODEL: <non-DeepSeek reviewer model>
+IMPLEMENTATION_PROVIDER: <provider actually used>
+IMPLEMENTATION_MODEL: <model actually used>
+FALLBACK_STAGE: NONE | SPARK_TO_LUNA | LUNA_TO_DEEPSEEK
+FALLBACK_REASON: NONE | QUOTA_EXHAUSTED | RATE_LIMITED | PROVIDER_OVERLOADED | CONNECTION_FAILURE | PROVIDER_UNAVAILABLE
+REVIEWER_PROFILE: independent-review
+REVIEWER_PROVIDER: openrouter
+REVIEWER_MODEL: z-ai/glm-5.3-flash
+review_head_sha: <exact final commit reviewed>
 ```
 
-The exact final commit must be recorded as `review_head_sha`. DeepSeek may not approve, merge, release, or declare completion. If the independent reviewer is unavailable, the task is `BLOCKED`.
+The implementation worker may not act as reviewer, regardless of which fallback stage supplied it. GLM 5.3 Flash may review but may not implement, approve, merge, release, deploy, or declare product completion. If the independent reviewer is unavailable, the task is `BLOCKED`.
