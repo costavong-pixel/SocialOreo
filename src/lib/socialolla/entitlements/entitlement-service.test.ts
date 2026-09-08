@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -34,8 +34,6 @@ const WORKSPACE_ROW = {
   provider: "PERSONAL",
   createdAt: new Date("2026-08-04T00:00:00Z"),
 };
-
-const CURRENT_PERIOD = new Date().toISOString().slice(0, 7);
 
 function buildTx() {
   let batchStore: BatchRow | null = null;
@@ -76,7 +74,13 @@ function buildTx() {
 
 describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T00:00:00Z"));
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("reuses the period MONTHLY batch for two same-period lifetime grants (one batch, two entitlements, no double credit)", async () => {
@@ -112,7 +116,7 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
     const { tx } = buildTx();
     // Pre-provisioned period batch (e.g. manual admin/dev ensure call). The
     // default create stores the row into the mock batch store.
-    await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, periodKey: CURRENT_PERIOD } });
+    await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, periodKey: "2026-08" } });
     tx.creditBatch.create.mockClear();
 
     const granted = await grantLifetimeEntitlement({ ownerUserId: "user-1", squarePaymentId: "payment-1", priceCents: 7900 }, tx as never);

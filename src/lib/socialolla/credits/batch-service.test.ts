@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -10,8 +10,6 @@ const mocks = vi.hoisted(() => {
   return { prisma };
 });
 
-const CURRENT_PERIOD = new Date().toISOString().slice(0, 7);
-
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 
 const MONTHLY_ROW = {
@@ -22,7 +20,7 @@ const MONTHLY_ROW = {
   amount: 20,
   remaining: 20,
   expiresAt: null,
-  periodKey: CURRENT_PERIOD,
+  periodKey: "2026-08",
   createdAt: new Date("2026-08-04T00:00:00Z"),
 };
 
@@ -40,6 +38,8 @@ const PURCHASED_ROW = {
 
 describe("Slice E — canonical credit engine", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T00:00:00Z"));
     vi.clearAllMocks();
     mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_ROW, PURCHASED_ROW]);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue(MONTHLY_ROW);
@@ -53,6 +53,10 @@ describe("Slice E — canonical credit engine", () => {
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected transaction form");
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("derives a deterministic, workspace+destination-scoped intent key", async () => {
