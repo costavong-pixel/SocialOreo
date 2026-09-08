@@ -11,7 +11,8 @@ import { getInstagramPublishingConfig, INSTAGRAM_PUBLISHING_SCOPES } from "@/lib
 import { instagramPublishingOAuthEnabled } from "@/lib/socialolla/publishing/provider";
 
 function redirect(request: NextRequest, result: string) {
-  const response = NextResponse.redirect(new URL(`/connections?instagram=${encodeURIComponent(result)}`, request.url));
+  const appUrl = (process.env.APP_URL ?? process.env.APP_BASE_URL)?.replace(/\/$/, "");
+  const response = NextResponse.redirect(new URL(`/connections?instagram=${encodeURIComponent(result)}`, appUrl || request.url));
   response.cookies.delete("socialoreo_instagram_publish_oauth");
   return response;
 }
