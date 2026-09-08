@@ -17,7 +17,8 @@ export async function exchangeInstagramPublishingAuthorizationCode(config: Insta
   const longLivedUrl = new URL("https://graph.instagram.com/access_token");
   longLivedUrl.searchParams.set("grant_type", "ig_exchange_token");
   longLivedUrl.searchParams.set("client_secret", config.clientSecret);
-  const longLived = tokenSchema.parse(await responseJson(await fetch(longLivedUrl, { headers: { Authorization: `Bearer ${shortLived.access_token}` }, cache: "no-store" })));
+  longLivedUrl.searchParams.set("access_token", shortLived.access_token);
+  const longLived = tokenSchema.parse(await responseJson(await fetch(longLivedUrl, { cache: "no-store" })));
   return longLived;
 }
 
@@ -42,7 +43,8 @@ export async function verifyInstagramPublishingEligibility(config: InstagramPubl
 export async function refreshInstagramPublishingToken(accessToken: string) {
   const url = new URL("https://graph.instagram.com/refresh_access_token");
   url.searchParams.set("grant_type", "ig_refresh_token");
-  return refreshedTokenSchema.parse(await responseJson(await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" })));
+  url.searchParams.set("access_token", accessToken);
+  return refreshedTokenSchema.parse(await responseJson(await fetch(url, { cache: "no-store" })));
 }
 
 export function assertProfessionalAccount(accountType: string | undefined): asserts accountType is "BUSINESS" | "CREATOR" {
