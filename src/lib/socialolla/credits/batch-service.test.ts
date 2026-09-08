@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -10,8 +10,6 @@ const mocks = vi.hoisted(() => {
   return { prisma };
 });
 
-const CURRENT_PERIOD = new Date().toISOString().slice(0, 7);
-
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 
 const MONTHLY_ROW = {
@@ -22,7 +20,7 @@ const MONTHLY_ROW = {
   amount: 20,
   remaining: 20,
   expiresAt: null,
-  periodKey: CURRENT_PERIOD,
+  periodKey: "2026-08",
   createdAt: new Date("2026-08-04T00:00:00Z"),
 };
 
@@ -40,6 +38,8 @@ const PURCHASED_ROW = {
 
 describe("Slice E — canonical credit engine", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-04T00:00:00Z"));
     vi.clearAllMocks();
     mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_ROW, PURCHASED_ROW]);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue(MONTHLY_ROW);
@@ -53,6 +53,10 @@ describe("Slice E — canonical credit engine", () => {
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected transaction form");
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("derives a deterministic, workspace+destination-scoped intent key", async () => {
@@ -77,7 +81,6 @@ describe("Slice E — canonical credit engine", () => {
     const { holdCredits } = await import("./batch-service");
     const result = await holdCredits({ internalWorkspaceId: "ws-1", amount: 3, reference: "req:x", idempotencyKey: "so:wsp_abc:dst_abc:opening-promo:aaaa" });
     expect(result.held).toBe(true);
-    // Selector queried; hold row created on the monthly batch.
     expect(mocks.prisma.creditBatch.findMany).toHaveBeenCalled();
     const createData = mocks.prisma.creditTransaction.create.mock.calls[0][0].data;
     expect(createData.kind).toBe("HOLD");
@@ -97,7 +100,6 @@ describe("Slice E — canonical credit engine", () => {
     expect(ok.finalized).toBe(true);
     const createData = mocks.prisma.creditTransaction.create.mock.calls[0][0].data;
     expect(createData.kind).toBe("FINALIZE");
-    // Amount mismatch rejected.
     mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
       if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 5 };
       return null;
@@ -116,7 +118,6 @@ describe("Slice E — canonical credit engine", () => {
     expect(mocks.prisma.creditBatch.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ remaining: { increment: 1 } }) }),
     );
-    // Second refund is a replayed no-op (no double refund).
     mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
       if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 1 };
       if (args.where.idempotencyKey.endsWith(":refund")) return { id: "refund-1" };
@@ -142,7 +143,6 @@ describe("Slice E — canonical credit engine", () => {
     const existing = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-08" });
     expect(existing?.id).toBe("cbt_monthly0000000000");
     expect(mocks.prisma.creditBatch.create).not.toHaveBeenCalled();
-    // A different period creates a new batch.
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(null);
     mocks.prisma.creditBatch.create.mockResolvedValue({ ...MONTHLY_ROW, id: "cb-monthly-2", externalId: "cbt_monthly2", periodKey: "2026-09" });
     const next = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-09" });
