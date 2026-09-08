@@ -11,7 +11,7 @@ describe("post customer DTO", () => {
       status: "REVIEW",
       variants: [{ id: "variant-internal", platform: "instagram", title: "Title", caption: "Caption", hashtags: [], cta: null, isFinal: false, variantLocale: "en-US", mediaAssetIds: [] }],
       occurrences: [{ id: "occurrence-internal", status: "IDEA", scheduleAt: null, timezone: "UTC", destinationRef: "dst_public" }],
-      destinations: [{ externalId: "postdst_public", platform: "instagram", status: "PENDING", publishJobs: [{ id: "job-internal", status: "QUEUED", receipt: null }] }],
+      destinations: [{ externalId: "postdst_public", platform: "instagram", status: "PENDING", publishJobs: [{ id: "job-internal", status: "QUEUED", scheduledFor: null, attemptCount: 0, receipt: null }] }],
       ...({ accessTokenCiphertext: "secret", scopes: ["publish"], attempts: [{ error: "internal" }], idempotencyKey: "secret" } as Record<string, unknown>),
     } as unknown as Parameters<typeof toPostListView>[0]);
 

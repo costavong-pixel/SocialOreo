@@ -19,6 +19,13 @@ export default async function M2CalendarPage() {
     orderBy: { scheduleAt: "asc" },
     take: 200,
   });
+  const occurrences = slots.length
+    ? await prisma.postOccurrence.findMany({
+        where: { postRequestId: { in: slots.map((slot) => slot.postRequestId) }, kind: "FIRST" },
+        select: { postRequestId: true, status: true },
+      })
+    : [];
+  const occurrenceByPost = new Map(occurrences.map((occurrence) => [occurrence.postRequestId, occurrence.status]));
   const plans = await prisma.sevenDayPlan.findMany({
     where: { workspaceId: workspace.dbId },
     orderBy: { createdAt: "desc" },
@@ -79,7 +86,7 @@ export default async function M2CalendarPage() {
                   <div key={slot.id} className="flex items-center justify-between rounded-2xl border border-white/5 p-3">
                     <div>
                       <p className="font-bold">{slot.destinationRef}</p>
-                      <p className="text-xs text-white/50">Scheduled Post · {slot.timezone}</p>
+                      <p className="text-xs text-white/50">Post · status {occurrenceByPost.get(slot.postRequestId) ?? "SCHEDULED"} · {slot.timezone}</p>
                     </div>
                     <p className="text-sm font-bold text-white/80">{slot.scheduleAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
                   </div>
