@@ -90,13 +90,19 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
     const first = await grantLifetimeEntitlement({ ownerUserId: "user-1", squarePaymentId: "payment-1", priceCents: 7900 }, tx as never);
     const second = await grantLifetimeEntitlement({ ownerUserId: "user-1", squarePaymentId: "payment-2", priceCents: 7900 }, tx as never);
 
+    // One MONTHLY batch was minted, shared across both payments.
     expect(tx.creditBatch.create).toHaveBeenCalledTimes(1);
     expect(first.externalIds.batch).toBe(second.externalIds.batch);
+
+    // One entitlement per squarePaymentId (each payment grants exactly once).
     expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(2);
     expect(first.externalIds.entitlement).not.toBe(second.externalIds.entitlement);
+
+    // No duplicate credits: first minted 20, second reused the batch and minted 0.
     expect(first.creditsGranted).toBe(20);
     expect(second.creditsGranted).toBe(0);
 
+    // Audit events reference the shared batch and flag the reuse.
     const events = tx.auditEvent.create.mock.calls.map((call) => call[0].data);
     expect(events).toHaveLength(2);
     expect(events.map((e) => e.payload.squarePaymentId)).toEqual(["payment-1", "payment-2"]);
@@ -108,6 +114,8 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
   it("reuses a MONTHLY batch already provisioned for the period (lifetime re-purchase after m2EnsureMonthlyBatch)", async () => {
     const { grantLifetimeEntitlement } = await import("./entitlement-service");
     const { tx } = buildTx();
+    // Pre-provisioned period batch (e.g. manual admin/dev ensure call). The
+    // default create stores the row into the mock batch store.
     await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, periodKey: "2026-08" } });
     tx.creditBatch.create.mockClear();
 
@@ -121,6 +129,8 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
   it("reuses the existing batch instead of aborting on the unique constraint (P2002 race)", async () => {
     const { grantLifetimeEntitlement } = await import("./entitlement-service");
     const { tx } = buildTx();
+    // Simulate a concurrent settlement winning the batch create: the first
+    // create attempt hits the @@unique conflict, the re-read finds the winner.
     let conflictRaised = false;
     tx.creditBatch.create.mockImplementation(async () => {
       if (!conflictRaised) {
@@ -131,6 +141,7 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
       }
       return { id: "cb-2", externalId: "cbt_shouldnotbeused", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, expiresAt: null, periodKey: "2026-08", createdAt: new Date() };
     });
+    // Winner already exists (written by the concurrent transaction).
     tx.creditBatch.findFirst.mockImplementation(async () => ({
       id: "cb-winner",
       externalId: "cbt_winner00000000000",
@@ -147,6 +158,7 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
 
     expect(granted.externalIds.batch).toBe("cbt_winner00000000000");
     expect(granted.creditsGranted).toBe(0);
+    // The entitlement itself is still granted exactly once for this payment.
     expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(1);
     expect(tx.auditEvent.create.mock.calls[0][0].data.payload.batchReused).toBe(true);
   });

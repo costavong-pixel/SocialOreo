@@ -81,6 +81,7 @@ describe("Slice E — canonical credit engine", () => {
     const { holdCredits } = await import("./batch-service");
     const result = await holdCredits({ internalWorkspaceId: "ws-1", amount: 3, reference: "req:x", idempotencyKey: "so:wsp_abc:dst_abc:opening-promo:aaaa" });
     expect(result.held).toBe(true);
+    // Selector queried; hold row created on the monthly batch.
     expect(mocks.prisma.creditBatch.findMany).toHaveBeenCalled();
     const createData = mocks.prisma.creditTransaction.create.mock.calls[0][0].data;
     expect(createData.kind).toBe("HOLD");
@@ -100,6 +101,7 @@ describe("Slice E — canonical credit engine", () => {
     expect(ok.finalized).toBe(true);
     const createData = mocks.prisma.creditTransaction.create.mock.calls[0][0].data;
     expect(createData.kind).toBe("FINALIZE");
+    // Amount mismatch rejected.
     mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
       if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 5 };
       return null;
@@ -118,6 +120,7 @@ describe("Slice E — canonical credit engine", () => {
     expect(mocks.prisma.creditBatch.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ remaining: { increment: 1 } }) }),
     );
+    // Second refund is a replayed no-op (no double refund).
     mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
       if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 1 };
       if (args.where.idempotencyKey.endsWith(":refund")) return { id: "refund-1" };
@@ -143,6 +146,7 @@ describe("Slice E — canonical credit engine", () => {
     const existing = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-08" });
     expect(existing?.id).toBe("cbt_monthly0000000000");
     expect(mocks.prisma.creditBatch.create).not.toHaveBeenCalled();
+    // A different period creates a new batch.
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(null);
     mocks.prisma.creditBatch.create.mockResolvedValue({ ...MONTHLY_ROW, id: "cb-monthly-2", externalId: "cbt_monthly2", periodKey: "2026-09" });
     const next = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-09" });
