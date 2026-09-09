@@ -109,4 +109,26 @@ describe("canonical SocialOlla dashboard summary", () => {
     expect(summary.credits.canonicalAvailable).toBe(0);
     expect(mocks.prisma.creditBatch.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { workspaceId: "new_workspace" } }));
   });
+
+  it("does not show revoked monthly entitlement or credits as active", async () => {
+    const currentPeriod = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
+    mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "NONE", creditAccount: { balance: 0 }, instagramInsightsConnection: null });
+    mocks.prisma.destination.findMany.mockResolvedValue([]);
+    mocks.prisma.postRequest.findMany.mockResolvedValue([]);
+    mocks.prisma.scheduleSlot.findMany.mockResolvedValue([]);
+    mocks.prisma.auditJob.findMany.mockResolvedValue([]);
+    mocks.prisma.watchReport.findMany.mockResolvedValue([]);
+    mocks.prisma.publicProfileMonitor.findMany.mockResolvedValue([]);
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([
+      { kind: "MONTHLY", remaining: 20, periodKey: currentPeriod, expiresAt: null },
+      { kind: "PURCHASED", remaining: 3, periodKey: null, expiresAt: null },
+    ]);
+    mocks.prisma.creditTransaction.findMany.mockResolvedValue([]);
+    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ planVersion: { name: "Lifetime" } });
+
+    const { loadDashboardSummary } = await import("./dashboard-summary");
+    const summary = await loadDashboardSummary("revoked_user", "revoked_workspace");
+
+    expect(summary.credits).toMatchObject({ canonicalAvailable: 3, plan: "NONE", planVersion: null });
+  });
 });

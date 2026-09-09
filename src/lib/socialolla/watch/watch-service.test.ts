@@ -41,6 +41,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
       id: "ws-1",
       externalId: "wsp_watch00000000000",
       ownerUserId: "user-1",
+      ownerUser: { accessPlan: "LIFETIME" },
       label: "Personal workspace",
       defaultLocale: "en-US",
       provider: "PERSONAL",
@@ -115,9 +116,9 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
   it("uses the exact workspace for entitlement pricing", async () => {
     const { createWatchService } = await import("./watch-service");
     await createWatchService().preview("user-1");
-    expect(mocks.prisma.entitlementSnapshot.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { workspaceId: "ws-1" } }));
+    expect(mocks.prisma.entitlementSnapshot.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ workspaceId: "ws-1" }) }));
     await createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.instagram.com/pricing/", platform: "instagram", confirmed: true });
-    expect(mocks.prisma.entitlementSnapshot.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: { workspaceId: "ws-1" } }));
+    expect(mocks.prisma.entitlementSnapshot.findFirst).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ workspaceId: "ws-1" }) }));
   });
 
   it("refunds on failure and marks the report failed", async () => {

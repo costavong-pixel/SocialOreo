@@ -48,7 +48,14 @@ export async function GET(request: NextRequest) {
         await tx.destination.update({ where: { id: current.id }, data: destinationData });
         return;
       }
-      const entitlement = await tx.entitlementSnapshot.findFirst({ where: { workspaceId: workspace.dbId }, orderBy: { validFrom: "desc" }, select: { maxDestinations: true } });
+      const entitlement = await tx.entitlementSnapshot.findFirst({
+        where: {
+          workspaceId: workspace.dbId,
+          workspace: { ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } },
+        },
+        orderBy: { validFrom: "desc" },
+        select: { maxDestinations: true },
+      });
       const maxDestinations = Math.max(0, entitlement?.maxDestinations ?? 1);
       const destinationCount = await tx.destination.count({ where: { workspaceId: workspace.dbId } });
       if (destinationCount >= maxDestinations) throw new Error("Destination limit reached for this plan.");

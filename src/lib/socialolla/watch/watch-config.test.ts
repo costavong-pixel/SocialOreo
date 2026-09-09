@@ -58,6 +58,16 @@ describe("Slice D — Watch integration", () => {
     expect(limit).toBe(2);
   });
 
+  it("does not use a historical snapshot after the paid plan is revoked", async () => {
+    vi.stubEnv("SOCIALOLLA_WATCH_CONFIG_ENABLED", "true");
+    const { watchCompetitorLimitForUser } = await import("./resolver");
+    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ maxWatchCompetitors: 2 });
+    mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "NONE" });
+
+    await expect(watchCompetitorLimitForUser("user-1")).resolves.toBe(0);
+    expect(mocks.prisma.entitlementSnapshot.findFirst).not.toHaveBeenCalled();
+  });
+
   it("documents: with entitlements enabled the snapshot is the canonical cap (still hard-capped)", () => {
     // Intentional: when configurable entitlements are enabled the snapshot is
     // the canonical authority; the hard boundary (3) still applies.

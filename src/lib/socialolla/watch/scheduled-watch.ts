@@ -8,7 +8,7 @@ import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { socialProviderForPlatform } from "@/lib/providers/social/audit-provider-config";
 import { sanitizeSocialAuditResult } from "@/lib/providers/social/sanitize-audit-result";
 import type { NormalizedSocialAuditResult, SocialPlatform } from "@/lib/providers/social/types";
-import { intentKey, holdCredits, finalizeCredits, refundCredits } from "@/lib/socialolla/credits/batch-service";
+import { hasActiveCreditPlan, intentKey, holdCredits, finalizeCredits, refundCredits } from "@/lib/socialolla/credits/batch-service";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { buildPublicSnapshotMetrics } from "@/lib/snapshots/public-profile-snapshots";
 import { normalizeWatchCadence, sanitizedWatchError, watchCaptureKey, watchProviderCostEstimate, type WatchCadenceHours } from "@/lib/snapshots/watch-policy";
@@ -252,12 +252,15 @@ export async function pauseWatchMonitor(input: { userId: string; profileUrl: str
   return { paused: result.count > 0 };
 }
 
-async function watchCreditCost(workspaceId: string): Promise<number> {
-  const entitlement = await prisma.entitlementSnapshot.findFirst({
-    where: { workspaceId },
-    orderBy: { validFrom: "desc" },
-    select: { watchCreditsPerRequest: true },
-  });
+async function watchCreditCost(ownerUserId: string, workspaceId: string): Promise<number> {
+  const account = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { accessPlan: true } });
+  const entitlement = hasActiveCreditPlan(account?.accessPlan)
+    ? await prisma.entitlementSnapshot.findFirst({
+        where: { workspaceId, workspace: { ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
+        orderBy: { validFrom: "desc" },
+        select: { watchCreditsPerRequest: true },
+      })
+    : null;
   const configured = entitlement?.watchCreditsPerRequest ?? 1;
   return Math.max(1, Number.isInteger(configured) ? configured : Math.floor(Number(configured) || 1));
 }
@@ -270,7 +273,7 @@ async function captureReportForMonitor(monitor: WatchMonitorRow, now: Date): Pro
   if (existing) return existing as WatchReportRow;
 
   const workspace = await getOrCreatePersonalWorkspace(monitor.userId);
-  const cost = await watchCreditCost(workspace.dbId);
+  const cost = await watchCreditCost(monitor.userId, workspace.dbId);
   const reportData = {
     externalId: externalId("wpr"),
     intentKey: intentKey(workspace.id, captureKey, "watch-capture"),

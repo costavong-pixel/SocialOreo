@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
+    user: { updateMany: vi.fn() },
+    workspace: { findUnique: vi.fn() },
     creditBatch: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn(), create: vi.fn() },
     creditTransaction: { findUnique: vi.fn(), create: vi.fn() },
     auditEvent: { create: vi.fn() },
@@ -42,6 +44,8 @@ describe("Slice E — canonical credit engine", () => {
     vi.setSystemTime(new Date("2026-08-04T00:00:00Z"));
     vi.clearAllMocks();
     mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_ROW, PURCHASED_ROW]);
+    mocks.prisma.workspace.findUnique.mockResolvedValue({ ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.creditBatch.findUnique.mockResolvedValue(MONTHLY_ROW);
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.creditBatch.update.mockResolvedValue({ ...MONTHLY_ROW, remaining: 21 });
@@ -49,7 +53,7 @@ describe("Slice E — canonical credit engine", () => {
     mocks.prisma.creditTransaction.create.mockResolvedValue({ id: "tx-1" });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
-      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
+      if (typeof arg === "function") return arg({ user: mocks.prisma.user, workspace: mocks.prisma.workspace, creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected transaction form");
     });
@@ -140,6 +144,30 @@ describe("Slice E — canonical credit engine", () => {
     expect(selected?.id).toBe("cb-purchased");
   });
 
+  it("does not select revoked monthly credits but preserves purchased credits", async () => {
+    const { selectSpendableBatch } = await import("./batch-service");
+    mocks.prisma.workspace.findUnique.mockResolvedValue({ ownerUserId: "user-1", ownerUser: { accessPlan: "NONE" } });
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_ROW, PURCHASED_ROW]);
+
+    const selected = await selectSpendableBatch("ws-1", 1);
+
+    expect(selected?.id).toBe("cb-purchased");
+  });
+
+  it("fails a monthly hold when the owner plan is revoked after selection", async () => {
+    const { holdCredits } = await import("./batch-service");
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_ROW]);
+    mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(holdCredits({
+      internalWorkspaceId: "ws-1",
+      amount: 1,
+      reference: "req:revoked",
+      idempotencyKey: "so:wsp_abc:dst_abc:revoked:aaaa",
+    })).rejects.toThrow("Insufficient credits");
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+  });
+
   it("ensures a monthly batch per period without double-grant", async () => {
     const { ensureMonthlyBatch } = await import("./batch-service");
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(MONTHLY_ROW);
@@ -152,6 +180,29 @@ describe("Slice E — canonical credit engine", () => {
     const next = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-09" });
     expect(mocks.prisma.creditBatch.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ periodKey: "2026-09" }) }));
     void next;
+  });
+
+  it("fails closed for revoked plans while allowing the settlement grant path", async () => {
+    const { ensureMonthlyBatchForSettlement, ensureMonthlyBatch } = await import("./batch-service");
+    mocks.prisma.workspace.findUnique.mockResolvedValue({ ownerUser: { accessPlan: "NONE" } });
+    mocks.prisma.creditBatch.findFirst.mockResolvedValue(null);
+
+    await expect(ensureMonthlyBatch({
+      internalWorkspaceId: "ws-1",
+      externalWorkspaceId: "wsp_abc",
+      includedCredits: 20,
+      periodKey: "2026-09",
+    })).resolves.toBeNull();
+    expect(mocks.prisma.creditBatch.create).not.toHaveBeenCalled();
+
+    mocks.prisma.creditBatch.create.mockResolvedValue({ ...MONTHLY_ROW, id: "cb-settlement", externalId: "cbt_settlement", periodKey: "2026-09" });
+    await expect(ensureMonthlyBatchForSettlement({
+      internalWorkspaceId: "ws-1",
+      externalWorkspaceId: "wsp_abc",
+      includedCredits: 20,
+      periodKey: "2026-09",
+      db: mocks.prisma,
+    })).resolves.toMatchObject({ id: "cbt_settlement", created: true });
   });
 
   it("records an admin adjustment with reason + audit", async () => {

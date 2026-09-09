@@ -21,6 +21,7 @@ vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("@/lib/providers/social/provider-router", () => ({ fetchSocialAudit: mocks.fetchSocialAudit }));
 vi.mock("@/lib/socialolla/workspace", () => ({ getOrCreatePersonalWorkspace: mocks.getOrCreatePersonalWorkspace }));
 vi.mock("@/lib/socialolla/credits/batch-service", () => ({
+  hasActiveCreditPlan: (plan: string | null | undefined) => plan === "LIFETIME" || plan === "MONTHLY",
   intentKey: (workspace: string, destination: string, intent: string) => `so:${workspace}:${destination}:${intent}`,
   holdCredits: mocks.holdCredits,
   finalizeCredits: mocks.finalizeCredits,

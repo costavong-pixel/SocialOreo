@@ -65,6 +65,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
       id: "ws-1",
       externalId: "wsp_slice000000000000",
       ownerUserId: "user-1",
+      ownerUser: { accessPlan: "LIFETIME" },
       label: "Personal workspace",
       defaultLocale: "en-US",
       provider: "PERSONAL",

@@ -85,4 +85,33 @@ describe("profile context read model", () => {
     expect(context.role).toBe("USER");
     expect(context.workspaceLabel).toBeNull();
   });
+
+  it("does not present revoked monthly entitlement or credits as active", async () => {
+    const currentPeriod = new Date().toISOString().slice(0, 7);
+    mocks.findUnique.mockResolvedValue({
+      id: "db-user-3",
+      role: "USER",
+      accessPlan: "NONE",
+      instagramInsightsConnection: null,
+      workspaces: [{
+        label: "Personal workspace",
+        defaultLocale: "en-US",
+        destinations: [],
+        entitlementSnapshots: [{ planVersion: { name: "SocialOlla Lifetime" } }],
+        creditBatches: [
+          { kind: "MONTHLY", remaining: 20, periodKey: currentPeriod, expiresAt: null },
+          { kind: "PURCHASED", remaining: 3, periodKey: null, expiresAt: null },
+        ],
+      }],
+    });
+
+    const context = await loadProfileContext({
+      id: "auth-sub-3",
+      email: "revoked@example.com",
+      emailVerified: true,
+    }, "db-user-3");
+
+    expect(context.plan).toBe("No active plan");
+    expect(context.creditBalance).toBe(3);
+  });
 });

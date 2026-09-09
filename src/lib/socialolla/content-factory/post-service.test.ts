@@ -50,6 +50,7 @@ describe("Slice C — SocialOreo Post integration", () => {
       id: "ws-internal-1",
       externalId: "wsp_abcdefghijklmnop",
       ownerUserId: "user-1",
+      ownerUser: { accessPlan: "LIFETIME" },
       label: "Personal workspace",
       defaultLocale: "en-US",
       provider: "PERSONAL",

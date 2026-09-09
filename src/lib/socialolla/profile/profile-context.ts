@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { accountSupportReference } from "@/lib/auth/support-reference";
 import { loadStagingAcceptanceProfileState, type StagingAcceptanceProfileState } from "@/lib/auth/staging-acceptance";
+import { hasActiveCreditPlan } from "@/lib/socialolla/credits/batch-service";
 
 export type ProfileSession = {
   id: string;
@@ -98,8 +99,9 @@ export async function loadProfileContext(session: ProfileSession, dbUserId?: str
   const acceptanceBootstrapState = await loadStagingAcceptanceProfileState(session.id, session.email);
   const now = new Date();
   const currentPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const activePlan = hasActiveCreditPlan(user?.accessPlan);
   const creditBalance = workspace?.creditBatches.reduce((total, batch) => {
-    const currentMonthly = batch.kind === "MONTHLY" && batch.periodKey === currentPeriod;
+    const currentMonthly = activePlan && batch.kind === "MONTHLY" && batch.periodKey === currentPeriod;
     const currentPurchased = batch.kind === "PURCHASED" && (batch.expiresAt === null || batch.expiresAt > now);
     return currentMonthly || currentPurchased ? total + Math.max(0, batch.remaining) : total;
   }, 0) ?? 0;
@@ -121,7 +123,7 @@ export async function loadProfileContext(session: ProfileSession, dbUserId?: str
     role: user?.role ?? null,
     supportReference: accountSupportReference(user?.id ?? session.id),
     workspaceLabel: workspace?.label ?? null,
-    plan: planLabel(user?.accessPlan, workspace?.entitlementSnapshots[0]?.planVersion.name),
+    plan: planLabel(user?.accessPlan, activePlan ? workspace?.entitlementSnapshots[0]?.planVersion.name : null),
     creditBalance,
     connections: [
       { platform: "Instagram", status: instagramStatus },
