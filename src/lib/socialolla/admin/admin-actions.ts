@@ -74,8 +74,8 @@ export async function adminAdjustCredits(input: {
     reason: input.reason,
     actorAuthUserId: input.adminAuthUserId,
     // Keep the operation direction before the free-form reason. intentKey
-    // normalizes and truncates the intent, so putting the sign at the end
-    // could still collapse long positive and negative reasons into one key.
+    // bounds the readable slug, so the sign must be present before that
+    // boundary even though the full normalized value is hashed.
     idempotencyKey: intentKey(workspace.id, "admin", `adjustment:${direction}:${Math.abs(input.amount)}:${input.adminAuthUserId}:${input.reason}`),
   });
   return result;

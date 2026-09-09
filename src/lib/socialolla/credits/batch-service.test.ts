@@ -73,6 +73,15 @@ describe("Slice E — canonical credit engine", () => {
     expect(a.startsWith("so:wsp_abc:dst_abc:")).toBe(true);
   });
 
+  it("keeps distinct long normalized intents on distinct idempotency keys", async () => {
+    const { intentKey } = await import("./batch-service");
+    const prefix = "a".repeat(64);
+    const a = intentKey("wsp_abc", "admin", `${prefix}-reason-a`);
+    const b = intentKey("wsp_abc", "admin", `${prefix}-reason-b`);
+
+    expect(a).not.toBe(b);
+  });
+
   it("refuses a refund with no matching hold (no credit inflation)", async () => {
     const { refundCredits } = await import("./batch-service");
     mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);

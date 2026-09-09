@@ -15,8 +15,11 @@ export const newAuditEventExternalId = () => randomExternalId("evt_");
  * same (workspace, destination, intent), so a refund always finds its HOLD.
  */
 export function intentKey(workspaceExternalId: string, destinationExternalId: string, intent: string): string {
-  const slug = intent.trim().replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64) || "default";
-  const digest = createHash("sha256").update(`${workspaceExternalId}:${destinationExternalId}:${slug}`).digest("hex").slice(0, 12);
+  // Keep the readable prefix bounded, but hash the complete normalized intent
+  // so distinct long admin reasons cannot collapse into one replay identity.
+  const normalizedIntent = intent.trim().replace(/[^A-Za-z0-9_-]/g, "-") || "default";
+  const slug = normalizedIntent.slice(0, 64);
+  const digest = createHash("sha256").update(`${workspaceExternalId}:${destinationExternalId}:${normalizedIntent}`).digest("hex").slice(0, 12);
   return `so:${workspaceExternalId}:${destinationExternalId}:${slug}:${digest}`;
 }
 
