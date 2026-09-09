@@ -66,13 +66,17 @@ export async function adminAdjustCredits(input: {
   if (!adminOk) throw new Error("Admin role required");
   if (input.amount === 0) throw new Error("Amount must be non-zero");
   const workspace = await getOrCreatePersonalWorkspace(input.targetDbUserId);
+  const direction = input.amount < 0 ? "negative" : "positive";
   const result = await adjustCredits({
     internalWorkspaceId: workspace.dbId,
     amount: input.amount,
     reference: `admin:${input.adminAuthUserId}`,
     reason: input.reason,
     actorAuthUserId: input.adminAuthUserId,
-    idempotencyKey: intentKey(workspace.id, "admin", `${input.adminAuthUserId}:${input.reason}:${Math.abs(input.amount)}`),
+    // Keep the operation direction before the free-form reason. intentKey
+    // normalizes and truncates the intent, so putting the sign at the end
+    // could still collapse long positive and negative reasons into one key.
+    idempotencyKey: intentKey(workspace.id, "admin", `adjustment:${direction}:${Math.abs(input.amount)}:${input.adminAuthUserId}:${input.reason}`),
   });
   return result;
 }
