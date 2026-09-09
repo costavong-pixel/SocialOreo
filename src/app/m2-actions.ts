@@ -22,7 +22,7 @@ import { assistantRespond } from "@/lib/socialolla/assistant/assistant-api";
 import type { AssistantDomain } from "@/lib/socialolla/assistant/assistant";
 import { normalizeLocale } from "@/lib/socialolla/i18n/locales";
 import { adminAdjustCredits, adminInspectEntitlement, adminAuditEvents, adminSetLifetimePriceCents } from "@/lib/socialolla/admin/admin-actions";
-import { selectSpendableBatch, ensureMonthlyBatch } from "@/lib/socialolla/credits/batch-service";
+import { hasActiveCreditPlan, selectSpendableBatch, ensureMonthlyBatch } from "@/lib/socialolla/credits/batch-service";
 import { disconnectedInstagramDestinationData } from "@/lib/instagram-publishing/disconnect";
 
 const LOCALE_COOKIE = "so_locale";
@@ -203,10 +203,18 @@ export async function m2WatchReports() {
 export async function m2CreditsOverview() {
   const user = await requireUser();
   const workspace = await getOrCreatePersonalWorkspace(user.dbId);
+  const account = await prisma.user.findUnique({ where: { id: user.dbId }, select: { accessPlan: true } });
+  const activePlan = hasActiveCreditPlan(account?.accessPlan);
   const entitlement = await import("@/lib/db/prisma").then((m) =>
-    m.prisma.entitlementSnapshot.findFirst({ where: { workspace: { ownerUserId: user.dbId } }, orderBy: { validFrom: "desc" } }),
+    activePlan
+      ? m.prisma.entitlementSnapshot.findFirst({
+          where: { workspace: { ownerUserId: user.dbId, ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
+          orderBy: { validFrom: "desc" },
+        })
+      : null,
   );
-  const batches = await import("@/lib/db/prisma").then((m) => m.prisma.creditBatch.findMany({ where: { workspaceId: workspace.dbId }, orderBy: { createdAt: "desc" } }));
+  const allBatches = await import("@/lib/db/prisma").then((m) => m.prisma.creditBatch.findMany({ where: { workspaceId: workspace.dbId }, orderBy: { createdAt: "desc" } }));
+  const batches = activePlan ? allBatches : allBatches.filter((batch) => batch.kind !== "MONTHLY");
   const transactions = await import("@/lib/db/prisma").then((m) =>
     m.prisma.creditTransaction.findMany({ where: { batch: { workspaceId: workspace.dbId } }, orderBy: { createdAt: "desc" }, take: 50 }),
   );
@@ -230,8 +238,13 @@ export async function m2CreditsOverview() {
 export async function m2EnsureMonthlyBatch() {
   const user = await requireUser();
   const workspace = await getOrCreatePersonalWorkspace(user.dbId);
+  const account = await prisma.user.findUnique({ where: { id: user.dbId }, select: { accessPlan: true } });
+  if (!hasActiveCreditPlan(account?.accessPlan)) return null;
   const entitlement = await import("@/lib/db/prisma").then((m) =>
-    m.prisma.entitlementSnapshot.findFirst({ where: { workspace: { ownerUserId: user.dbId } }, orderBy: { validFrom: "desc" } }),
+    m.prisma.entitlementSnapshot.findFirst({
+      where: { workspace: { ownerUserId: user.dbId, ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
+      orderBy: { validFrom: "desc" },
+    }),
   );
   return ensureMonthlyBatch({ internalWorkspaceId: workspace.dbId, externalWorkspaceId: workspace.id, includedCredits: entitlement?.includedMonthlyCredits ?? 0 });
 }

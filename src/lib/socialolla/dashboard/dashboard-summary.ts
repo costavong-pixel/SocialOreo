@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { hasActiveCreditPlan } from "@/lib/socialolla/credits/batch-service";
 
 export type DashboardCardState = "REAL" | "PARTIAL" | "UI_ONLY" | "DISABLED";
 
@@ -192,8 +193,9 @@ export async function loadDashboardSummary(dbUserId: string, workspaceDbId: stri
   const connected = destinations.filter((destination) => destination.status === "CONNECTED").length;
   const reconnectRequired = destinations.filter((destination) => destination.status === "REAUTH_REQUIRED").length;
   const currentPeriod = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
+  const activePlan = hasActiveCreditPlan(user?.accessPlan);
   const canonicalAvailable = creditBatches.reduce((total, batch) => {
-    const spendable = batch.kind === "MONTHLY"
+    const spendable = activePlan && batch.kind === "MONTHLY"
       ? batch.periodKey === currentPeriod
       : batch.kind === "PURCHASED" && (batch.expiresAt === null || batch.expiresAt > new Date());
     return spendable ? total + Math.max(0, batch.remaining) : total;
@@ -275,7 +277,7 @@ export async function loadDashboardSummary(dbUserId: string, workspaceDbId: stri
       canonicalBatchCount: creditBatches.length,
       legacyBalance: user?.creditAccount?.balance ?? null,
       plan: user?.accessPlan ?? "NONE",
-      planVersion: entitlement?.planVersion.name ?? null,
+      planVersion: activePlan ? entitlement?.planVersion.name ?? null : null,
       recentActivity: creditTransactions,
     },
     upcoming,

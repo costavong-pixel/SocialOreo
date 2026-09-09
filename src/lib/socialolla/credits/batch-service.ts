@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 
 function randomExternalId(prefix: string): string {
   return `${prefix}${randomBytes(12).toString("base64url")}`;
@@ -36,22 +37,58 @@ export function periodKeyForDate(date: Date = new Date()): string {
 }
 
 /**
+ * Monthly batches are an included-plan benefit, not an independent grant.
+ * Keep the active-plan check in one place so every credit consumer applies the
+ * same revocation boundary after a payment refund or subscription cancellation.
+ */
+export function hasActiveCreditPlan(accessPlan: string | null | undefined): boolean {
+  return accessPlan === "LIFETIME" || accessPlan === "MONTHLY";
+}
+
+/**
  * Ensure the current-period MONTHLY batch for a workspace, created race-safely
  * under a unique (workspaceId, kind, periodKey) constraint. Reuses an existing
  * period batch instead of blind-creating (no double-grant / no double-credit),
  * and returns `created` so callers can report whether new credits were minted.
- * An optional `db` lets settlement run the create inside the enclosing
- * transaction. Confined to grant/settlement paths (never read/preview/release).
+ * An optional `db` lets an active-plan caller run the create inside the
+ * enclosing transaction. Confined to grant/settlement paths (never
+ * read/preview/release). Direct callers must have an active paid plan.
  */
-export async function ensureMonthlyBatch(input: {
+type MonthlyBatchDb = {
+  user: Pick<Prisma.TransactionClient["user"], "updateMany">;
+  workspace: Pick<Prisma.TransactionClient["workspace"], "findUnique">;
+  creditBatch: Pick<Prisma.TransactionClient["creditBatch"], "findFirst" | "create">;
+};
+
+type EnsureMonthlyBatchInput = {
   internalWorkspaceId: string;
   externalWorkspaceId: string;
   includedCredits: number;
   periodKey?: string;
-  db?: { creditBatch: { findFirst: typeof prisma.creditBatch.findFirst; create: typeof prisma.creditBatch.create } };
-}) {
-  const { db = prisma } = input;
+  db?: MonthlyBatchDb;
+};
+
+type EnsureMonthlyBatchSettlementInput = Omit<EnsureMonthlyBatchInput, "db"> & { db: MonthlyBatchDb };
+
+async function ensureMonthlyBatchInTransaction(input: EnsureMonthlyBatchInput, db: MonthlyBatchDb, enforceActivePlan: boolean) {
   const period = input.periodKey ?? periodKeyForDate();
+  if (enforceActivePlan) {
+    const workspace = await db.workspace.findUnique({
+      where: { id: input.internalWorkspaceId },
+      select: { ownerUserId: true, ownerUser: { select: { accessPlan: true } } },
+    });
+    if (!workspace || !hasActiveCreditPlan(workspace.ownerUser?.accessPlan)) return null;
+    // Keep the plan row locked through the batch lookup/create. A conditional
+    // update prevents a refund that won the race from being overwritten by a
+    // stale active-plan read.
+    const locked = await db.user.updateMany({
+      where: { id: workspace.ownerUserId, accessPlan: { in: ["LIFETIME", "MONTHLY"] } },
+      // A no-op atomic update acquires the owner row lock without copying a
+      // potentially stale plan value over a concurrent entitlement change.
+      data: { freeAuditAllowanceRemaining: { increment: 0 } },
+    });
+    if (locked.count !== 1) return null;
+  }
   const existing = await db.creditBatch.findFirst({
     where: { workspaceId: input.internalWorkspaceId, kind: "MONTHLY", periodKey: period },
   });
@@ -69,54 +106,58 @@ export async function ensureMonthlyBatch(input: {
     };
   }
   if (input.includedCredits <= 0) return null;
+  const created = await db.creditBatch.create({
+    data: {
+      externalId: newCreditBatchExternalId(),
+      workspaceId: input.internalWorkspaceId,
+      kind: "MONTHLY",
+      amount: input.includedCredits,
+      remaining: input.includedCredits,
+      periodKey: period,
+    },
+  });
+  return {
+    id: created.externalId,
+    internalId: created.id,
+    workspaceId: input.externalWorkspaceId,
+    kind: created.kind,
+    amount: created.amount,
+    remaining: created.remaining,
+    expiresAt: null,
+    createdAt: created.createdAt.toISOString(),
+    created: true,
+  };
+}
+
+export async function ensureMonthlyBatch(input: EnsureMonthlyBatchInput) {
+  if (input.db) {
+    return ensureMonthlyBatchInTransaction(input, input.db, true);
+  }
+  // The normal customer path must hold the owner-plan lock until the
+  // find-or-create completes, so a concurrent refund cannot leave a newly
+  // minted MONTHLY batch behind after access is revoked.
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const created = await db.creditBatch.create({
-        data: {
-          externalId: newCreditBatchExternalId(),
-          workspaceId: input.internalWorkspaceId,
-          kind: "MONTHLY",
-          amount: input.includedCredits,
-          remaining: input.includedCredits,
-          periodKey: period,
-        },
-      });
-      return {
-        id: created.externalId,
-        internalId: created.id,
-        workspaceId: input.externalWorkspaceId,
-        kind: created.kind,
-        amount: created.amount,
-        remaining: created.remaining,
-        expiresAt: null,
-        createdAt: created.createdAt.toISOString(),
-        created: true,
-      };
+      return await prisma.$transaction(
+        (transaction) => ensureMonthlyBatchInTransaction(input, transaction, true),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
-      const isUniqueConflict = error instanceof Error && "code" in error && (error as { code?: string }).code === "P2002";
-      if (isUniqueConflict && attempt < 2) {
-        const winner = await db.creditBatch.findFirst({
-          where: { workspaceId: input.internalWorkspaceId, kind: "MONTHLY", periodKey: period },
-        });
-        if (winner) {
-          return {
-            id: winner.externalId,
-            internalId: winner.id,
-            workspaceId: input.externalWorkspaceId,
-            kind: winner.kind,
-            amount: winner.amount,
-            remaining: winner.remaining,
-            expiresAt: winner.expiresAt?.toISOString() ?? null,
-            createdAt: winner.createdAt.toISOString(),
-            created: false,
-          };
-        }
-        continue;
-      }
+      const code = error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
+      if ((code === "P2002" || code === "P2034" || code === "40001") && attempt < 2) continue;
       throw error;
     }
   }
-  throw new Error("Could not create monthly batch");
+  throw new Error("Could not ensure monthly batch");
+}
+
+/**
+ * Settlement-only monthly grant. The caller must already be inside the
+ * serializable, verified payment-settlement transaction that creates the
+ * entitlement and recomputes the owner's access plan.
+ */
+export async function ensureMonthlyBatchForSettlement(input: EnsureMonthlyBatchSettlementInput) {
+  return ensureMonthlyBatchInTransaction(input, input.db, false);
 }
 
 interface BatchRow {
@@ -139,11 +180,22 @@ interface BatchRow {
 export async function selectSpendableBatch(internalWorkspaceId: string, amount: number): Promise<BatchRow | null> {
   const now = new Date();
   const period = periodKeyForDate(now);
+  // Resolve the owner plan before selecting any batch. Historical MONTHLY
+  // batches remain durable evidence, but they must not be spendable after the
+  // owning payment/entitlement has been revoked. Purchased packs remain
+  // usable independently of the included monthly benefit.
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: internalWorkspaceId },
+    select: { ownerUser: { select: { accessPlan: true } } },
+  });
+  if (!workspace) return null;
   const batches = await prisma.creditBatch.findMany({
     where: { workspaceId: internalWorkspaceId },
     orderBy: [{ kind: "asc" }, { expiresAt: "asc" }],
   });
-  const monthly = batches.filter((b) => b.kind === "MONTHLY" && b.periodKey === period);
+  const monthly = hasActiveCreditPlan(workspace.ownerUser?.accessPlan)
+    ? batches.filter((b) => b.kind === "MONTHLY" && b.periodKey === period)
+    : [];
   const purchased = batches
     .filter((b) => b.kind === "PURCHASED" && (b.expiresAt === null || b.expiresAt > now))
     .sort((a, b) => (a.expiresAt?.getTime() ?? 0) - (b.expiresAt?.getTime() ?? 0));
@@ -179,8 +231,15 @@ export async function holdCredits(params: {
   if (!params.idempotencyKey.startsWith("so:")) throw new Error("Invalid idempotency key");
   const existing = await prisma.creditTransaction.findUnique({
     where: { idempotencyKey: params.idempotencyKey },
+    select: { kind: true, batch: { select: { kind: true, workspace: { select: { ownerUser: { select: { accessPlan: true } } } } } } },
   });
-  if (existing) return { held: true, replayed: true, batchExternalId: undefined as string | undefined };
+  if (existing) {
+    if (existing.kind === "HOLD" && existing.batch?.kind === "MONTHLY") {
+      const ownerPlan = existing.batch.workspace?.ownerUser?.accessPlan;
+      if (!hasActiveCreditPlan(ownerPlan)) throw new Error("Credit plan is no longer active");
+    }
+    return { held: true, replayed: true, batchExternalId: undefined as string | undefined };
+  }
 
   const batch = await selectSpendableBatch(params.internalWorkspaceId, params.amount);
   if (!batch) throw new Error("Insufficient credits");
@@ -188,8 +247,15 @@ export async function holdCredits(params: {
   // Interactive transaction: the HOLD create rolls back if the guarded decrement
   // matches 0 (concurrent drain) — no phantom HOLD is ever persisted.
   const transaction = await prisma.$transaction(async (tx) => {
+    // Re-check the plan at the guarded decrement itself. The selector runs
+    // before this transaction, so a refund committing between those two steps
+    // must still make a MONTHLY hold fail closed instead of spending revoked
+    // included credits. PURCHASED packs intentionally have no plan predicate.
+    const activePlanGuard: Prisma.CreditBatchWhereInput = batch.kind === "MONTHLY"
+      ? { workspace: { ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } }
+      : {};
     const updated = await tx.creditBatch.updateMany({
-      where: { id: batch.id, remaining: { gte: params.amount } },
+      where: { id: batch.id, remaining: { gte: params.amount }, ...activePlanGuard },
       data: { remaining: { decrement: params.amount } },
     });
     if (updated.count === 0) throw new Error("Insufficient credits");
@@ -227,10 +293,25 @@ export async function finalizeCredits(params: {
     // Lock the batch so FINALIZE and REFUND cannot both pass their terminal
     // state checks concurrently for the same HOLD.
     await tx.creditBatch.update({ where: { id: hold.batchId }, data: { remaining: { increment: 0 } } });
+    const batch = await tx.creditBatch.findUnique({
+      where: { id: hold.batchId },
+      select: { kind: true, workspace: { select: { ownerUserId: true } } },
+    });
+    if (!batch) throw new Error("Credit batch not found");
     const refunded = await tx.creditTransaction.findUnique({ where: { idempotencyKey: refundKey(params.intent) } });
     if (refunded) throw new Error("Cannot finalize after refund");
     const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey: finalizeKey(params.intent) } });
     if (existing) return { finalized: true, replayed: true };
+    if (batch.kind === "MONTHLY") {
+      // Finalization is another spend boundary. Lock and re-check the owner
+      // after the batch lock so a refund that wins the race makes this path
+      // fail closed instead of settling an in-flight monthly HOLD.
+      const locked = await tx.user.updateMany({
+        where: { id: batch.workspace.ownerUserId, accessPlan: { in: ["LIFETIME", "MONTHLY"] } },
+        data: { freeAuditAllowanceRemaining: { increment: 0 } },
+      });
+      if (locked.count !== 1) throw new Error("Credit plan is no longer active");
+    }
     await tx.creditTransaction.create({
       data: {
         batchId: hold.batchId,

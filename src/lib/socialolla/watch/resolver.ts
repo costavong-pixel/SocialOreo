@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { hasActiveCreditPlan } from "@/lib/socialolla/credits/batch-service";
 import { resolveWatchCompetitorLimit, watchConfig } from "./config";
 
 /**
@@ -10,19 +11,18 @@ import { resolveWatchCompetitorLimit, watchConfig } from "./config";
  */
 export async function watchCompetitorLimitForUser(ownerUserId: string): Promise<number> {
   const config = watchConfig();
-  let snapshotLimit: number | null = null;
-  if (config.configurableEntitlementsEnabled) {
-    const snapshot = await prisma.entitlementSnapshot.findFirst({
-      where: { workspace: { ownerUserId } },
-      orderBy: { validFrom: "desc" },
-    });
-    snapshotLimit = snapshot?.maxWatchCompetitors ?? null;
-  }
-
   const account = await prisma.user.findUnique({
     where: { id: ownerUserId },
     select: { accessPlan: true },
   });
   const plan = (account?.accessPlan ?? "NONE") as "NONE" | "LIFETIME" | "MONTHLY";
+  let snapshotLimit: number | null = null;
+  if (config.configurableEntitlementsEnabled && hasActiveCreditPlan(plan)) {
+    const snapshot = await prisma.entitlementSnapshot.findFirst({
+      where: { workspace: { ownerUserId, ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
+      orderBy: { validFrom: "desc" },
+    });
+    snapshotLimit = snapshot?.maxWatchCompetitors ?? null;
+  }
   return resolveWatchCompetitorLimit(snapshotLimit, plan, config.hardMaxCompetitors);
 }

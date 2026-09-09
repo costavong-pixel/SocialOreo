@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import type { Prisma } from "@prisma/client";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { lifetimePlan, monthlyPlan } from "@/lib/socialolla/plans/plan-config";
-import { ensureMonthlyBatch, newAuditEventExternalId, periodKeyForDate } from "@/lib/socialolla/credits/batch-service";
+import { ensureMonthlyBatchForSettlement, newAuditEventExternalId, periodKeyForDate } from "@/lib/socialolla/credits/batch-service";
 
 type DbLike = Prisma.TransactionClient;
 
@@ -68,7 +68,7 @@ export async function grantLifetimeEntitlement(
   // after a manual m2EnsureMonthlyBatch) with P2002, rolling the settlement
   // transaction back and leaving squarePaymentId null (permanently unsettled).
   // Reuse never mints extra credits: `created` tells us if any were minted.
-  const batch = await ensureMonthlyBatch({
+  const batch = await ensureMonthlyBatchForSettlement({
     internalWorkspaceId: workspace.dbId,
     externalWorkspaceId: workspace.id,
     includedCredits: plan.entitlements.includedMonthlyCredits,
@@ -144,7 +144,7 @@ export async function grantMonthlyEntitlement(
     },
   });
 
-  const batch = await ensureMonthlyBatch({
+  const batch = await ensureMonthlyBatchForSettlement({
     internalWorkspaceId: workspace.dbId,
     externalWorkspaceId: workspace.id,
     includedCredits: plan.entitlements.includedMonthlyCredits,

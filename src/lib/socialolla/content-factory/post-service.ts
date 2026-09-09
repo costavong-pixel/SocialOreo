@@ -46,7 +46,7 @@ export function createPostService(client?: ContentFactoryClient) {
     });
     if (!destination) throw new Error("Destination not found for this workspace");
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspace: { ownerUserId: authUserId } },
+      where: { workspace: { ownerUserId: authUserId, ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
@@ -79,7 +79,7 @@ export function createPostService(client?: ContentFactoryClient) {
       if (!profile) throw new Error("Profile not found for this workspace");
     }
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspace: { ownerUserId: input.authUserId } },
+      where: { workspace: { ownerUserId: input.authUserId, ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;
@@ -134,7 +134,7 @@ export function createPostService(client?: ContentFactoryClient) {
     });
     if (!destination) return { refunded: false };
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspace: { ownerUserId: input.authUserId } },
+      where: { workspace: { ownerUserId: input.authUserId, ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
       orderBy: { validFrom: "desc" },
     });
     const creditsPerRequest = entitlement?.postCreditsPerRequest ?? 1;

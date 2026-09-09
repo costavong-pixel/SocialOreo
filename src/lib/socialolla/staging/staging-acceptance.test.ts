@@ -6,6 +6,7 @@ import { translate } from "@/lib/socialolla/i18n/translations";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
+    user: { updateMany: vi.fn() },
     workspace: { findUnique: vi.fn(), create: vi.fn() },
     destination: { findFirst: vi.fn(), create: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
@@ -42,6 +43,7 @@ describe("Staging acceptance — approved conversational onboarding flow", () =>
       id: "ws-internal-1",
       externalId: "wsp_abcdefghijklmnop",
       ownerUserId: "user-1",
+      ownerUser: { accessPlan: "LIFETIME" },
       label: "Personal workspace",
       defaultLocale: "en-US",
       provider: "PERSONAL",
@@ -56,7 +58,7 @@ describe("Staging acceptance — approved conversational onboarding flow", () =>
     });
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, includedMonthlyCredits: 20 });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH_ROW);
-    mocks.prisma.creditBatch.findUnique.mockResolvedValue(BATCH_ROW);
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH_ROW, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH_ROW]);
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     const createdKeys = new Set<string>();
@@ -69,8 +71,9 @@ describe("Staging acceptance — approved conversational onboarding flow", () =>
       return null;
     });
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
-      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
+      if (typeof arg === "function") return arg({ user: mocks.prisma.user, workspace: mocks.prisma.workspace, creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected");
     });

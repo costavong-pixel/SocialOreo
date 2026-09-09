@@ -53,7 +53,7 @@ export function createWatchService() {
   async function preview(authUserId: string): Promise<WatchCostPreview> {
     const workspace = await getOrCreatePersonalWorkspace(authUserId);
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspaceId: workspace.dbId },
+      where: { workspaceId: workspace.dbId, workspace: { ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
       orderBy: { validFrom: "desc" },
     });
     const estimatedCredits = entitlement?.watchCreditsPerRequest ?? 1;
@@ -71,7 +71,7 @@ export function createWatchService() {
 
     const workspace = await getOrCreatePersonalWorkspace(input.authUserId);
     const entitlement = await prisma.entitlementSnapshot.findFirst({
-      where: { workspaceId: workspace.dbId },
+      where: { workspaceId: workspace.dbId, workspace: { ownerUser: { accessPlan: { in: ["LIFETIME", "MONTHLY"] } } } },
       orderBy: { validFrom: "desc" },
     });
     const cost = entitlement?.watchCreditsPerRequest ?? 1;

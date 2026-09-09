@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
-    user: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), updateMany: vi.fn() },
     workspace: { findUnique: vi.fn(), create: vi.fn() },
     destination: { findFirst: vi.fn(), create: vi.fn() },
     profile: { upsert: vi.fn() },
@@ -65,6 +65,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
       id: "ws-1",
       externalId: "wsp_slice000000000000",
       ownerUserId: "user-1",
+      ownerUser: { accessPlan: "LIFETIME" },
       label: "Personal workspace",
       defaultLocale: "en-US",
       provider: "PERSONAL",
@@ -97,7 +98,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     mocks.prisma.sevenDayPlan.create.mockResolvedValue({ id: "plan-1" });
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, watchCreditsPerRequest: 1, includedMonthlyCredits: 20 });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH]);
-    mocks.prisma.creditBatch.findUnique.mockResolvedValue(BATCH);
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH);
     const keys = new Set<string>();
     mocks.prisma.creditTransaction.create.mockImplementation((args: any) => {
@@ -108,6 +109,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
       keys.has(args.where.idempotencyKey) ? { id: "tx-1", batchId: "cb-slice", amount: 1 } : null,
     );
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.auditEvent.findMany.mockResolvedValue([]);
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {

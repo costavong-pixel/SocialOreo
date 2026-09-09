@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
+    user: { updateMany: vi.fn() },
     workspace: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -50,6 +51,7 @@ describe("Slice C — SocialOreo Post integration", () => {
       id: "ws-internal-1",
       externalId: "wsp_abcdefghijklmnop",
       ownerUserId: "user-1",
+      ownerUser: { accessPlan: "LIFETIME" },
       label: "Personal workspace",
       defaultLocale: "en-US",
       provider: "PERSONAL",
@@ -71,7 +73,7 @@ describe("Slice C — SocialOreo Post integration", () => {
       includedMonthlyCredits: 20,
     });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH_ROW);
-    mocks.prisma.creditBatch.findUnique.mockResolvedValue(BATCH_ROW);
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH_ROW, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH_ROW]);
     const createdKeys = new Set<string>();
     mocks.prisma.creditTransaction.create.mockImplementation((args: { data: { idempotencyKey: string; kind: string; amount: number } }) => {
@@ -85,10 +87,11 @@ describe("Slice C — SocialOreo Post integration", () => {
       return null;
     });
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
       if (typeof arg === "function") {
-        return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
+        return arg({ user: mocks.prisma.user, workspace: mocks.prisma.workspace, creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       }
       if (Array.isArray(arg)) {
         return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
