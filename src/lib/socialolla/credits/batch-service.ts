@@ -83,7 +83,9 @@ async function ensureMonthlyBatchInTransaction(input: EnsureMonthlyBatchInput, d
     // stale active-plan read.
     const locked = await db.user.updateMany({
       where: { id: workspace.ownerUserId, accessPlan: { in: ["LIFETIME", "MONTHLY"] } },
-      data: { accessPlan: workspace.ownerUser.accessPlan },
+      // A no-op atomic update acquires the owner row lock without copying a
+      // potentially stale plan value over a concurrent entitlement change.
+      data: { freeAuditAllowanceRemaining: { increment: 0 } },
     });
     if (locked.count !== 1) return null;
   }
@@ -229,8 +231,15 @@ export async function holdCredits(params: {
   if (!params.idempotencyKey.startsWith("so:")) throw new Error("Invalid idempotency key");
   const existing = await prisma.creditTransaction.findUnique({
     where: { idempotencyKey: params.idempotencyKey },
+    select: { kind: true, batch: { select: { kind: true, workspace: { select: { ownerUser: { select: { accessPlan: true } } } } } } },
   });
-  if (existing) return { held: true, replayed: true, batchExternalId: undefined as string | undefined };
+  if (existing) {
+    if (existing.kind === "HOLD" && existing.batch?.kind === "MONTHLY") {
+      const ownerPlan = existing.batch.workspace?.ownerUser?.accessPlan;
+      if (!hasActiveCreditPlan(ownerPlan)) throw new Error("Credit plan is no longer active");
+    }
+    return { held: true, replayed: true, batchExternalId: undefined as string | undefined };
+  }
 
   const batch = await selectSpendableBatch(params.internalWorkspaceId, params.amount);
   if (!batch) throw new Error("Insufficient credits");
@@ -284,10 +293,25 @@ export async function finalizeCredits(params: {
     // Lock the batch so FINALIZE and REFUND cannot both pass their terminal
     // state checks concurrently for the same HOLD.
     await tx.creditBatch.update({ where: { id: hold.batchId }, data: { remaining: { increment: 0 } } });
+    const batch = await tx.creditBatch.findUnique({
+      where: { id: hold.batchId },
+      select: { kind: true, workspace: { select: { ownerUserId: true } } },
+    });
+    if (!batch) throw new Error("Credit batch not found");
     const refunded = await tx.creditTransaction.findUnique({ where: { idempotencyKey: refundKey(params.intent) } });
     if (refunded) throw new Error("Cannot finalize after refund");
     const existing = await tx.creditTransaction.findUnique({ where: { idempotencyKey: finalizeKey(params.intent) } });
     if (existing) return { finalized: true, replayed: true };
+    if (batch.kind === "MONTHLY") {
+      // Finalization is another spend boundary. Lock and re-check the owner
+      // after the batch lock so a refund that wins the race makes this path
+      // fail closed instead of settling an in-flight monthly HOLD.
+      const locked = await tx.user.updateMany({
+        where: { id: batch.workspace.ownerUserId, accessPlan: { in: ["LIFETIME", "MONTHLY"] } },
+        data: { freeAuditAllowanceRemaining: { increment: 0 } },
+      });
+      if (locked.count !== 1) throw new Error("Credit plan is no longer active");
+    }
     await tx.creditTransaction.create({
       data: {
         batchId: hold.batchId,

@@ -101,6 +101,7 @@ describe("Slice E — canonical credit engine", () => {
       if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 1 };
       return null;
     });
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ kind: "MONTHLY", workspace: { ownerUserId: "user-1" } });
     const ok = await finalizeCredits({ amount: 1, reference: "req:x", intent: "so:wsp_abc:dst_abc:opening-promo:aaaa" });
     expect(ok.finalized).toBe(true);
     const createData = mocks.prisma.creditTransaction.create.mock.calls[0][0].data;
@@ -111,6 +112,34 @@ describe("Slice E — canonical credit engine", () => {
       return null;
     });
     await expect(finalizeCredits({ amount: 1, reference: "req:x", intent: "so:wsp_abc:dst_abc:opening-promo:bbbb" })).rejects.toThrow("does not match");
+  });
+
+  it("refuses to finalize an in-flight monthly hold after plan revocation", async () => {
+    const { finalizeCredits } = await import("./batch-service");
+    mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
+      if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 1 };
+      return null;
+    });
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ kind: "MONTHLY", workspace: { ownerUserId: "user-1" } });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(finalizeCredits({ amount: 1, reference: "req:revoked", intent: "so:wsp_abc:dst_abc:revoked-finalize" })).rejects.toThrow("Credit plan is no longer active");
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps a finalized monthly replay idempotent after plan revocation", async () => {
+    const { finalizeCredits } = await import("./batch-service");
+    mocks.prisma.creditTransaction.findUnique.mockImplementation((args: { where: { idempotencyKey: string } }) => {
+      if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-monthly", amount: 1 };
+      if (args.where.idempotencyKey.endsWith(":finalize")) return { id: "finalize-1" };
+      return null;
+    });
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ kind: "MONTHLY", workspace: { ownerUserId: "user-1" } });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(finalizeCredits({ amount: 1, reference: "req:replay", intent: "so:wsp_abc:dst_abc:revoked-replay" })).resolves.toMatchObject({ finalized: true, replayed: true });
+    expect(mocks.prisma.user.updateMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
   });
 
   it("refunds only when a matching hold exists and is idempotent", async () => {
@@ -166,6 +195,22 @@ describe("Slice E — canonical credit engine", () => {
       idempotencyKey: "so:wsp_abc:dst_abc:revoked:aaaa",
     })).rejects.toThrow("Insufficient credits");
     expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses to replay a revoked monthly hold before provider work", async () => {
+    const { holdCredits } = await import("./batch-service");
+    mocks.prisma.creditTransaction.findUnique.mockResolvedValue({
+      kind: "HOLD",
+      batch: { kind: "MONTHLY", workspace: { ownerUser: { accessPlan: "NONE" } } },
+    });
+
+    await expect(holdCredits({
+      internalWorkspaceId: "ws-1",
+      amount: 1,
+      reference: "req:revoked-replay",
+      idempotencyKey: "so:wsp_abc:dst_abc:revoked-replay:hold",
+    })).rejects.toThrow("Credit plan is no longer active");
+    expect(mocks.prisma.creditBatch.findMany).not.toHaveBeenCalled();
   });
 
   it("ensures a monthly batch per period without double-grant", async () => {

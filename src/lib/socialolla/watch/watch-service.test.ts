@@ -3,6 +3,7 @@ import { providerDisabledEnabled, providerDisabledFixture, assertProviderDisable
 
 const mocks = vi.hoisted(() => {
   const prisma = {
+    user: { updateMany: vi.fn() },
     workspace: { findUnique: vi.fn(), create: vi.fn() },
     entitlementSnapshot: { findFirst: vi.fn() },
     creditBatch: { findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
@@ -49,6 +50,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     });
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ watchCreditsPerRequest: 1 });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH]);
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     const createdKeys = new Set<string>();
     mocks.prisma.creditTransaction.create.mockImplementation((args: { data: { idempotencyKey: string; amount: number } }) => {
       createdKeys.add(args.data.idempotencyKey);
@@ -59,6 +61,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
       return null;
     });
     mocks.prisma.creditBatch.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prisma.user.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.watchReport.create.mockResolvedValue({ id: "wr-1", externalId: "wpr_report000000000" });
     mocks.prisma.watchReport.update.mockResolvedValue({ id: "wr-1" });
@@ -66,7 +69,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
     mocks.prisma.watchReport.findUnique.mockResolvedValue(null);
     mocks.prisma.watchReport.findMany.mockResolvedValue([]);
     mocks.prisma.$transaction.mockImplementation(async (arg: unknown) => {
-      if (typeof arg === "function") return arg({ creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
+      if (typeof arg === "function") return arg({ user: mocks.prisma.user, workspace: mocks.prisma.workspace, creditBatch: mocks.prisma.creditBatch, creditTransaction: mocks.prisma.creditTransaction });
       if (Array.isArray(arg)) return [mocks.prisma.creditBatch.updateMany(), { id: "tx-hold" }];
       throw new Error("unexpected");
     });
@@ -128,7 +131,7 @@ describe("Slice D — credit-gated provider-disabled Watch", () => {
       if (args.where.idempotencyKey.endsWith(":hold")) return { id: "hold-1", batchId: "cb-watch", amount: 1 };
       return null;
     });
-    mocks.prisma.creditBatch.findUnique.mockResolvedValue(BATCH);
+    mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     const { createWatchService } = await import("./watch-service");
     await expect(
       createWatchService().run({ authUserId: "user-1", profileUrl: "https://www.instagram.com/fail/", platform: "instagram", confirmed: true }),
