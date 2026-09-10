@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the SocialOlla encrypted PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+RandomizedDelaySec=20m
+Unit=socialolla-database-backup.service
+
+[Install]
+WantedBy=timers.target
