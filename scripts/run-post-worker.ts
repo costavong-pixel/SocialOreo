@@ -1,13 +1,8 @@
-import { assertPostWorkerStagingRuntime, processDuePublishJobs } from "@/lib/socialolla/publishing/publish-worker";
+import { assertWorkerRuntimeReadiness } from "./worker-runtime-preflight";
 
 async function main(): Promise<void> {
-  assertPostWorkerStagingRuntime();
-  if (process.argv.includes("--dry-run")) {
-    process.stdout.write(`${JSON.stringify({ worker: "post", mode: "dry-run", providerDisabled: true })}\n`);
-    return;
-  }
-  const outcomes = await processDuePublishJobs({ maxJobs: Number(process.env.POST_WORKER_MAX_JOBS ?? "10") });
-  process.stdout.write(`${JSON.stringify({ worker: "post", outcomes })}\n`);
+  const result = assertWorkerRuntimeReadiness({ worker: "post", env: process.env, argv: process.argv });
+  process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
 void main().catch((error: unknown) => {
