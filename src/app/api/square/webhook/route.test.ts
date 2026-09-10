@@ -80,7 +80,7 @@ describe("POST /api/square/webhook", () => {
     configureSandbox();
     mockSettleSquareCheckout.mockResolvedValue({ status: "settled", creditsGranted: 10 });
     const body = JSON.stringify({
-      event_id: "event-payment-1", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
+      event_id: "event-payment-1", merchant_id: "sandbox-merchant-id", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
       data: { object: { payment: { id: "payment-1", order_id: "order-1", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1900, currency: "CAD" } } } },
     });
 
@@ -108,7 +108,7 @@ describe("POST /api/square/webhook", () => {
     configureSandbox();
     mockSettleSquareCheckout.mockResolvedValue({ status: "settled", creditsGranted: 1 });
     const body = JSON.stringify({
-      event_id: "event-payment-with-money", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
+      event_id: "event-payment-with-money", merchant_id: "sandbox-merchant-id", created_at: "2026-07-26T15:09:32.671Z", type: "payment.updated",
       data: { object: { payment: { id: "payment-with-money", order_id: "order-with-money", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", total_money: { amount: 1900, currency: "CAD" } } } },
     });
 
@@ -122,7 +122,7 @@ describe("POST /api/square/webhook", () => {
     configureSandbox();
     mockSettleSquareCheckout.mockResolvedValue({ status: "invalid", creditsGranted: 0 });
     const body = JSON.stringify({
-      event_id: "event-invalid-initial-money", type: "payment.updated",
+      event_id: "event-invalid-initial-money", merchant_id: "sandbox-merchant-id", type: "payment.updated",
       data: { object: { payment: { id: "payment-invalid-initial", order_id: "order-invalid-initial", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1800, currency: "CAD" } } } },
     });
 
@@ -130,6 +130,26 @@ describe("POST /api/square/webhook", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 0, duplicate: false, ignored: true });
+    expect(mockSettleSquareRenewal).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "a different merchant", merchant_id: "other-merchant" },
+    { label: "a missing merchant", merchant_id: undefined },
+  ])("fails closed for payment.updated with $label", async ({ merchant_id }) => {
+    configureSandbox();
+    const body = JSON.stringify({
+      event_id: `event-payment-merchant-${merchant_id ?? "missing"}`,
+      ...(merchant_id ? { merchant_id } : {}),
+      type: "payment.updated",
+      data: { object: { payment: { id: "payment-wrong-merchant", order_id: "order-wrong-merchant", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1900, currency: "CAD" } } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, ignored: true });
+    expect(mockSettleSquareCheckout).not.toHaveBeenCalled();
     expect(mockSettleSquareRenewal).not.toHaveBeenCalled();
   });
 
@@ -209,7 +229,7 @@ describe("POST /api/square/webhook", () => {
     configureSandbox();
     mockRecordSquareSubscription.mockResolvedValue({ userId: "user-1" });
     const body = JSON.stringify({
-      event_id: "event-subscription-1", created_at: "2026-07-26T15:09:32.671Z", type: "subscription.updated",
+      event_id: "event-subscription-1", merchant_id: "sandbox-merchant-id", created_at: "2026-07-26T15:09:32.671Z", type: "subscription.updated",
       data: { object: { subscription: { id: "subscription-1", customer_id: "customer-1", location_id: "location-1", plan_variation_id: "monthly-plan-variation", status: "CANCELED" } } },
     });
 
@@ -252,10 +272,31 @@ describe("POST /api/square/webhook", () => {
     expect(mockRecordSquareSubscription).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { eventType: "subscription.created", label: "a different merchant", merchant_id: "other-merchant" },
+    { eventType: "subscription.created", label: "a missing merchant", merchant_id: undefined },
+    { eventType: "subscription.updated", label: "a different merchant", merchant_id: "other-merchant" },
+    { eventType: "subscription.updated", label: "a missing merchant", merchant_id: undefined },
+  ])("fails closed for $eventType with $label", async ({ eventType, merchant_id }) => {
+    configureSandbox();
+    const body = JSON.stringify({
+      event_id: `event-subscription-merchant-${merchant_id ?? "missing"}`,
+      ...(merchant_id ? { merchant_id } : {}),
+      type: eventType,
+      data: { object: { subscription: { id: "subscription-wrong-merchant", customer_id: "customer-1", location_id: "location-1", plan_variation_id: "monthly-plan-variation", status: "ACTIVE" } } },
+    });
+
+    const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, ignored: true });
+    expect(mockRecordSquareSubscription).not.toHaveBeenCalled();
+  });
+
   it("returns HTTP 200 for a signed subscription.created event", async () => {
     configureSandbox();
     const body = JSON.stringify({
-      event_id: "event-subscription-created", created_at: "2026-07-26T15:09:32.671Z", type: "subscription.created",
+      event_id: "event-subscription-created", merchant_id: "sandbox-merchant-id", created_at: "2026-07-26T15:09:32.671Z", type: "subscription.created",
       data: { object: { subscription: { id: "subscription-1", customer_id: "customer-1", location_id: "location-1", plan_variation_id: "monthly-plan-variation", status: "ACTIVE" } } },
     });
 
@@ -277,7 +318,7 @@ describe("POST /api/square/webhook", () => {
   it("accepts a signed terminal CANCELED update for the lifecycle fallback", async () => {
     configureSandbox();
     const body = JSON.stringify({
-      event_id: "event-subscription-canceled", created_at: "2026-07-26T15:09:32.671Z", type: "subscription.updated",
+      event_id: "event-subscription-canceled", merchant_id: "sandbox-merchant-id", created_at: "2026-07-26T15:09:32.671Z", type: "subscription.updated",
       data: { object: { subscription: { id: "subscription-1", customer_id: "customer-1", location_id: "location-1", plan_variation_id: "monthly-plan-variation", status: "CANCELED", canceled_date: "2026-08-24" } } },
     });
 
@@ -314,7 +355,7 @@ describe("POST /api/square/webhook", () => {
       return deliveries === 1 ? { state: "processed", value: await work() } : { state: "completed" };
     });
     const body = JSON.stringify({
-      event_id: "event-invalid-duplicate", type: "payment.updated",
+      event_id: "event-invalid-duplicate", merchant_id: "sandbox-merchant-id", type: "payment.updated",
       data: { object: { payment: { id: "payment-invalid-duplicate", order_id: "order-invalid-duplicate", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1800, currency: "CAD" } } } },
     });
 
@@ -346,6 +387,7 @@ describe("POST /api/square/webhook", () => {
     mockSettleSquareRenewal.mockResolvedValue({ status: "settled", creditsGranted: 20 });
     const body = JSON.stringify({
       event_id: "event-renewal",
+      merchant_id: "sandbox-merchant-id",
       created_at: "2026-07-26T15:09:32.671Z",
       type: "payment.updated",
       data: { object: { payment: { id: "pay-renew", order_id: "order-renew", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 1900, currency: "CAD" } } } },
@@ -370,6 +412,7 @@ describe("POST /api/square/webhook", () => {
     mockSettleSquareRenewal.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
     const body = JSON.stringify({
       event_id: "event-unknown-amount",
+      merchant_id: "sandbox-merchant-id",
       created_at: "2026-07-26T15:09:32.671Z",
       type: "payment.updated",
       data: { object: { payment: { id: "pay-x", order_id: "order-x", customer_id: "customer-1", location_id: "location-1", status: "COMPLETED", amount_money: { amount: 2500, currency: "CAD" } } } },
