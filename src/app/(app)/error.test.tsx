@@ -28,8 +28,9 @@ describe("authenticated application error", () => {
     expect(await screen.findByText(/INC-1234567890/)).toBeInTheDocument();
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(request.method).toBe("POST");
-    expect(String(request.body)).toContain("safe-digest");
+    expect(String(request.body)).not.toContain("safe-digest");
     expect(String(request.body)).not.toContain("private customer error");
+    expect(String(request.body)).not.toContain("private customer error and stack");
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(reset).toHaveBeenCalledOnce();
   });

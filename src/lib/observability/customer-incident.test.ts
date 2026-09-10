@@ -16,16 +16,15 @@ import {
   CUSTOMER_ERROR_EVENT,
   CustomerIncidentIdentityError,
   customerIncidentRequestSchema,
-  normalizeCustomerIncidentRoute,
   recordCustomerIncident,
 } from "./customer-incident";
+import { normalizeCustomerIncidentRoute } from "./customer-incident-route";
 
 const input = {
   dbUserId: "db-user-1",
   authUserId: "auth0|private-subject",
   clientEventId: "9ed266a5-20e7-45f2-a808-8c5b52a7ff55",
   route: "/home",
-  digest: "next-safe-digest",
 };
 
 describe("customer incident recording", () => {
@@ -104,7 +103,6 @@ describe("customer incident recording", () => {
     expect(customerIncidentRequestSchema.safeParse({
       clientEventId: input.clientEventId,
       route: "/home",
-      digest: "safe",
       message: "raw customer error",
     }).success).toBe(false);
     expect(customerIncidentRequestSchema.safeParse({
@@ -113,11 +111,25 @@ describe("customer incident recording", () => {
     }).success).toBe(false);
   });
 
-  it("never persists client-provided digest", async () => {
-    await recordCustomerIncident({ ...input, digest: "next-safe-digest" });
+  it("never accepts client-provided digest at the request boundary", () => {
+    expect(customerIncidentRequestSchema.safeParse({
+      clientEventId: input.clientEventId,
+      route: "/home",
+      digest: "eyJ0b2tlbi1zaGFwZS1kYXRh",
+    }).success).toBe(false);
+  });
 
-    const payload = mocks.createEvent.mock.calls[0]?.[0].data.payload;
-    expect(payload).not.toHaveProperty("errorDigest");
+  it("re-normalizes route during persistence so bypassed values become /unknown", async () => {
+    const result = await recordCustomerIncident({ ...input, route: "/alice@example.com" });
+
+    expect(result).toMatchObject({ status: "created", incidentReference: expect.stringMatching(/^INC-[A-F0-9]{10}$/) });
+    expect(mocks.createEvent).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        payload: expect.objectContaining({
+          route: "/unknown",
+        }),
+      }),
+    }));
   });
 
   it("normalizes known and suspicious routes", () => {

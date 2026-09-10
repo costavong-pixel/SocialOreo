@@ -29,7 +29,6 @@ export async function POST(request: Request) {
       authUserId: resolution.authUserId,
       clientEventId: parsed.data.clientEventId,
       route: parsed.data.route,
-      digest: parsed.data.digest,
     });
 
     return NextResponse.json(
@@ -46,4 +45,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

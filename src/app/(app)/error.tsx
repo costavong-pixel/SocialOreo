@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { shellStateLabel } from "@/lib/socialolla/shell/shell";
-import { normalizeCustomerIncidentRoute } from "@/lib/observability/customer-incident";
+import { normalizeCustomerIncidentRoute } from "@/lib/observability/customer-incident-route";
 
 type IncidentState =
   | { status: "reporting" }
@@ -32,7 +32,6 @@ export default function M2AppError({ error, reset }: { error: Error & { digest?:
           body: JSON.stringify({
             clientEventId,
             route: normalizeCustomerIncidentRoute(window.location.pathname),
-            ...(error.digest ? { digest: error.digest } : {}),
           }),
           signal: controller.signal,
         });
@@ -52,7 +51,7 @@ export default function M2AppError({ error, reset }: { error: Error & { digest?:
       active = false;
       controller.abort();
     };
-  }, [clientEventId, error.digest]);
+  }, [clientEventId]);
 
   return (
     <div role="alert" className="grid min-h-[40dvh] place-items-center">

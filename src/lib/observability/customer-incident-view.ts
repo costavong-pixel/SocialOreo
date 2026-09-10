@@ -1,7 +1,7 @@
 import { accountSupportReference } from "@/lib/auth/support-reference";
 import { prisma } from "@/lib/db/prisma";
 import { CUSTOMER_ERROR_EVENT } from "@/lib/observability/customer-incident";
-import { normalizeCustomerIncidentRoute } from "@/lib/observability/customer-incident";
+import { normalizeCustomerIncidentRoute } from "@/lib/observability/customer-incident-route";
 
 export type CustomerIncidentLogRow = {
   id: string;

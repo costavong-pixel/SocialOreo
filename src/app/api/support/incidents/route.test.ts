@@ -23,7 +23,6 @@ import { POST } from "./route";
 const validBody = {
   clientEventId: "9ed266a5-20e7-45f2-a808-8c5b52a7ff55",
   route: "/home",
-  digest: "safe-digest",
 };
 
 function request(body: unknown) {
@@ -85,8 +84,14 @@ describe("customer incident API", () => {
       authUserId: "auth0|subject",
       clientEventId: validBody.clientEventId,
       route: "/home",
-      digest: "safe-digest",
     });
+  });
+
+  it("rejects client-provided raw token strings in the request contract", async () => {
+    const response = await POST(request({ ...validBody, digest: "eyJ0b2tlbi1zaGFwZS1kYXRh" }));
+
+    expect(response.status).toBe(400);
+    expect(mocks.recordIncident).not.toHaveBeenCalled();
   });
 
   it("returns an explicit unavailable response when persistence fails", async () => {
