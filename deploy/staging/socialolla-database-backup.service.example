@@ -1,0 +1,25 @@
+[Unit]
+Description=SocialOlla encrypted PostgreSQL backup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/socialolla/staging
+ConditionPathIsMountPoint=/mnt/socialolla-backups
+
+[Service]
+Type=oneshot
+User=socialolla
+Group=socialolla
+WorkingDirectory=/srv/socialolla/staging
+EnvironmentFile=/srv/socialolla/config/socialolla-staging.env
+EnvironmentFile=/srv/socialolla/config/socialolla-database-backup.env
+ExecStart=/usr/bin/npm run db:backup
+TimeoutStartSec=1800
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/mnt/socialolla-backups
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
