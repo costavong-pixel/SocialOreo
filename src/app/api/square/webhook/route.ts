@@ -77,7 +77,12 @@ export async function POST(request: Request) {
     const object = event.data.data?.object;
     if (event.data.type === "payment.updated") {
       const payment = paymentSchema.safeParse(object?.payment);
-      if (!payment.success || payment.data.status !== "COMPLETED" || payment.data.location_id !== config.locationId) {
+      if (
+        !payment.success ||
+        payment.data.status !== "COMPLETED" ||
+        payment.data.location_id !== config.locationId ||
+        event.data.merchant_id !== config.expectedMerchantId
+      ) {
         return { ignored: true };
       }
 
@@ -162,6 +167,7 @@ export async function POST(request: Request) {
       const subscription = subscriptionSchema.safeParse(object?.subscription);
       if (
         !subscription.success ||
+        event.data.merchant_id !== config.expectedMerchantId ||
         subscription.data.location_id !== config.locationId ||
         subscription.data.plan_variation_id !== config.monthlyPlanVariationId
       ) {
