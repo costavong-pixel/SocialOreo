@@ -1,6 +1,3 @@
-import { assertPostWorkerStagingRuntime } from "@/lib/socialolla/publishing/publish-worker";
-import { assertWatchWorkerProviderDisabledRuntime } from "@/lib/socialolla/watch/scheduled-watch";
-
 type Worker = "post" | "watch";
 
 type RuntimePreflightInput = {
@@ -18,9 +15,36 @@ export type WorkerReadinessResult = {
 };
 
 const DRY_RUN_FLAG = "--dry-run";
+
+function normalize(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function assertStaging(worker: Worker, env: Record<string, string | undefined>): void {
+  if (normalize(env.NODE_ENV) !== "staging" || normalize(env.SOCIALOLLA_ENV) !== "staging") {
+    throw new Error(`The ${worker === "post" ? "Post" : "Watch"} worker is staging-only.`);
+  }
+}
+
+function providerDisabledEnabled(env: Record<string, string | undefined>): boolean {
+  return normalize(env.SOCIALOLLA_PROVIDER_DISABLED) !== "false";
+}
+
+function assertProviderDisabled(worker: Worker, env: Record<string, string | undefined>): void {
+  if (!providerDisabledEnabled(env)) {
+    throw new Error(`The ${worker === "post" ? "Post" : "Watch"} worker requires provider-disabled mode.`);
+  }
+}
+
 const PRECHECKS: Record<Worker, (env: Record<string, string | undefined>) => void> = {
-  post: assertPostWorkerStagingRuntime,
-  watch: assertWatchWorkerProviderDisabledRuntime,
+  post: (env) => {
+    assertStaging("post", env);
+    assertProviderDisabled("post", env);
+  },
+  watch: (env) => {
+    assertStaging("watch", env);
+    assertProviderDisabled("watch", env);
+  },
 };
 const DRY_RUN_REQUIREMENT: Record<Worker, string> = {
   post: "The Post worker requires --dry-run.",

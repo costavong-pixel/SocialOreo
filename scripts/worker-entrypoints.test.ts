@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
@@ -11,7 +12,6 @@ const baseEnv = {
   NODE_ENV: "staging",
   SOCIALOLLA_ENV: "staging",
   SOCIALOLLA_PROVIDER_DISABLED: "true",
-  DATABASE_URL: "postgresql://",
 };
 
 type WorkerEntrypoint = "post" | "watch";
@@ -37,6 +37,17 @@ function runEntrypoint(script: string, args: string[] = [], env: Partial<Record<
 }
 
 describe("worker entrypoint preflight", () => {
+  it("keeps worker-runtime-preflight.ts side-effect-free", () => {
+    const preflightSource = readFileSync(path.join(repoRoot, "scripts", "worker-runtime-preflight.ts"), "utf8");
+    expect(preflightSource).not.toContain("assertPostWorkerStagingRuntime");
+    expect(preflightSource).not.toContain("assertWatchWorkerStagingRuntime");
+    expect(preflightSource).not.toContain("assertWatchWorkerProviderDisabledRuntime");
+    expect(preflightSource).not.toContain("@/lib/socialolla/publishing/publish-worker");
+    expect(preflightSource).not.toContain("@/lib/socialolla/watch/scheduled-watch");
+    expect(preflightSource).not.toContain("/prisma");
+    expect(preflightSource).not.toContain("provider-guard");
+  });
+
   it.each(entrypoints)("returns stable readiness for %s when safely invoked", ({ worker, script }) => {
     const result = runEntrypoint(script, ["--dry-run"], baseEnv);
 
