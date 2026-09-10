@@ -15,8 +15,11 @@ export const newAuditEventExternalId = () => randomExternalId("evt_");
  * same (workspace, destination, intent), so a refund always finds its HOLD.
  */
 export function intentKey(workspaceExternalId: string, destinationExternalId: string, intent: string): string {
-  const slug = intent.trim().replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 64) || "default";
-  const digest = createHash("sha256").update(`${workspaceExternalId}:${destinationExternalId}:${slug}`).digest("hex").slice(0, 12);
+  // Keep the readable prefix bounded, but hash the complete normalized intent
+  // so distinct long admin reasons cannot collapse into one replay identity.
+  const normalizedIntent = intent.trim().replace(/[^A-Za-z0-9_-]/g, "-") || "default";
+  const slug = normalizedIntent.slice(0, 64);
+  const digest = createHash("sha256").update(`${workspaceExternalId}:${destinationExternalId}:${normalizedIntent}`).digest("hex").slice(0, 12);
   return `so:${workspaceExternalId}:${destinationExternalId}:${slug}:${digest}`;
 }
 
@@ -386,39 +389,86 @@ export async function adjustCredits(params: {
   if (existing) return { adjusted: true, replayed: true };
 
   const batch = await selectSpendableBatch(params.internalWorkspaceId, Math.abs(params.amount));
-  if (!batch && params.amount < 0) throw new Error("Insufficient credits to remove");
 
-  const target = batch ?? (await prisma.creditBatch.create({
-    data: {
-      externalId: newCreditBatchExternalId(),
-      workspaceId: params.internalWorkspaceId,
-      kind: "PURCHASED",
-      amount: 0,
-      remaining: 0,
-      expiresAt: params.amount > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null,
-    },
-  }));
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Serialize all adjustments that target the same batch before the
+      // idempotency re-check. Without this lock, an exact concurrent replay
+      // can observe no ledger row, lose the guarded decrement race, and
+      // incorrectly return "Insufficient credits" instead of replaying the
+      // committed adjustment.
+      if (batch) {
+        await tx.creditBatch.update({
+          where: { id: batch.id },
+          data: { remaining: { increment: 0 } },
+        });
+      }
 
-  if (params.amount < 0) {
-    await prisma.creditBatch.update({
-      where: { id: target.id },
-      data: { remaining: { decrement: Math.abs(params.amount) } },
+      // Re-check inside the transaction so the balance mutation and the
+      // unique ledger insert share one rollback boundary. This also protects
+      // concurrent replays of the same signed adjustment key.
+      const replay = await tx.creditTransaction.findUnique({
+        where: { idempotencyKey: params.idempotencyKey },
+      });
+      if (replay) return { adjusted: true, replayed: true as const };
+
+      if (!batch && params.amount < 0) throw new Error("Insufficient credits to remove");
+
+      const target = batch ?? (await tx.creditBatch.create({
+        data: {
+          externalId: newCreditBatchExternalId(),
+          workspaceId: params.internalWorkspaceId,
+          kind: "PURCHASED",
+          amount: 0,
+          remaining: 0,
+          expiresAt: params.amount > 0 ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null,
+        },
+      }));
+
+      if (params.amount < 0) {
+        // The predicate and decrement execute as one database operation. A
+        // concurrent negative adjustment therefore either obtains the
+        // remaining balance or matches zero rows and rolls back, never
+        // producing a negative CreditBatch.remaining value.
+        const updated = await tx.creditBatch.updateMany({
+          where: { id: target.id, remaining: { gte: Math.abs(params.amount) } },
+          data: { remaining: { decrement: Math.abs(params.amount) } },
+        });
+        if (updated.count !== 1) throw new Error("Insufficient credits to remove");
+      } else {
+        await tx.creditBatch.update({
+          where: { id: target.id },
+          data: { remaining: { increment: params.amount }, amount: { increment: params.amount } },
+        });
+      }
+
+      await tx.creditTransaction.create({
+        data: {
+          batchId: target.id,
+          kind: "ADJUSTMENT",
+          amount: params.amount,
+          reference: params.reference,
+          idempotencyKey: params.idempotencyKey,
+        },
+      });
+      return { adjusted: true, replayed: false as const, batchExternalId: target.externalId };
     });
-  } else {
-    await prisma.creditBatch.update({
-      where: { id: target.id },
-      data: { remaining: { increment: params.amount }, amount: { increment: params.amount } },
-    });
+
+    if (!result.replayed && result.batchExternalId) {
+      await auditEvent(params.internalWorkspaceId, "credit.adjustment", { batch: result.batchExternalId, amount: params.amount, reason: params.reason, reference: params.reference }, params.actorAuthUserId);
+    }
+    return { adjusted: result.adjusted, replayed: result.replayed };
+  } catch (error) {
+    // A concurrent exact replay can lose the unique-key race after its
+    // transaction has already applied the guarded update. That transaction
+    // is rolled back; return the committed ledger row as an idempotent replay.
+    const code = error instanceof Error && "code" in error ? (error as { code?: string }).code : undefined;
+    if (code === "P2002") {
+      const replay = await prisma.creditTransaction.findUnique({
+        where: { idempotencyKey: params.idempotencyKey },
+      });
+      if (replay) return { adjusted: true, replayed: true };
+    }
+    throw error;
   }
-  await prisma.creditTransaction.create({
-    data: {
-      batchId: target.id,
-      kind: "ADJUSTMENT",
-      amount: params.amount,
-      reference: params.reference,
-      idempotencyKey: params.idempotencyKey,
-    },
-  });
-  await auditEvent(params.internalWorkspaceId, "credit.adjustment", { batch: target.externalId, amount: params.amount, reason: params.reason, reference: params.reference }, params.actorAuthUserId);
-  return { adjusted: true, replayed: false };
 }

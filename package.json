@@ -22,7 +22,7 @@
     "@auth0/nextjs-auth0": "^4.25.0",
     "@prisma/client": "^6.19.3",
     "@react-pdf/renderer": "^4.5.1",
-    "next": "16.2.12",
+    "next": "16.3.3",
     "openai": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -38,9 +38,9 @@
     "@types/react-dom": "latest",
     "autoprefixer": "10.5.4",
     "eslint": "latest",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.3",
     "jsdom": "latest",
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "prisma": "^6.19.3",
     "tailwindcss": "4.3.3",
     "tsx": "^4.23.0",
@@ -48,7 +48,7 @@
     "vitest": "latest"
   },
   "overrides": {
-    "postcss": "8.5.18",
-    "sharp": "0.35.0"
+    "postcss": "8.5.23",
+    "sharp": "0.35.4"
   }
 }

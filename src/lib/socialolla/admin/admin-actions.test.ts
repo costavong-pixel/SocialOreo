@@ -8,10 +8,15 @@ const mocks = vi.hoisted(() => {
     creditBatch: { findMany: vi.fn() },
     auditEvent: { create: vi.fn(), findMany: vi.fn() },
   };
-  return { prisma };
+  return { prisma, adjustCredits: vi.fn(), intentKey: vi.fn() };
 });
 
 vi.mock("@/lib/db/prisma", () => ({ prisma: mocks.prisma }));
+vi.mock("@/lib/socialolla/credits/batch-service", () => ({
+  adjustCredits: (...args: unknown[]) => mocks.adjustCredits(...args),
+  intentKey: (...args: unknown[]) => mocks.intentKey(...args),
+  newAuditEventExternalId: () => "evt-admin-test",
+}));
 
 const WORKSPACE_ROW = {
   id: "ws-internal-1",
@@ -32,6 +37,8 @@ describe("Slice H — admin plane guards and audit (SECURITY-08)", () => {
     mocks.prisma.creditBatch.findMany.mockResolvedValue([]);
     mocks.prisma.auditEvent.create.mockResolvedValue({ id: "evt-1" });
     mocks.prisma.auditEvent.findMany.mockResolvedValue([]);
+    mocks.adjustCredits.mockResolvedValue({ adjusted: true, replayed: false });
+    mocks.intentKey.mockImplementation((_workspace: string, _destination: string, intent: string) => intent);
   });
 
   it("adminInspectEntitlement throws for a non-admin caller", async () => {
@@ -73,5 +80,32 @@ describe("Slice H — admin plane guards and audit (SECURITY-08)", () => {
     await expect(adminSetLifetimePriceCents("user-2", "db-user-2", 9900)).rejects.toThrow("Admin role required");
     expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
     expect(process.env.SOCIALOLLA_LIFETIME_PRICE_CENTS).toBe("7900");
+  });
+
+  it("derives distinct idempotency identities for positive and negative amounts", async () => {
+    const { adminAdjustCredits } = await import("./admin-actions");
+
+    await adminAdjustCredits({
+      adminAuthUserId: "user-1",
+      adminDbUserId: "user-1",
+      targetAuthUserId: "target-1",
+      targetDbUserId: "target-1",
+      amount: 10,
+      reason: "same reason",
+    });
+    await adminAdjustCredits({
+      adminAuthUserId: "user-1",
+      adminDbUserId: "user-1",
+      targetAuthUserId: "target-1",
+      targetDbUserId: "target-1",
+      amount: -10,
+      reason: "same reason",
+    });
+
+    const positiveKey = mocks.adjustCredits.mock.calls[0][0].idempotencyKey;
+    const negativeKey = mocks.adjustCredits.mock.calls[1][0].idempotencyKey;
+    expect(positiveKey).toBe("adjustment:positive:10:user-1:same reason");
+    expect(negativeKey).toBe("adjustment:negative:10:user-1:same reason");
+    expect(positiveKey).not.toBe(negativeKey);
   });
 });

@@ -73,6 +73,15 @@ describe("Slice E — canonical credit engine", () => {
     expect(a.startsWith("so:wsp_abc:dst_abc:")).toBe(true);
   });
 
+  it("keeps distinct long normalized intents on distinct idempotency keys", async () => {
+    const { intentKey } = await import("./batch-service");
+    const prefix = "a".repeat(64);
+    const a = intentKey("wsp_abc", "admin", `${prefix}-reason-a`);
+    const b = intentKey("wsp_abc", "admin", `${prefix}-reason-b`);
+
+    expect(a).not.toBe(b);
+  });
+
   it("refuses a refund with no matching hold (no credit inflation)", async () => {
     const { refundCredits } = await import("./batch-service");
     mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);
@@ -292,6 +301,76 @@ describe("Slice E — canonical credit engine", () => {
     }));
     expect(mocks.prisma.creditBatch.update).toHaveBeenCalledWith(expect.objectContaining({
       data: { remaining: { increment: 5 }, amount: { increment: 5 } },
+    }));
+  });
+
+  it("replays an exact signed adjustment without touching the balance", async () => {
+    const { adjustCredits } = await import("./batch-service");
+    mocks.prisma.creditTransaction.findUnique.mockResolvedValue({ id: "tx-existing" });
+
+    await expect(adjustCredits({
+      internalWorkspaceId: "ws-1",
+      amount: -10,
+      reference: "admin-refund",
+      reason: "same signed adjustment",
+      actorAuthUserId: "admin-1",
+      idempotencyKey: "so:wsp_abc:admin:adjustment-negative-10-admin-1-same-signed-adjustment",
+    })).resolves.toEqual({ adjusted: true, replayed: true });
+
+    expect(mocks.prisma.creditBatch.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.creditBatch.updateMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.creditBatch.update).not.toHaveBeenCalled();
+    expect(mocks.prisma.creditTransaction.create).not.toHaveBeenCalled();
+    expect(mocks.prisma.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("atomically rejects one of two concurrent negative adjustments without underflow", async () => {
+    const { adjustCredits } = await import("./batch-service");
+    const target = { ...PURCHASED_ROW, remaining: 10 };
+    let remaining = 10;
+    mocks.prisma.creditBatch.findMany.mockResolvedValue([target]);
+    mocks.prisma.creditTransaction.findUnique.mockResolvedValue(null);
+    mocks.prisma.creditBatch.updateMany.mockImplementation(async ({
+      where,
+      data,
+    }: {
+      where: { remaining: { gte: number } };
+      data: { remaining: { decrement: number } };
+    }) => {
+      const required = where.remaining.gte;
+      if (remaining < required) return { count: 0 };
+      remaining -= data.remaining.decrement;
+      return { count: 1 };
+    });
+
+    const results = await Promise.allSettled([
+      adjustCredits({
+        internalWorkspaceId: "ws-1",
+        amount: -7,
+        reference: "admin-refund-a",
+        reason: "concurrent refund a",
+        actorAuthUserId: "admin-1",
+        idempotencyKey: "so:wsp_abc:admin:adjustment-negative-7-a",
+      }),
+      adjustCredits({
+        internalWorkspaceId: "ws-1",
+        amount: -7,
+        reference: "admin-refund-b",
+        reason: "concurrent refund b",
+        actorAuthUserId: "admin-1",
+        idempotencyKey: "so:wsp_abc:admin:adjustment-negative-7-b",
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toMatchObject({ message: "Insufficient credits to remove" });
+    expect(remaining).toBe(3);
+    expect(remaining).toBeGreaterThanOrEqual(0);
+    expect(mocks.prisma.creditBatch.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "cb-purchased", remaining: { gte: 7 } },
+      data: { remaining: { decrement: 7 } },
     }));
   });
 
