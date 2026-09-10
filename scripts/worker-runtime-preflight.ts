@@ -15,6 +15,10 @@ export type WorkerReadinessResult = {
 };
 
 const DRY_RUN_FLAG = "--dry-run";
+const DRY_RUN_REQUIREMENT: Record<Worker, string> = {
+  post: "The Post worker requires --dry-run.",
+  watch: "The Watch worker requires --dry-run.",
+};
 
 function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
@@ -46,10 +50,6 @@ const PRECHECKS: Record<Worker, (env: Record<string, string | undefined>) => voi
     assertProviderDisabled("watch", env);
   },
 };
-const DRY_RUN_REQUIREMENT: Record<Worker, string> = {
-  post: "The Post worker requires --dry-run.",
-  watch: "The Watch worker requires --dry-run.",
-};
 
 export function assertWorkerRuntimeReadiness({
   worker,
@@ -61,4 +61,8 @@ export function assertWorkerRuntimeReadiness({
     throw new Error(DRY_RUN_REQUIREMENT[worker]);
   }
   return { worker, mode: "dry-run", staging: true, providerDisabled: true, ready: true };
+}
+
+export function assertWorkerRuntimeEnvironment({ worker, env = process.env }: RuntimePreflightInput): void {
+  PRECHECKS[worker](env);
 }
