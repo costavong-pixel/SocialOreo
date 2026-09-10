@@ -114,8 +114,25 @@ describe("worker entrypoint preflight", () => {
     expect(preflightSource).not.toContain("assertWatchWorkerProviderDisabledRuntime");
     expect(preflightSource).not.toContain("@/lib/socialolla/publishing/publish-worker");
     expect(preflightSource).not.toContain("@/lib/socialolla/watch/scheduled-watch");
+    expect(preflightSource).not.toContain("@/lib/db/prisma");
+    expect(preflightSource).not.toContain("@/lib/providers/social/provider-router");
+    expect(preflightSource).not.toContain("@/lib/providers/social/provider-guard");
+    expect(preflightSource).not.toContain("createPublishingProvider");
+    expect(preflightSource).not.toContain("fetchSocialAudit");
     expect(preflightSource).not.toContain("/prisma");
     expect(preflightSource).not.toContain("provider-guard");
+  });
+
+  it("keeps real Post execution bound to the existing worker engine", () => {
+    const postSource = readFileSync(path.join(repoRoot, "scripts", "run-post-worker.ts"), "utf8");
+    expect(postSource).toContain('await import("@/lib/socialolla/publishing/publish-worker")');
+    expect(postSource).toContain("processDuePublishJobs");
+  });
+
+  it("keeps real Watch execution bound to the existing worker engine", () => {
+    const watchSource = readFileSync(path.join(repoRoot, "scripts", "run-watch-worker.ts"), "utf8");
+    expect(watchSource).toContain('await import("@/lib/socialolla/watch/scheduled-watch")');
+    expect(watchSource).toContain("processDueWatchCaptures");
   });
 
   it.each(entrypoints)("returns stable readiness for %s when safely invoked", ({ worker, script }) => {
@@ -221,6 +238,50 @@ describe("worker entrypoint execution", () => {
       },
     });
     expect(captured.stderr).toBe("");
+  });
+
+  it("rejects real Post mode before loading the engine outside staging", async () => {
+    const postMock = await import("@/lib/socialolla/publishing/publish-worker");
+
+    await expect(runPostWorker(["node", "run-post-worker"], {
+      ...baseEnv,
+      NODE_ENV: "production",
+    })).rejects.toThrow("staging-only");
+    expect(postMock.assertPostWorkerStagingRuntime).not.toHaveBeenCalled();
+    expect(postMock.processDuePublishJobs).not.toHaveBeenCalled();
+  });
+
+  it("rejects real Watch mode before loading the engine outside staging", async () => {
+    const watchMock = await import("@/lib/socialolla/watch/scheduled-watch");
+
+    await expect(runWatchWorker(["node", "run-watch-worker"], {
+      ...baseEnv,
+      SOCIALOLLA_ENV: "production",
+    })).rejects.toThrow("staging-only");
+    expect(watchMock.assertWatchWorkerProviderDisabledRuntime).not.toHaveBeenCalled();
+    expect(watchMock.processDueWatchCaptures).not.toHaveBeenCalled();
+  });
+
+  it("rejects real Post mode before loading the engine when provider calls are enabled", async () => {
+    const postMock = await import("@/lib/socialolla/publishing/publish-worker");
+
+    await expect(runPostWorker(["node", "run-post-worker"], {
+      ...baseEnv,
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    })).rejects.toThrow("provider-disabled");
+    expect(postMock.assertPostWorkerStagingRuntime).not.toHaveBeenCalled();
+    expect(postMock.processDuePublishJobs).not.toHaveBeenCalled();
+  });
+
+  it("rejects real Watch mode before loading the engine when provider calls are enabled", async () => {
+    const watchMock = await import("@/lib/socialolla/watch/scheduled-watch");
+
+    await expect(runWatchWorker(["node", "run-watch-worker"], {
+      ...baseEnv,
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    })).rejects.toThrow("provider-disabled");
+    expect(watchMock.assertWatchWorkerProviderDisabledRuntime).not.toHaveBeenCalled();
+    expect(watchMock.processDueWatchCaptures).not.toHaveBeenCalled();
   });
 
   it("keeps dry-run output distinct from real output", async () => {
