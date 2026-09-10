@@ -43,7 +43,6 @@ describe("customer incident admin projection", () => {
 
     expect(rows[0]).toMatchObject({
       incidentReference: "INC-1234567890",
-      accountEmail: "owner@example.com",
       accountCurrentRole: "USER",
       roleAtIncident: "ADMIN",
       route: "/home",
@@ -51,6 +50,8 @@ describe("customer incident admin projection", () => {
       environment: "staging",
       revision: "abc123",
     });
+    expect(rows[0]?.accountReference).toMatch(/^[A-F0-9]{10}$/);
     expect(JSON.stringify(rows[0])).not.toContain("private-subject");
+    expect(JSON.stringify(rows[0])).not.toContain("owner@example.com");
   });
 });

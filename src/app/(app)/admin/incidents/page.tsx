@@ -32,7 +32,7 @@ export default async function AdminIncidentsPage() {
           <thead className="border-b border-white/10 text-xs uppercase tracking-[0.1em] text-white/50">
             <tr>
               <th className="px-4 py-3">Time / incident</th>
-              <th className="px-4 py-3">Account</th>
+              <th className="px-4 py-3">Account reference</th>
               <th className="px-4 py-3">Role at incident</th>
               <th className="px-4 py-3">Route / digest</th>
               <th className="px-4 py-3">Environment / revision</th>
@@ -48,8 +48,8 @@ export default async function AdminIncidentsPage() {
                   <p className="mt-1 text-xs text-white/45">{incident.occurredAt.toISOString()}</p>
                 </td>
                 <td className="px-4 py-3">
-                  <p className="font-bold text-white/90">{incident.accountEmail ?? "Account not resolved"}</p>
-                  <p className="mt-1 text-xs text-white/45">Ref: {incident.accountReference} · current {roleLabel(incident.accountCurrentRole)}</p>
+                  <p className="font-bold text-white/90">Ref: {incident.accountReference}</p>
+                  <p className="mt-1 text-xs text-white/45">Current role: {roleLabel(incident.accountCurrentRole)}</p>
                 </td>
                 <td className="px-4 py-3 font-bold text-[var(--social-blue)]">{roleLabel(incident.roleAtIncident)}</td>
                 <td className="px-4 py-3 text-white/65">

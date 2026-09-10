@@ -6,7 +6,6 @@ export type CustomerIncidentLogRow = {
   id: string;
   occurredAt: Date;
   incidentReference: string;
-  accountEmail: string | null;
   accountCurrentRole: "USER" | "ADMIN" | null;
   roleAtIncident: "USER" | "ADMIN" | null;
   accountReference: string;
@@ -49,10 +48,10 @@ export async function listCustomerIncidentLog(limit = 100): Promise<CustomerInci
     events.map((event) => event.actorAuthUserId).filter((value): value is string => Boolean(value)),
   ));
   const users = subjects.length === 0
-    ? []
-    : await prisma.user.findMany({
+      ? []
+      : await prisma.user.findMany({
         where: { authUserId: { in: subjects } },
-        select: { id: true, authUserId: true, email: true, role: true },
+        select: { id: true, authUserId: true, role: true },
       });
   const userBySubject = new Map(users.map((user) => [user.authUserId, user]));
 
@@ -65,9 +64,8 @@ export async function listCustomerIncidentLog(limit = 100): Promise<CustomerInci
       id: event.id,
       occurredAt: event.occurredAt,
       incidentReference: storedReference && /^INC-[A-F0-9]{10}$/.test(storedReference)
-        ? storedReference
-        : `INC-${accountSupportReference(event.externalId)}`,
-      accountEmail: user?.email ?? null,
+      ? storedReference
+      : `INC-${accountSupportReference(event.externalId)}`,
       accountCurrentRole: user?.role ?? null,
       roleAtIncident: roleField(payload, "roleAtIncident"),
       accountReference: accountSupportReference(user?.id ?? event.actorAuthUserId ?? event.externalId),
