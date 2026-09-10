@@ -27,6 +27,7 @@ function runEntrypoint(script: string, args: string[] = [], env: Partial<Record<
     encoding: "utf8",
     timeout: 5000,
     windowsHide: true,
+    shell: process.platform === "win32",
   });
   return {
     status: result.status,
