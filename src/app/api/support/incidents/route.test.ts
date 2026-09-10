@@ -66,6 +66,15 @@ describe("customer incident API", () => {
     expect(mocks.recordIncident).not.toHaveBeenCalled();
   });
 
+  it("normalizes unknown customer paths into safe route labels before persistence", async () => {
+    const response = await POST(request({ ...validBody, route: "/alice@example.com" }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.recordIncident).toHaveBeenCalledWith(expect.objectContaining({
+      route: "/unknown",
+    }));
+  });
+
   it("returns the durable support reference", async () => {
     const response = await POST(request(validBody));
 
@@ -89,4 +98,3 @@ describe("customer incident API", () => {
     await expect(response.json()).resolves.toEqual({ error: "Incident reporting is temporarily unavailable." });
   });
 });
-

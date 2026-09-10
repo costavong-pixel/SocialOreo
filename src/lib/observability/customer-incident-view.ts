@@ -1,6 +1,7 @@
 import { accountSupportReference } from "@/lib/auth/support-reference";
 import { prisma } from "@/lib/db/prisma";
 import { CUSTOMER_ERROR_EVENT } from "@/lib/observability/customer-incident";
+import { normalizeCustomerIncidentRoute } from "@/lib/observability/customer-incident";
 
 export type CustomerIncidentLogRow = {
   id: string;
@@ -9,8 +10,7 @@ export type CustomerIncidentLogRow = {
   accountCurrentRole: "USER" | "ADMIN" | null;
   roleAtIncident: "USER" | "ADMIN" | null;
   accountReference: string;
-  route: string | null;
-  errorDigest: string | null;
+  route: string;
   environment: string | null;
   revision: string | null;
 };
@@ -69,8 +69,7 @@ export async function listCustomerIncidentLog(limit = 100): Promise<CustomerInci
       accountCurrentRole: user?.role ?? null,
       roleAtIncident: roleField(payload, "roleAtIncident"),
       accountReference: accountSupportReference(user?.id ?? event.actorAuthUserId ?? event.externalId),
-      route: stringField(payload, "route"),
-      errorDigest: stringField(payload, "errorDigest"),
+      route: normalizeCustomerIncidentRoute(stringField(payload, "route")),
       environment: stringField(payload, "environment"),
       revision: stringField(payload, "revision"),
     };

@@ -16,6 +16,7 @@ import {
   CUSTOMER_ERROR_EVENT,
   CustomerIncidentIdentityError,
   customerIncidentRequestSchema,
+  normalizeCustomerIncidentRoute,
   recordCustomerIncident,
 } from "./customer-incident";
 
@@ -64,7 +65,6 @@ describe("customer incident recording", () => {
         payload: {
           incidentReference: result.incidentReference,
           route: "/home",
-          errorDigest: "next-safe-digest",
           roleAtIncident: "ADMIN",
           environment: "staging",
           revision: "abc123",
@@ -109,14 +109,22 @@ describe("customer incident recording", () => {
     }).success).toBe(false);
     expect(customerIncidentRequestSchema.safeParse({
       clientEventId: input.clientEventId,
-      route: "/home?token=secret",
+      route: "home",
     }).success).toBe(false);
   });
 
-  it("drops a non-allow-listed framework digest instead of persisting it", async () => {
-    await recordCustomerIncident({ ...input, digest: "unsafe digest with spaces" });
+  it("never persists client-provided digest", async () => {
+    await recordCustomerIncident({ ...input, digest: "next-safe-digest" });
 
     const payload = mocks.createEvent.mock.calls[0]?.[0].data.payload;
     expect(payload).not.toHaveProperty("errorDigest");
+  });
+
+  it("normalizes known and suspicious routes", () => {
+    expect(normalizeCustomerIncidentRoute("/analysis/new")).toBe("/analysis");
+    expect(normalizeCustomerIncidentRoute("/dashboard")).toBe("/dashboard");
+    expect(normalizeCustomerIncidentRoute("/alice@example.com")).toBe("/unknown");
+    expect(normalizeCustomerIncidentRoute("/%61lice%40example.com")).toBe("/unknown");
+    expect(normalizeCustomerIncidentRoute("/admin/incidents")).toBe("/unknown");
   });
 });

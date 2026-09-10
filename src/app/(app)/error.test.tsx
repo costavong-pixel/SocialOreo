@@ -34,6 +34,26 @@ describe("authenticated application error", () => {
     expect(reset).toHaveBeenCalledOnce();
   });
 
+  it("normalizes route before reporting incidents", async () => {
+    const reset = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ incidentReference: "INC-1234567890" }),
+      { status: 201, headers: { "Content-Type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const error = new Error("runtime error");
+
+    window.history.replaceState({}, "", "/analysis/abc");
+    render(<M2AppError error={error} reset={reset} />);
+
+    const request = await waitFor(() => fetchMock.mock.calls[0]?.[1] as RequestInit);
+    const body = request?.body as BodyInit;
+
+    expect(String(body)).toContain('"route":"/analysis"');
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(reset).toHaveBeenCalledOnce();
+  });
+
   it("keeps retry available when incident reporting is unavailable", async () => {
     const reset = vi.fn();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));

@@ -6,9 +6,69 @@ import { prisma } from "@/lib/db/prisma";
 
 export const CUSTOMER_ERROR_EVENT = "CUSTOMER_ERROR_OBSERVED";
 
+export const CUSTOMER_INCIDENT_ROUTES = [
+  "/home",
+  "/dashboard",
+  "/posts",
+  "/watch",
+  "/calendar",
+  "/connections",
+  "/credits",
+  "/analysis",
+  "/assistant",
+  "/settings",
+  "/unknown",
+] as const;
+
+export type CustomerIncidentRoute = (typeof CUSTOMER_INCIDENT_ROUTES)[number];
+
+const UNKNOWN_CUSTOMER_INCIDENT_ROUTE: CustomerIncidentRoute = "/unknown";
+const SAFE_TOP_LEVEL_ROUTE_SEGMENTS = new Set(
+  CUSTOMER_INCIDENT_ROUTES.map((value) => value.slice(1)),
+);
+
+export function normalizeCustomerIncidentRoute(value: string | undefined | null): CustomerIncidentRoute {
+  if (typeof value !== "string") {
+    return UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+  }
+
+  const pathname = trimmed.split("?")[0];
+  if (!pathname.startsWith("/")) {
+    return UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+  }
+
+  const firstSegment = pathname.split("/")[1] ?? "";
+  if (!firstSegment) {
+    return UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+  }
+
+  let segment = firstSegment;
+  try {
+    segment = decodeURIComponent(firstSegment);
+  } catch {
+    return UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+  }
+
+  if (!/^[A-Za-z0-9._-]+$/.test(segment)) {
+    return UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+  }
+
+  return SAFE_TOP_LEVEL_ROUTE_SEGMENTS.has(segment)
+    ? (`/${segment}` as CustomerIncidentRoute)
+    : UNKNOWN_CUSTOMER_INCIDENT_ROUTE;
+}
+
 export const customerIncidentRequestSchema = z.object({
   clientEventId: z.string().uuid(),
-  route: z.string().trim().min(1).max(200).regex(/^\/[A-Za-z0-9/_\-.~%:@]*$/),
+  route: z.string().trim().min(1).max(200).refine(
+    (value) => value.startsWith("/"),
+    { message: "route must start with /" },
+  ).transform((value) => normalizeCustomerIncidentRoute(value) as CustomerIncidentRoute),
   digest: z.string().trim().max(256).optional(),
 }).strict();
 
@@ -44,10 +104,6 @@ function incidentDigest(authUserId: string, clientEventId: string): string {
     .digest("hex");
 }
 
-function safeErrorDigest(value: string | undefined): string | null {
-  return runtimeLabel(value);
-}
-
 function isUniqueConflict(error: unknown): boolean {
   return Boolean(
     error &&
@@ -77,7 +133,6 @@ export async function recordCustomerIncident(
 
   const digest = incidentDigest(input.authUserId, input.clientEventId);
   const incidentReference = `INC-${digest.slice(0, 10).toUpperCase()}`;
-  const errorDigest = safeErrorDigest(input.digest);
   const environment = runtimeLabel(env.SOCIALOLLA_ENV);
   const revision = runtimeLabel(
     env.SOCIALOLLA_REVISION ?? env.SOCIALOLLA_BUILD_REVISION ?? env.GIT_SHA,
@@ -93,7 +148,6 @@ export async function recordCustomerIncident(
         payload: {
           incidentReference,
           route: input.route,
-          ...(errorDigest ? { errorDigest } : {}),
           roleAtIncident: user.role,
           ...(environment ? { environment } : {}),
           ...(revision ? { revision } : {}),

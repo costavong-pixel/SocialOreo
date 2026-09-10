@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { shellStateLabel } from "@/lib/socialolla/shell/shell";
+import { normalizeCustomerIncidentRoute } from "@/lib/observability/customer-incident";
 
 type IncidentState =
   | { status: "reporting" }
@@ -30,7 +31,7 @@ export default function M2AppError({ error, reset }: { error: Error & { digest?:
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientEventId,
-            route: window.location.pathname,
+            route: normalizeCustomerIncidentRoute(window.location.pathname),
             ...(error.digest ? { digest: error.digest } : {}),
           }),
           signal: controller.signal,

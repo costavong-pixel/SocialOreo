@@ -34,7 +34,7 @@ export default async function AdminIncidentsPage() {
               <th className="px-4 py-3">Time / incident</th>
               <th className="px-4 py-3">Account reference</th>
               <th className="px-4 py-3">Role at incident</th>
-              <th className="px-4 py-3">Route / digest</th>
+              <th className="px-4 py-3">Route</th>
               <th className="px-4 py-3">Environment / revision</th>
             </tr>
           </thead>
@@ -53,8 +53,7 @@ export default async function AdminIncidentsPage() {
                 </td>
                 <td className="px-4 py-3 font-bold text-[var(--social-blue)]">{roleLabel(incident.roleAtIncident)}</td>
                 <td className="px-4 py-3 text-white/65">
-                  <p className="max-w-64 truncate">{incident.route ?? "Unavailable"}</p>
-                  <p className="mt-1 max-w-64 truncate text-xs text-white/45">{incident.errorDigest ?? "digest unavailable"}</p>
+                  <p className="max-w-64 truncate">{incident.route}</p>
                 </td>
                 <td className="px-4 py-3 text-white/65">
                   <p>{incident.environment ?? "Unavailable"}</p>

@@ -46,10 +46,10 @@ describe("customer incident admin projection", () => {
       accountCurrentRole: "USER",
       roleAtIncident: "ADMIN",
       route: "/home",
-      errorDigest: "digest-1",
       environment: "staging",
       revision: "abc123",
     });
+    expect(rows[0]).not.toHaveProperty("errorDigest");
     expect(rows[0]?.accountReference).toMatch(/^[A-F0-9]{10}$/);
     expect(JSON.stringify(rows[0])).not.toContain("private-subject");
     expect(JSON.stringify(rows[0])).not.toContain("owner@example.com");
