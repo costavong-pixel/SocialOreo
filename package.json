@@ -16,7 +16,9 @@
     "test:mutation-watch": "node scripts/watch-mutation-contract.mjs",
     "post-worker:once": "tsx scripts/run-post-worker.ts",
     "watch-worker:once": "tsx scripts/run-watch-worker.ts",
-    "staging:ensure-normal-user": "tsx scripts/ensure-staging-normal-user.ts"
+    "staging:ensure-normal-user": "tsx scripts/ensure-staging-normal-user.ts",
+    "db:backup": "node scripts/database-backup.mjs",
+    "db:restore:drill": "node scripts/database-restore-drill.mjs"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.25.0",
