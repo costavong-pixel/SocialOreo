@@ -18,7 +18,9 @@
     "watch-worker:once": "tsx scripts/run-watch-worker.ts",
     "staging:ensure-normal-user": "tsx scripts/ensure-staging-normal-user.ts",
     "db:backup": "node scripts/database-backup.mjs",
-    "db:restore:drill": "node scripts/database-restore-drill.mjs"
+    "db:restore:drill": "node scripts/database-restore-drill.mjs",
+    "production:release:preflight": "node scripts/production-release-preflight.mjs",
+    "production:rollback:verify": "node scripts/production-release-preflight.mjs --mode=rollback"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "^4.25.0",
