@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { basename, join, sep } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -18,8 +18,40 @@ const revisions = {
   candidate: "3333333333333333333333333333333333333333",
 };
 
-async function createRelease(releasesDirectory: string, revision: string, { manifest = true } = {}) {
-  const releaseDirectory = join(releasesDirectory, revision);
+const buildTimestamp = "2026-09-12T12:00:00.000Z";
+const releaseTimestamp = "2026-09-12T12-00-00.000Z";
+const releaseDirectoryNames = {
+  previous: `${revisions.previous}-${releaseTimestamp}`,
+  current: `${revisions.current}-${releaseTimestamp}`,
+  candidate: `${revisions.candidate}-${releaseTimestamp}`,
+};
+
+async function makeTreeReadOnly(directory: string) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  await Promise.all(entries.map(async (entry) => {
+    const child = join(directory, entry.name);
+    if (entry.isDirectory()) await makeTreeReadOnly(child);
+    if (entry.isFile()) await chmod(child, 0o444);
+  }));
+  await chmod(directory, 0o555);
+}
+
+async function makeTreeWritable(directory: string) {
+  await chmod(directory, 0o755);
+  const entries = await readdir(directory, { withFileTypes: true });
+  await Promise.all(entries.map(async (entry) => {
+    const child = join(directory, entry.name);
+    if (entry.isDirectory()) await makeTreeWritable(child);
+    if (entry.isFile()) await chmod(child, 0o644);
+  }));
+}
+
+async function createRelease(releasesDirectory: string, revision: string, {
+  manifest = true,
+  directoryName = `${revision}-${releaseTimestamp}`,
+  readOnly = true,
+} = {}) {
+  const releaseDirectory = join(releasesDirectory, directoryName);
   await mkdir(join(releaseDirectory, ".next"), { recursive: true });
   await mkdir(join(releaseDirectory, "node_modules"), { recursive: true });
   await writeFile(join(releaseDirectory, "package.json"), JSON.stringify({
@@ -42,9 +74,10 @@ async function createRelease(releasesDirectory: string, revision: string, { mani
     await writeFile(join(releaseDirectory, "release-manifest.json"), JSON.stringify({
       revision,
       environment: "production",
-      buildTimestamp: "2026-09-12T12:00:00.000Z",
+      buildTimestamp,
     }));
   }
+  if (readOnly) await makeTreeReadOnly(releaseDirectory);
   return releaseDirectory;
 }
 
@@ -53,14 +86,34 @@ async function createLayout() {
   temporaryDirectories.push(root);
   const releasesDirectory = join(root, "releases");
   await mkdir(releasesDirectory);
-  const previousDirectory = await createRelease(releasesDirectory, revisions.previous);
-  const currentDirectory = await createRelease(releasesDirectory, revisions.current);
-  const candidateDirectory = await createRelease(releasesDirectory, revisions.candidate);
+  const previousDirectory = await createRelease(releasesDirectory, revisions.previous, { directoryName: releaseDirectoryNames.previous });
+  const currentDirectory = await createRelease(releasesDirectory, revisions.current, { directoryName: releaseDirectoryNames.current });
+  const candidateDirectory = await createRelease(releasesDirectory, revisions.candidate, { directoryName: releaseDirectoryNames.candidate });
   const currentLink = join(root, "current");
   const previousLink = join(root, "previous");
   await symlink(previousDirectory, previousLink, "junction");
   await symlink(currentDirectory, currentLink, "junction");
-  return { root, releasesDirectory, previousDirectory, currentDirectory, candidateDirectory, currentLink, previousLink };
+  const sharedDirectory = join(root, "shared");
+  const productionEnvPath = join(sharedDirectory, "production.env");
+  await mkdir(sharedDirectory);
+  await writeFile(productionEnvPath, "SOCIALOLLA_ENV=production\n");
+  return {
+    root,
+    releasesDirectory,
+    previousDirectory,
+    currentDirectory,
+    candidateDirectory,
+    currentLink,
+    previousLink,
+    productionEnvPath,
+  };
+}
+
+async function createFirstDeployLayout() {
+  const layout = await createLayout();
+  await rm(layout.currentLink);
+  await rm(layout.previousLink);
+  return layout;
 }
 
 function healthResponse(payload: Record<string, unknown>) {
@@ -81,7 +134,8 @@ function productionInput(layout: Awaited<ReturnType<typeof createLayout>>) {
     nodeEnvironment: "production",
     providerDisabled: "true",
     revision: revisions.candidate,
-    buildTimestamp: "2026-09-12T12:00:00.000Z",
+    buildTimestamp,
+    productionEnvPath: layout.productionEnvPath,
   };
 }
 
@@ -105,6 +159,131 @@ describe("production release preflight", () => {
 
     expect(await realpath(layout.currentLink)).toBe(beforeCurrent);
     expect(await realpath(layout.previousLink)).toBe(beforePrevious);
+  });
+
+  it("supports an explicit FIRST_DEPLOY with no links and reports no rollback", async () => {
+    const layout = await createFirstDeployLayout();
+
+    await expect(runReleasePreflight({
+      ...productionInput(layout),
+      mode: "FIRST_DEPLOY",
+    })).resolves.toMatchObject({
+      mode: "first-deploy",
+      deploymentMode: "FIRST_DEPLOY",
+      ready: true,
+      currentRevision: null,
+      previousRevision: null,
+      rollbackAvailable: false,
+    });
+
+    await expect(lstat(layout.currentLink)).rejects.toThrow();
+    await expect(lstat(layout.previousLink)).rejects.toThrow();
+  });
+
+  it("supports the second release while the first release has no rollback target", async () => {
+    const layout = await createFirstDeployLayout();
+    await symlink(layout.currentDirectory, layout.currentLink, "junction");
+
+    await expect(runReleasePreflight({
+      ...productionInput(layout),
+      mode: "first-deploy",
+    })).resolves.toMatchObject({
+      mode: "first-deploy",
+      deploymentMode: "FIRST_DEPLOY",
+      currentRevision: revisions.current,
+      previousRevision: null,
+      rollbackAvailable: false,
+    });
+  });
+
+  it("retains strict current/previous validation for normal deployments", async () => {
+    const layout = await createLayout();
+    await rm(layout.previousLink);
+
+    await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/symbolic link|parent path/);
+  });
+
+  it("fails closed for an out-of-root previous target even in FIRST_DEPLOY mode", async () => {
+    const layout = await createFirstDeployLayout();
+    const outsideRelease = await createRelease(layout.root, revisions.previous);
+    await symlink(outsideRelease, layout.previousLink, "junction");
+
+    await expect(runReleasePreflight({
+      ...productionInput(layout),
+      mode: "FIRST_DEPLOY",
+    })).rejects.toThrow(/releases directory/);
+  });
+
+  it("fails closed for broken and non-symbolic previous targets", async () => {
+    const broken = await createFirstDeployLayout();
+    await symlink(broken.previousDirectory, broken.previousLink, "junction");
+    await makeTreeWritable(broken.previousDirectory);
+    await rm(broken.previousDirectory, { recursive: true, force: true });
+    await expect(runReleasePreflight({
+      ...productionInput(broken),
+      mode: "FIRST_DEPLOY",
+    })).rejects.toThrow(/target|release/);
+
+    const nonSymbolic = await createFirstDeployLayout();
+    await writeFile(nonSymbolic.previousLink, "not-a-symbolic-link\n");
+    await expect(runReleasePreflight({
+      ...productionInput(nonSymbolic),
+      mode: "FIRST_DEPLOY",
+    })).rejects.toThrow(/symbolic link|parent path/);
+  });
+
+  it("accepts timestamp-suffixed releases but validates the SHA and timestamp independently", async () => {
+    const layout = await createLayout();
+    const invalidRevision = `${"a".repeat(39)}z`;
+    const invalidDirectory = await createRelease(layout.releasesDirectory, invalidRevision);
+
+    await expect(runReleasePreflight({
+      ...productionInput(layout),
+      releaseDir: invalidDirectory,
+      revision: invalidRevision,
+    })).rejects.toThrow(/40-character hexadecimal/);
+
+    await expect(runReleasePreflight({
+      ...productionInput(layout),
+      revision: "a".repeat(39),
+    })).rejects.toThrow(/40-character hexadecimal/);
+
+    const mismatchedTimestamp = await createRelease(layout.releasesDirectory, revisions.candidate, {
+      directoryName: `${revisions.candidate}-2026-09-12T12-00-01.000Z`,
+    });
+    await expect(runReleasePreflight({
+      ...productionInput(layout),
+      releaseDir: mismatchedTimestamp,
+    })).rejects.toThrow(/timestamp/);
+  });
+
+  it("requires shared production.env outside releases and rejects embedded copies", async () => {
+    const missing = await createLayout();
+    await rm(missing.productionEnvPath);
+    await expect(runReleasePreflight(productionInput(missing))).rejects.toThrow(/production\.env/);
+
+    const embedded = await createLayout();
+    await makeTreeWritable(embedded.candidateDirectory);
+    await writeFile(join(embedded.candidateDirectory, "production.env"), "DATABASE_URL=not-used\n");
+    await expect(runReleasePreflight(productionInput(embedded))).rejects.toThrow(/must not contain production\.env/);
+
+    const inside = await createLayout();
+    await expect(runReleasePreflight({
+      ...productionInput(inside),
+      productionEnvPath: join(inside.candidateDirectory, "production.env"),
+    })).rejects.toThrow(/outside releases/);
+  });
+
+  it("fails closed on writable release content without changing its permissions", async () => {
+    const layout = await createLayout();
+    await makeTreeWritable(layout.candidateDirectory);
+    const writableMode = (await lstat(layout.candidateDirectory)).mode;
+
+    await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/read-only immutable/);
+    expect((await lstat(layout.candidateDirectory)).mode).toBe(writableMode);
+
+    const source = await readFile(join(process.cwd(), "scripts", "production-release-preflight.mjs"), "utf8");
+    expect(source).not.toMatch(/chmod\s*\(/);
   });
 
   it("fails closed when production identity or provider-disabled mode is unsafe", async () => {
@@ -131,6 +310,7 @@ describe("production release preflight", () => {
 
   it("rejects a candidate without a full release manifest or with mismatched identity", async () => {
     const layout = await createLayout();
+    await makeTreeWritable(layout.candidateDirectory);
     await rm(join(layout.candidateDirectory, "release-manifest.json"));
     await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/release-manifest/);
 
@@ -152,10 +332,12 @@ describe("production release preflight", () => {
 
   it("rejects empty build and dependency markers instead of reporting ready", async () => {
     const emptyBuild = await createLayout();
+    await makeTreeWritable(emptyBuild.candidateDirectory);
     await writeFile(join(emptyBuild.candidateDirectory, ".next", "BUILD_ID"), "\n");
     await expect(runReleasePreflight(productionInput(emptyBuild))).rejects.toThrow(/BUILD_ID.*empty/);
 
     const emptyDependencies = await createLayout();
+    await makeTreeWritable(emptyDependencies.candidateDirectory);
     await rm(join(emptyDependencies.candidateDirectory, "node_modules"), { recursive: true, force: true });
     await mkdir(join(emptyDependencies.candidateDirectory, "node_modules"));
     await expect(runReleasePreflight(productionInput(emptyDependencies))).rejects.toThrow(/dependency/);
@@ -164,6 +346,7 @@ describe("production release preflight", () => {
   it("requires a strict canonical UTC build timestamp", async () => {
     const layout = await createLayout();
     await expect(runReleasePreflight({ ...productionInput(layout), buildTimestamp: "2026-09-12" })).rejects.toThrow(/strict ISO-8601/);
+    await makeTreeWritable(layout.candidateDirectory);
     await writeFile(join(layout.candidateDirectory, "release-manifest.json"), JSON.stringify({
       revision: revisions.candidate,
       environment: "production",
@@ -186,6 +369,7 @@ describe("production release preflight", () => {
 
   it("rejects dependency path traversal and nested dependency symlinks", async () => {
     const traversal = await createLayout();
+    await makeTreeWritable(traversal.candidateDirectory);
     const packagePath = join(traversal.candidateDirectory, "package.json");
     const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
     packageJson.dependencies = { "../outside": "1.0.0" };
@@ -193,6 +377,7 @@ describe("production release preflight", () => {
     await expect(runReleasePreflight(productionInput(traversal))).rejects.toThrow(/invalid npm package name/);
 
     const symlinkedDependency = await createLayout();
+    await makeTreeWritable(symlinkedDependency.candidateDirectory);
     const outsideDependency = join(symlinkedDependency.root, "outside-next");
     await mkdir(outsideDependency);
     await writeFile(join(outsideDependency, "package.json"), JSON.stringify({ name: "next", version: "16.3.3" }));
@@ -213,18 +398,18 @@ describe("production release preflight", () => {
 
     await expect(runReleasePreflight({
       ...productionInput(layout),
-      releaseDir: join(releasesAlias, revisions.candidate),
+      releaseDir: join(releasesAlias, releaseDirectoryNames.candidate),
     })).rejects.toThrow(/non-symlink/);
 
     await rm(layout.currentLink);
-    await symlink(join(releasesAlias, revisions.current), layout.currentLink, "junction");
+    await symlink(join(releasesAlias, releaseDirectoryNames.current), layout.currentLink, "junction");
     await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/non-symlink/);
 
     const rollbackLayout = await createLayout();
     const rollbackAlias = join(rollbackLayout.root, "releases-alias");
     await symlink(rollbackLayout.releasesDirectory, rollbackAlias, "junction");
     await rm(rollbackLayout.currentLink);
-    await symlink(join(rollbackAlias, revisions.current), rollbackLayout.currentLink, "junction");
+    await symlink(join(rollbackAlias, releaseDirectoryNames.current), rollbackLayout.currentLink, "junction");
     await expect(runRollbackVerification({
       releasesDir: rollbackLayout.releasesDirectory,
       currentLink: rollbackLayout.currentLink,
@@ -246,18 +431,18 @@ describe("production release preflight", () => {
     await symlink(layout.root, rootAlias, "junction");
     await expect(runReleasePreflight({
       ...productionInput(layout),
-      releaseDir: join(rootAlias, "releases", revisions.candidate),
+      releaseDir: join(rootAlias, "releases", releaseDirectoryNames.candidate),
     })).rejects.toThrow(/non-symlink/);
 
     await rm(layout.currentLink);
-    await symlink(join(rootAlias, "releases", revisions.current), layout.currentLink, "junction");
+    await symlink(join(rootAlias, "releases", releaseDirectoryNames.current), layout.currentLink, "junction");
     await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/non-symlink/);
 
     const rollbackLayout = await createLayout();
     const rollbackRootAlias = join(rollbackLayout.root, "root-alias");
     await symlink(rollbackLayout.root, rollbackRootAlias, "junction");
     await rm(rollbackLayout.previousLink);
-    await symlink(join(rollbackRootAlias, "releases", revisions.previous), rollbackLayout.previousLink, "junction");
+    await symlink(join(rollbackRootAlias, "releases", releaseDirectoryNames.previous), rollbackLayout.previousLink, "junction");
     await expect(runRollbackVerification({
       releasesDir: rollbackLayout.releasesDirectory,
       currentLink: rollbackLayout.currentLink,
@@ -326,10 +511,12 @@ describe("production release preflight", () => {
       currentLink: traversedCurrentLink,
     })).rejects.toThrow(/parent traversal/);
 
-    await rm(layout.currentLink);
-    const traversedTarget = `${basename(layout.releasesDirectory)}${sep}..${sep}${basename(layout.releasesDirectory)}${sep}${revisions.current}`;
-    await symlink(traversedTarget, layout.currentLink, "dir");
-    await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/parent traversal/);
+    const traversedTarget = `${basename(layout.releasesDirectory)}${sep}..${sep}${basename(layout.releasesDirectory)}${sep}${releaseDirectoryNames.current}`;
+    if (process.platform !== "win32") {
+      await rm(layout.currentLink);
+      await symlink(traversedTarget, layout.currentLink, "dir");
+      await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/parent traversal/);
+    }
 
     const rollbackLayout = await createLayout();
     const traversedPreviousLink = `${rollbackLayout.root}${sep}..${sep}${basename(rollbackLayout.root)}${sep}previous`;
@@ -347,21 +534,23 @@ describe("production release preflight", () => {
       fetchImpl: vi.fn(),
     })).rejects.toThrow(/parent traversal/);
 
-    await rm(rollbackLayout.currentLink);
-    await symlink(traversedTarget, rollbackLayout.currentLink, "dir");
-    await expect(runRollbackVerification({
-      releasesDir: rollbackLayout.releasesDirectory,
-      currentLink: rollbackLayout.currentLink,
-      previousLink: rollbackLayout.previousLink,
-      socialollaEnvironment: "production",
-      nodeEnvironment: "production",
-      providerDisabled: "true",
-      expectedCurrentRevision: revisions.current,
-      expectedPreviousRevision: revisions.previous,
-      trustedProductionOrigin: "https://production.example.com",
-      applicationOrigin: "https://production.example.com",
-      fetchImpl: vi.fn(),
-    })).rejects.toThrow(/parent traversal/);
+    if (process.platform !== "win32") {
+      await rm(rollbackLayout.currentLink);
+      await symlink(traversedTarget, rollbackLayout.currentLink, "dir");
+      await expect(runRollbackVerification({
+        releasesDir: rollbackLayout.releasesDirectory,
+        currentLink: rollbackLayout.currentLink,
+        previousLink: rollbackLayout.previousLink,
+        socialollaEnvironment: "production",
+        nodeEnvironment: "production",
+        providerDisabled: "true",
+        expectedCurrentRevision: revisions.current,
+        expectedPreviousRevision: revisions.previous,
+        trustedProductionOrigin: "https://production.example.com",
+        applicationOrigin: "https://production.example.com",
+        fetchImpl: vi.fn(),
+      })).rejects.toThrow(/parent traversal/);
+    }
   });
 });
 
@@ -524,6 +713,7 @@ describe("production rollback verification", () => {
     })).rejects.toThrow(/redirected/);
 
     const missingManifest = await createLayout();
+    await makeTreeWritable(missingManifest.currentDirectory);
     await rm(join(missingManifest.currentDirectory, "release-manifest.json"));
     await expect(runRollbackVerification({
       ...input,
@@ -540,6 +730,7 @@ describe("production rollback verification", () => {
     })).rejects.toThrow(/release-manifest/);
 
     const missingPreviousManifest = await createLayout();
+    await makeTreeWritable(missingPreviousManifest.previousDirectory);
     await rm(join(missingPreviousManifest.previousDirectory, "release-manifest.json"));
     await expect(runRollbackVerification({
       ...input,
