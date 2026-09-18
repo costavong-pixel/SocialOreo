@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { lstat, readFile, readlink, realpath } from "node:fs/promises";
+import { lstat, readFile, readdir, readlink, realpath } from "node:fs/promises";
 import { isIP } from "node:net";
 import { basename, dirname, isAbsolute, parse, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,9 @@ const HEALTH_SERVICE_NAME = "socialolla";
 const MANIFEST_NAME = "release-manifest.json";
 const UTC_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})\.(\d{3})Z$/;
 const NPM_PACKAGE_NAME = /^(?:[a-z0-9][a-z0-9._~-]*|@[a-z0-9][a-z0-9._~-]*\/[a-z0-9][a-z0-9._~-]*)$/;
+const RELEASE_PREFLIGHT_MODE = "release-preflight";
+const FIRST_DEPLOY_MODE = "first-deploy";
+const DEFAULT_PRODUCTION_ENV_PATH = "/srv/socialolla/shared/production.env";
 
 function normalize(value) {
   return String(value ?? "").trim();
@@ -55,6 +58,44 @@ function assertRevision(value, name = "release revision") {
   return revision;
 }
 
+function assertReleaseDirectoryTimestamp(value, name) {
+  const rawTimestamp = exactString(value, name);
+  const pathSafeMatch = /^(\d{4}-\d{2}-\d{2}T\d{2})-(\d{2})-(\d{2})(\.\d{3}Z)$/.exec(rawTimestamp);
+  const isoMatch = /^(\d{4}-\d{2}-\d{2}T\d{2}):(\d{2}):(\d{2})(\.\d{3}Z)$/.exec(rawTimestamp);
+  const compactMatch = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(\.\d{3})?Z$/.exec(rawTimestamp);
+  let buildTimestamp;
+
+  if (pathSafeMatch) {
+    buildTimestamp = `${pathSafeMatch[1]}:${pathSafeMatch[2]}:${pathSafeMatch[3]}${pathSafeMatch[4]}`;
+  } else if (isoMatch) {
+    buildTimestamp = `${isoMatch[1]}:${isoMatch[2]}:${isoMatch[3]}${isoMatch[4]}`;
+  } else if (compactMatch) {
+    buildTimestamp = `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}T${compactMatch[4]}:${compactMatch[5]}:${compactMatch[6]}${compactMatch[7] ?? ".000"}Z`;
+  } else {
+    throw new Error(`${name} must be a UTC timestamp suffix (YYYY-MM-DDTHH-mm-ss.sssZ).`);
+  }
+
+  return {
+    token: rawTimestamp,
+    buildTimestamp: assertBuildTimestamp(buildTimestamp, name),
+  };
+}
+
+function parseReleaseDirectoryName(value, name) {
+  const releaseName = exactString(value, name);
+  const match = /^([0-9a-f]{40})(?:-(.+))?$/i.exec(releaseName);
+  if (!match) {
+    throw new Error(`${name} must contain an exact 40-character hexadecimal Git SHA with an optional UTC timestamp suffix.`);
+  }
+
+  const revision = assertRevision(match[1], `${name} SHA`);
+  const timestamp = match[2] ? assertReleaseDirectoryTimestamp(match[2], `${name} timestamp`) : null;
+  return {
+    revision,
+    directoryTimestamp: timestamp?.buildTimestamp ?? null,
+  };
+}
+
 function assertProductionEnvironment({ socialollaEnvironment, nodeEnvironment }) {
   if (socialollaEnvironment !== PRODUCTION) {
     throw new Error("SOCIALOLLA_ENV must be production for this preflight.");
@@ -76,20 +117,19 @@ function assertDirectoryChild(target, root, label) {
 
 function assertReleasePath(target, releasesRoot, label) {
   assertDirectoryChild(target, releasesRoot, label);
-  const revision = assertRevision(basename(target), `${label} name`);
-  return revision;
+  return parseReleaseDirectoryName(basename(target), `${label} name`);
 }
 
 async function assertLexicalReleasePath(target, releasesRoot, label) {
   const lexicalTarget = resolve(target);
-  const revision = assertRevision(basename(lexicalTarget), `${label} name`);
+  const identity = parseReleaseDirectoryName(basename(lexicalTarget), `${label} name`);
   const lexicalParent = dirname(lexicalTarget);
   await requireDirectory(lexicalParent, `${label} parent`, { rejectSymlink: true });
   const canonicalParent = await realpath(lexicalParent).catch(() => null);
   if (!canonicalParent || relative(releasesRoot, canonicalParent) !== "") {
     throw new Error(`${label} must be a direct child of the releases directory.`);
   }
-  return revision;
+  return identity;
 }
 
 async function requireDirectory(path, label, { rejectSymlink = false } = {}) {
@@ -99,7 +139,7 @@ async function requireDirectory(path, label, { rejectSymlink = false } = {}) {
   }
 }
 
-async function assertNoSymlinkComponents(value, label, { allowFinalSymlink = false } = {}) {
+async function assertNoSymlinkComponents(value, label, { allowFinalSymlink = false, allowMissingFinal = false } = {}) {
   const normalized = assertNoParentTraversal(value, label);
   if (!isAbsolute(normalized)) throw new Error(`${label} must be an absolute path.`);
   const root = parse(normalized).root;
@@ -109,6 +149,7 @@ async function assertNoSymlinkComponents(value, label, { allowFinalSymlink = fal
     current = current.endsWith("\\") || current.endsWith("/") ? `${current}${component}` : `${current}${sep}${component}`;
     const metadata = await lstat(current).catch(() => null);
     const isFinal = index === components.length - 1;
+    if (!metadata && allowMissingFinal && isFinal) continue;
     if (!metadata || (!metadata.isDirectory() && !(allowFinalSymlink && isFinal && metadata.isSymbolicLink())) || (metadata.isSymbolicLink() && !(allowFinalSymlink && isFinal))) {
       const suffix = allowFinalSymlink ? " parent path" : " path";
       throw new Error(`${label}${suffix} must contain only existing non-symlink directories.`);
@@ -119,6 +160,32 @@ async function assertNoSymlinkComponents(value, label, { allowFinalSymlink = fal
 async function requireFile(path, label) {
   const metadata = await lstat(path).catch(() => null);
   if (!metadata?.isFile() || metadata.isSymbolicLink()) throw new Error(`${label} must be an existing regular file.`);
+}
+
+async function assertReadOnlyReleaseTree(releaseDirectory, label) {
+  const pending = [releaseDirectory];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    const metadata = await lstat(current).catch(() => null);
+    if (!metadata) throw new Error(`${label} could not be inspected for immutability.`);
+    if (metadata.isSymbolicLink()) throw new Error(`${label} must not contain symlinks.`);
+    if (!metadata.isDirectory() && !metadata.isFile()) throw new Error(`${label} contains an unsupported filesystem entry.`);
+    if ((metadata.mode & 0o222) !== 0) {
+      throw new Error(`${label} must satisfy the read-only immutable release contract.`);
+    }
+    if (basename(current).toLowerCase() === "production.env") {
+      throw new Error(`${label} must not contain production.env; keep it outside releases.`);
+    }
+    if (metadata.isDirectory()) {
+      let entries;
+      try {
+        entries = await readdir(current, { withFileTypes: true });
+      } catch {
+        throw new Error(`${label} could not be read for immutability verification.`);
+      }
+      for (const entry of entries) pending.push(resolve(current, entry.name));
+    }
+  }
 }
 
 async function readJson(path, label) {
@@ -225,8 +292,10 @@ async function inspectReleaseDirectory(releaseDirectory, releasesRoot, label, { 
   const lexicalRevision = await assertLexicalReleasePath(lexicalDirectory, releasesRoot, label);
   const canonicalDirectory = await realpath(lexicalDirectory).catch(() => null);
   if (!canonicalDirectory) throw new Error(`${label} could not be resolved.`);
-  const revision = assertReleasePath(canonicalDirectory, releasesRoot, label);
-  if (revision !== lexicalRevision) throw new Error(`${label} path identity does not match its canonical release.`);
+  const canonicalIdentity = assertReleasePath(canonicalDirectory, releasesRoot, label);
+  if (canonicalIdentity.revision !== lexicalRevision.revision || canonicalIdentity.directoryTimestamp !== lexicalRevision.directoryTimestamp) {
+    throw new Error(`${label} path identity does not match its canonical release.`);
+  }
   await requireDirectory(lexicalDirectory, label, { rejectSymlink: true });
   await requireFile(resolve(canonicalDirectory, "package.json"), `${label} package.json`);
   const packageJson = await readJson(resolve(canonicalDirectory, "package.json"), `${label} package.json`);
@@ -252,14 +321,29 @@ async function inspectReleaseDirectory(releaseDirectory, releasesRoot, label, { 
   }
 
   const manifest = await readReleaseManifest(canonicalDirectory, { required: requireManifest });
-  if (manifest && manifest.revision !== revision) {
+  if (manifest && manifest.revision !== canonicalIdentity.revision) {
     throw new Error(`${label} manifest revision does not match its directory name.`);
   }
   if (manifest && manifest.environment !== PRODUCTION) {
     throw new Error(`${label} manifest environment must be production.`);
   }
+  if (manifest && canonicalIdentity.directoryTimestamp && manifest.buildTimestamp !== canonicalIdentity.directoryTimestamp) {
+    throw new Error(`${label} directory timestamp does not match its release manifest timestamp.`);
+  }
 
-  return { revision, path: canonicalDirectory, buildId, manifest };
+  const embeddedProductionEnv = resolve(canonicalDirectory, "production.env");
+  if (await lstat(embeddedProductionEnv).catch(() => null)) {
+    throw new Error(`${label} must not contain production.env; keep it outside releases.`);
+  }
+  await assertReadOnlyReleaseTree(canonicalDirectory, label);
+
+  return {
+    revision: canonicalIdentity.revision,
+    path: canonicalDirectory,
+    buildId,
+    manifest,
+    directoryTimestamp: canonicalIdentity.directoryTimestamp,
+  };
 }
 
 async function inspectReleaseLink(linkPath, releasesRoot, label, { requireManifest = false } = {}) {
@@ -275,6 +359,54 @@ async function inspectReleaseLink(linkPath, releasesRoot, label, { requireManife
   await assertNoSymlinkComponents(rawTargetPath, `${label} target`);
   const lexicalTarget = resolve(dirname(linkPath), rawTarget);
   return inspectReleaseDirectory(lexicalTarget, releasesRoot, `${label} target`, { requireManifest });
+}
+
+async function inspectOptionalReleaseLink(linkPath, releasesRoot, label, { requireManifest = false } = {}) {
+  let metadata;
+  try {
+    metadata = await lstat(linkPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw new Error(`${label} could not be inspected.`);
+  }
+  if (!metadata) return null;
+  return inspectReleaseLink(linkPath, releasesRoot, label, { requireManifest });
+}
+
+function isContainedPath(target, root) {
+  const relativeTarget = relative(root, target);
+  return relativeTarget === "" || (!relativeTarget.startsWith(`..${sep}`) && relativeTarget !== ".." && !isAbsolute(relativeTarget));
+}
+
+async function assertExternalProductionEnvironment(productionEnvPath, releasesRoot) {
+  const configuredPath = requireAbsolute(productionEnvPath, "SOCIALOLLA_PRODUCTION_ENV");
+  if (basename(configuredPath) !== "production.env") {
+    throw new Error("SOCIALOLLA_PRODUCTION_ENV must end with production.env.");
+  }
+
+  const parent = dirname(configuredPath);
+  await assertNoSymlinkComponents(parent, "SOCIALOLLA_PRODUCTION_ENV parent");
+  const canonicalParent = await realpath(parent).catch(() => null);
+  if (isContainedPath(configuredPath, releasesRoot) || (canonicalParent && isContainedPath(canonicalParent, releasesRoot))) {
+    throw new Error("SOCIALOLLA_PRODUCTION_ENV must be outside releases.");
+  }
+
+  await requireFile(configuredPath, "SOCIALOLLA_PRODUCTION_ENV production.env");
+  const canonicalPath = await realpath(configuredPath).catch(() => null);
+  if (!canonicalPath || isContainedPath(canonicalPath, releasesRoot)) {
+    throw new Error("SOCIALOLLA_PRODUCTION_ENV must resolve outside releases.");
+  }
+}
+
+function configuredProductionEnvironmentPath(input, releasesRoot) {
+  return input.productionEnvPath ?? resolve(dirname(releasesRoot), "shared", "production.env");
+}
+
+function configuredReleaseMode(value) {
+  const mode = normalizeLower(value ?? RELEASE_PREFLIGHT_MODE).replaceAll("_", "-");
+  if (mode === RELEASE_PREFLIGHT_MODE || mode === "preflight" || mode === "normal") return RELEASE_PREFLIGHT_MODE;
+  if (mode === FIRST_DEPLOY_MODE || mode === "first") return FIRST_DEPLOY_MODE;
+  throw new Error("Mode must be release-preflight, first-deploy, or rollback-verification.");
 }
 
 function buildLayout(input) {
@@ -295,6 +427,7 @@ function configuredRevision(input) {
  * replace, remove, or chmod any path and never invokes the application engine.
  */
 export async function runReleasePreflight(input) {
+  const mode = configuredReleaseMode(input.mode);
   assertProductionEnvironment({
     socialollaEnvironment: input.socialollaEnvironment,
     nodeEnvironment: input.nodeEnvironment,
@@ -303,12 +436,14 @@ export async function runReleasePreflight(input) {
 
   const { releasesRoot, currentLink, previousLink } = buildLayout(input);
   await assertNoSymlinkComponents(input.releasesDir, "SOCIALOLLA_RELEASES_DIR");
-  await assertNoSymlinkComponents(input.currentLink, "SOCIALOLLA_CURRENT_LINK", { allowFinalSymlink: true });
-  await assertNoSymlinkComponents(input.previousLink, "SOCIALOLLA_PREVIOUS_LINK", { allowFinalSymlink: true });
+  const allowMissingLinks = mode === FIRST_DEPLOY_MODE;
+  await assertNoSymlinkComponents(input.currentLink, "SOCIALOLLA_CURRENT_LINK", { allowFinalSymlink: true, allowMissingFinal: allowMissingLinks });
+  await assertNoSymlinkComponents(input.previousLink, "SOCIALOLLA_PREVIOUS_LINK", { allowFinalSymlink: true, allowMissingFinal: allowMissingLinks });
   await requireDirectory(releasesRoot, "SOCIALOLLA_RELEASES_DIR", { rejectSymlink: true });
   const canonicalRoot = await realpath(releasesRoot).catch(() => null);
   if (!canonicalRoot) throw new Error("SOCIALOLLA_RELEASES_DIR could not be resolved.");
   await requireDirectory(canonicalRoot, "SOCIALOLLA_RELEASES_DIR");
+  await assertExternalProductionEnvironment(configuredProductionEnvironmentPath(input, releasesRoot), canonicalRoot);
 
   const candidatePath = requireAbsolute(input.releaseDir, "SOCIALOLLA_RELEASE_DIR");
   const candidate = await inspectReleaseDirectory(candidatePath, canonicalRoot, "Candidate release", { requireManifest: true });
@@ -318,6 +453,37 @@ export async function runReleasePreflight(input) {
   }
   if (candidate.manifest.buildTimestamp !== assertBuildTimestamp(input.buildTimestamp, "SOCIALOLLA_BUILD_TIMESTAMP")) {
     throw new Error("SOCIALOLLA_BUILD_TIMESTAMP does not match the release manifest.");
+  }
+
+  if (mode === FIRST_DEPLOY_MODE) {
+    const current = await inspectOptionalReleaseLink(currentLink, canonicalRoot, "SOCIALOLLA_CURRENT_LINK");
+    const previous = await inspectOptionalReleaseLink(previousLink, canonicalRoot, "SOCIALOLLA_PREVIOUS_LINK");
+    if (previous && !current) {
+      throw new Error("FIRST_DEPLOY requires current when previous is present.");
+    }
+    if (current && previous) {
+      throw new Error("FIRST_DEPLOY is only valid before rollback is available; use normal release preflight.");
+    }
+    if (current && candidate.revision === current.revision) {
+      throw new Error("Candidate release must differ from the active current release.");
+    }
+
+    return {
+      mode: FIRST_DEPLOY_MODE,
+      deploymentMode: "FIRST_DEPLOY",
+      ready: true,
+      environment: PRODUCTION,
+      providerDisabled: true,
+      candidateRevision: candidate.revision,
+      currentRevision: current?.revision ?? null,
+      previousRevision: null,
+      candidateBuildTimestamp: candidate.manifest.buildTimestamp,
+      rollbackAvailable: false,
+      releaseImmutable: true,
+      symlinksUnchanged: true,
+      databaseAction: "not-performed",
+      providerAction: "not-performed",
+    };
   }
 
   const current = await inspectReleaseLink(currentLink, canonicalRoot, "SOCIALOLLA_CURRENT_LINK");
@@ -330,7 +496,8 @@ export async function runReleasePreflight(input) {
   }
 
   return {
-    mode: "release-preflight",
+    mode: RELEASE_PREFLIGHT_MODE,
+    deploymentMode: "NORMAL_DEPLOYMENT",
     ready: true,
     environment: PRODUCTION,
     providerDisabled: true,
@@ -338,6 +505,8 @@ export async function runReleasePreflight(input) {
     currentRevision: current.revision,
     previousRevision: previous.revision,
     candidateBuildTimestamp: candidate.manifest.buildTimestamp,
+    rollbackAvailable: true,
+    releaseImmutable: true,
     symlinksUnchanged: true,
     databaseAction: "not-performed",
     providerAction: "not-performed",
@@ -430,6 +599,7 @@ export async function runRollbackVerification(input) {
   const canonicalRoot = await realpath(releasesRoot).catch(() => null);
   if (!canonicalRoot) throw new Error("SOCIALOLLA_RELEASES_DIR could not be resolved.");
   await requireDirectory(canonicalRoot, "SOCIALOLLA_RELEASES_DIR");
+  await assertExternalProductionEnvironment(configuredProductionEnvironmentPath(input, releasesRoot), canonicalRoot);
 
   const expectedCurrent = assertRevision(input.expectedCurrentRevision, "EXPECTED_CURRENT_REVISION");
   const expectedPrevious = assertRevision(input.expectedPreviousRevision, "EXPECTED_PREVIOUS_REVISION");
@@ -461,6 +631,8 @@ export async function runRollbackVerification(input) {
     providerDisabled: true,
     currentRevision: current.revision,
     previousRevision: previous.revision,
+    rollbackAvailable: true,
+    releaseImmutable: true,
     healthRevision,
     healthBuildTimestamp,
     symlinksUnchanged: true,
@@ -495,7 +667,7 @@ function parseArguments(argv) {
 }
 
 function inputFromEnvironment(options) {
-  const mode = normalizeLower(options.mode ?? process.env.SOCIALOLLA_RELEASE_CHECK_MODE ?? "release-preflight");
+  const mode = normalizeLower(options.mode ?? process.env.SOCIALOLLA_RELEASE_CHECK_MODE ?? RELEASE_PREFLIGHT_MODE).replaceAll("_", "-");
   const input = {
     releasesDir: options["releases-dir"] ?? process.env.SOCIALOLLA_RELEASES_DIR,
     currentLink: options["current-link"] ?? process.env.SOCIALOLLA_CURRENT_LINK,
@@ -503,13 +675,27 @@ function inputFromEnvironment(options) {
     socialollaEnvironment: process.env.SOCIALOLLA_ENV,
     nodeEnvironment: process.env.NODE_ENV,
     providerDisabled: process.env.SOCIALOLLA_PROVIDER_DISABLED,
+    productionEnvPath: DEFAULT_PRODUCTION_ENV_PATH,
   };
 
-  if (mode === "release-preflight" || mode === "preflight") {
+  if (mode === RELEASE_PREFLIGHT_MODE || mode === "preflight" || mode === "normal") {
     return {
-      mode: "release-preflight",
+      mode: RELEASE_PREFLIGHT_MODE,
       input: {
         ...input,
+        mode: RELEASE_PREFLIGHT_MODE,
+        releaseDir: options["release-dir"] ?? process.env.SOCIALOLLA_RELEASE_DIR,
+        revision: options.revision ?? process.env.SOCIALOLLA_REVISION ?? process.env.RELEASE_GIT_SHA,
+        buildTimestamp: options["build-timestamp"] ?? process.env.SOCIALOLLA_BUILD_TIMESTAMP ?? process.env.RELEASE_BUILD_TIMESTAMP,
+      },
+    };
+  }
+  if (mode === FIRST_DEPLOY_MODE || mode === "first") {
+    return {
+      mode: FIRST_DEPLOY_MODE,
+      input: {
+        ...input,
+        mode: FIRST_DEPLOY_MODE,
         releaseDir: options["release-dir"] ?? process.env.SOCIALOLLA_RELEASE_DIR,
         revision: options.revision ?? process.env.SOCIALOLLA_REVISION ?? process.env.RELEASE_GIT_SHA,
         buildTimestamp: options["build-timestamp"] ?? process.env.SOCIALOLLA_BUILD_TIMESTAMP ?? process.env.RELEASE_BUILD_TIMESTAMP,
@@ -521,6 +707,7 @@ function inputFromEnvironment(options) {
       mode: "rollback-verification",
       input: {
         ...input,
+        mode: "rollback-verification",
         expectedCurrentRevision: options["expected-current"] ?? process.env.SOCIALOLLA_EXPECTED_CURRENT_REVISION,
         expectedPreviousRevision: options["expected-previous"] ?? process.env.SOCIALOLLA_EXPECTED_PREVIOUS_REVISION,
         trustedProductionOrigin: process.env.SOCIALOLLA_PRODUCTION_ORIGIN,
@@ -528,12 +715,12 @@ function inputFromEnvironment(options) {
       },
     };
   }
-  throw new Error("Mode must be release-preflight or rollback-verification.");
+  throw new Error("Mode must be release-preflight, first-deploy, or rollback-verification.");
 }
 
 async function main() {
   const configured = inputFromEnvironment(parseArguments(process.argv));
-  const result = configured.mode === "release-preflight"
+  const result = configured.mode === RELEASE_PREFLIGHT_MODE || configured.mode === FIRST_DEPLOY_MODE
     ? await runReleasePreflight(configured.input)
     : await runRollbackVerification(configured.input);
   console.log(JSON.stringify(result));
@@ -541,8 +728,10 @@ async function main() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   main().catch((error) => {
-    const mode = process.argv.includes("--mode=rollback") || process.argv.includes("--mode=rollback-verification")
+    const mode = process.argv.some((argument) => ["--mode=rollback", "--mode=rollback-verification"].includes(argument))
       ? "ROLLBACK_VERIFICATION"
+      : process.argv.some((argument) => ["--mode=first-deploy", "--mode=first_deploy", "--mode=first"].includes(argument))
+        ? "FIRST_DEPLOY"
       : "RELEASE_PREFLIGHT";
     console.error(`${mode}_FAILED=${error instanceof Error ? error.message : "unknown error"}`);
     process.exitCode = 1;
