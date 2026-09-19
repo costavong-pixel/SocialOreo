@@ -19,24 +19,41 @@ Post/Watch engines are not changed by this procedure.
 
 ## Release layout
 
-Use one application root with immutable, full-SHA release directories:
+Use one application root with immutable, timestamped release directories and a
+separate shared environment file:
 
 ```text
 /srv/socialolla/
   releases/
-    <40-character-git-sha>/
+    <40-character-git-sha>-<UTC-timestamp>/
       package.json
       node_modules/
       .next/BUILD_ID
       release-manifest.json
-  current -> releases/<active-sha>
-  previous -> releases/<rollback-sha>
+  shared/
+    production.env
+  current -> releases/<active-release-directory>
+  previous -> releases/<rollback-release-directory>
 ```
 
-`current` and `previous` must be symbolic links to different direct children of
-`releases`. Do not point either link outside that directory. A release manifest
-is created as part of the separately authorized release-build process and has
-this shape; it contains no credentials:
+The release directory prefix is independently validated as an exact,
+case-insensitive 40-character hexadecimal Git SHA. The recommended path-safe
+timestamp suffix is `YYYY-MM-DDTHH-mm-ss.sssZ`; it must identify the same instant
+as the manifest `buildTimestamp`. A legacy bare `<sha>` directory remains
+accepted for an existing release, but new releases should use the timestamped
+form. `current` and `previous` must be symbolic links to different direct
+children of `releases` whenever rollback is available. Do not point either link
+outside that directory.
+
+`/srv/socialolla/shared/production.env` must be an existing regular file outside
+`releases`. A release must not contain `production.env` at its root or below;
+the preflight never reads or prints its contents. A release is immutable before
+qualification: every entry must be a regular file or directory with no write
+permission bits and no symlinks. The preflight verifies that contract using
+read-only filesystem inspection; it never changes permissions.
+
+A release manifest is created as part of the separately authorized
+release-build process and has this shape; it contains no credentials:
 
 ```json
 {
@@ -49,22 +66,23 @@ this shape; it contains no credentials:
 The candidate preflight also requires the release to identify itself as the
 SocialOlla application, contain a non-empty Next build marker, and contain its
 own production dependencies. It compares the manifest revision and timestamp
-with the deployment environment values, so an operator cannot accidentally
-preflight one release while naming another.
+with the deployment environment values and timestamped directory name, so an
+operator cannot accidentally preflight one release while naming another.
 
 ## Candidate preflight
 
 Run this from the candidate release environment after the separately approved
 build has completed. All configured paths must be absolute, must not contain
 `..` parent-traversal components, and must not traverse symlinked parent
-components:
+components. The command uses the fixed shared secret path
+`/srv/socialolla/shared/production.env`:
 
 ```text
 NODE_ENV=production \
 SOCIALOLLA_ENV=production \
 SOCIALOLLA_PROVIDER_DISABLED=true \
 SOCIALOLLA_RELEASES_DIR=/srv/socialolla/releases \
-SOCIALOLLA_RELEASE_DIR=/srv/socialolla/releases/<candidate-sha> \
+SOCIALOLLA_RELEASE_DIR=/srv/socialolla/releases/<candidate-sha>-<timestamp> \
 SOCIALOLLA_CURRENT_LINK=/srv/socialolla/current \
 SOCIALOLLA_PREVIOUS_LINK=/srv/socialolla/previous \
 SOCIALOLLA_REVISION=<candidate-sha> \
@@ -74,8 +92,9 @@ npm run production:release:preflight
 
 The command succeeds only when:
 
-1. the candidate is a non-symlink directory named by a full 40-character Git
-   SHA directly below `releases`;
+1. the candidate is a non-symlink, read-only directory named by a full
+   40-character Git SHA with an optional validated timestamp suffix directly
+   below `releases`;
 2. its manifest, `package.json`, `node_modules`, and `.next/BUILD_ID` are
    present and consistent;
 3. production identity is explicit and provider-disabled mode is still in
@@ -84,8 +103,61 @@ The command succeeds only when:
    directories; and
 5. the candidate differs from `current`.
 
-The JSON result deliberately reports only release identities and action status.
-It reports `databaseAction` and `providerAction` as `not-performed`.
+The normal JSON result reports `rollbackAvailable=true` only after the strict
+current/previous pair passes. It deliberately reports only release identities
+and action status; `databaseAction` and `providerAction` are
+`not-performed`.
+
+## First deployment transition (`FIRST_DEPLOY`)
+
+The first deployment has no rollback target. Run the explicit bootstrap mode
+against the timestamped candidate while both `current` and `previous` are
+absent:
+
+```text
+NODE_ENV=production \
+SOCIALOLLA_ENV=production \
+SOCIALOLLA_PROVIDER_DISABLED=true \
+SOCIALOLLA_RELEASE_CHECK_MODE=FIRST_DEPLOY \
+SOCIALOLLA_RELEASES_DIR=/srv/socialolla/releases \
+SOCIALOLLA_RELEASE_DIR=/srv/socialolla/releases/<first-sha>-<timestamp> \
+SOCIALOLLA_CURRENT_LINK=/srv/socialolla/current \
+SOCIALOLLA_PREVIOUS_LINK=/srv/socialolla/previous \
+SOCIALOLLA_REVISION=<first-sha> \
+SOCIALOLLA_BUILD_TIMESTAMP=<manifest-timestamp> \
+npm run production:release:preflight
+```
+
+The successful result has `mode=first-deploy`,
+`deploymentMode=FIRST_DEPLOY`, and `rollbackAvailable=false`. It does not
+create either link. Under the separate production cutover authorization, point
+`current` to the first release and leave `previous` absent. Do not claim an
+application rollback path at this stage; database recovery remains separate.
+
+`FIRST_DEPLOY` also covers the second-release preparation while the first
+release is active and `previous` is still absent. It validates the active
+`current` target, rejects any invalid/broken/out-of-root `previous` target, and
+continues to report `rollbackAvailable=false`.
+
+## Second deployment transition and rollback availability
+
+For the second release, run `FIRST_DEPLOY` against the second candidate while
+the first release is `current` and `previous` is absent. Under the separate
+cutover authorization, atomically promote the second release and set
+`previous` to the first release. After the switch, the required state is:
+
+```text
+current  -> releases/<second-sha>-<timestamp>
+previous -> releases/<first-sha>-<timestamp>
+```
+
+The two links must be distinct, read-only release directories. Run the
+post-switch verifier with the exact pair and the public health check. Only
+after that verifier passes is `rollbackAvailable=true`; an owner-authorized
+rollback may then point `current` back to `previous` while preserving both
+release directories. From the third release onward, use the normal candidate
+preflight, which keeps strict validation of both links and refuses an absent or
+invalid `previous` target.
 
 ## Atomic cutover sequence
 
