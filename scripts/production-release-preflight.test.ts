@@ -9,7 +9,10 @@ import { runReleasePreflight, runRollbackVerification } from "./production-relea
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  for (const directory of temporaryDirectories.splice(0)) {
+    await makeTreeWritable(directory).catch(() => {});
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 const revisions = {
