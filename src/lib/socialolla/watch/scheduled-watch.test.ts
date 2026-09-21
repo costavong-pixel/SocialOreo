@@ -132,6 +132,34 @@ describe("scheduled Watch execution", () => {
     }));
   });
 
+  it("requires an exact production Watch worker gate and a separate gate for live providers", async () => {
+    const { assertWatchWorkerRuntime } = await import("./scheduled-watch");
+    const production = { NODE_ENV: "production", SOCIALOLLA_ENV: "production" };
+
+    expect(() => assertWatchWorkerRuntime(production)).toThrow("SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED");
+    expect(() => assertWatchWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED: "true",
+    })).not.toThrow();
+    expect(() => assertWatchWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    })).toThrow("explicit production Watch provider gate");
+    expect(() => assertWatchWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED: "true",
+      SOCIALOLLA_PRODUCTION_WATCH_PROVIDER_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    })).not.toThrow();
+    expect(() => assertWatchWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED: "true",
+      SOCIALOLLA_PRODUCTION_WATCH_PROVIDER_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "FALSE",
+    })).toThrow("explicit production Watch provider gate");
+  });
+
   it("enforces the effective active-monitor entitlement while allowing an active monitor to be updated", async () => {
     mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "LIFETIME" });
     mocks.prisma.publicProfileMonitor.count.mockResolvedValue(1);

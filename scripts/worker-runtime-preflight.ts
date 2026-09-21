@@ -9,8 +9,8 @@ type RuntimePreflightInput = {
 export type WorkerReadinessResult = {
   worker: Worker;
   mode: "dry-run";
-  staging: true;
-  providerDisabled: true;
+  staging: boolean;
+  providerDisabled: boolean;
   ready: true;
 };
 
@@ -20,14 +20,21 @@ const DRY_RUN_REQUIREMENT: Record<Worker, string> = {
   watch: "The Watch worker requires --dry-run.",
 };
 
+const PRODUCTION_ENABLE_FLAG: Record<Worker, string> = {
+  post: "SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED",
+  watch: "SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED",
+};
+
 function normalize(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function assertStaging(worker: Worker, env: Record<string, string | undefined>): void {
-  if (normalize(env.NODE_ENV) !== "staging" || normalize(env.SOCIALOLLA_ENV) !== "staging") {
-    throw new Error(`The ${worker === "post" ? "Post" : "Watch"} worker is staging-only.`);
-  }
+function isStagingRuntime(env: Record<string, string | undefined>): boolean {
+  return normalize(env.NODE_ENV) === "staging" && normalize(env.SOCIALOLLA_ENV) === "staging";
+}
+
+function isExactProductionRuntime(env: Record<string, string | undefined>): boolean {
+  return env.NODE_ENV === "production" && env.SOCIALOLLA_ENV === "production";
 }
 
 function providerDisabledEnabled(env: Record<string, string | undefined>): boolean {
@@ -40,29 +47,36 @@ function assertProviderDisabled(worker: Worker, env: Record<string, string | und
   }
 }
 
-const PRECHECKS: Record<Worker, (env: Record<string, string | undefined>) => void> = {
-  post: (env) => {
-    assertStaging("post", env);
-    assertProviderDisabled("post", env);
-  },
-  watch: (env) => {
-    assertStaging("watch", env);
-    assertProviderDisabled("watch", env);
-  },
-};
+function assertWorkerRuntime(worker: Worker, env: Record<string, string | undefined>): "staging" | "production" {
+  const label = worker === "post" ? "Post" : "Watch";
+  if (isExactProductionRuntime(env)) {
+    const enableFlag = PRODUCTION_ENABLE_FLAG[worker];
+    if (env[enableFlag] !== "true") {
+      throw new Error(`${enableFlag}=true is required to run the production ${label} worker.`);
+    }
+    return "production";
+  }
+
+  if (isStagingRuntime(env)) {
+    assertProviderDisabled(worker, env);
+    return "staging";
+  }
+
+  throw new Error(`The ${label} worker is staging-only unless the exact production runtime and explicit production worker gate are configured.`);
+}
 
 export function assertWorkerRuntimeReadiness({
   worker,
   env = process.env,
   argv = process.argv,
 }: RuntimePreflightInput): WorkerReadinessResult {
-  PRECHECKS[worker](env);
+  const runtime = assertWorkerRuntime(worker, env);
   if (!Array.isArray(argv) || !argv.includes(DRY_RUN_FLAG)) {
     throw new Error(DRY_RUN_REQUIREMENT[worker]);
   }
-  return { worker, mode: "dry-run", staging: true, providerDisabled: true, ready: true };
+  return { worker, mode: "dry-run", staging: runtime === "staging", providerDisabled: providerDisabledEnabled(env), ready: true };
 }
 
 export function assertWorkerRuntimeEnvironment({ worker, env = process.env }: RuntimePreflightInput): void {
-  PRECHECKS[worker](env);
+  assertWorkerRuntime(worker, env);
 }

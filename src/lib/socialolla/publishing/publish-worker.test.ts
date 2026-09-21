@@ -70,6 +70,33 @@ describe("publish worker ambiguity boundary", () => {
     expect(() => assertPostWorkerStagingRuntime({ NODE_ENV: "staging", SOCIALOLLA_ENV: "staging", SOCIALOLLA_PROVIDER_DISABLED: "false" })).toThrow("provider-disabled");
   });
 
+  it("requires an exact production Post worker gate without coupling it to the provider gate", async () => {
+    const { assertPostWorkerRuntime } = await import("./publish-worker");
+    const production = { NODE_ENV: "production", SOCIALOLLA_ENV: "production" };
+
+    expect(() => assertPostWorkerRuntime(production)).toThrow("SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED");
+    expect(() => assertPostWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: " true",
+    })).toThrow("SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED");
+    expect(() => assertPostWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "true",
+    })).not.toThrow();
+    expect(() => assertPostWorkerRuntime({
+      ...production,
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true",
+      SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    })).not.toThrow();
+    expect(() => assertPostWorkerRuntime({
+      ...production,
+      NODE_ENV: "Production",
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true",
+    })).toThrow("staging-only");
+  });
+
   it("reconciles generic errors after an enabled provider boundary", async () => {
     const { processDuePublishJobs } = await import("./publish-worker");
     const outcomes = await processDuePublishJobs({ maxJobs: 1, workerId: "worker-1" });

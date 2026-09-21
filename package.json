@@ -30,6 +30,7 @@
     "openai": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "tsx": "^4.23.0",
     "zod": "latest"
   },
   "devDependencies": {
@@ -47,7 +48,6 @@
     "postcss": "8.5.23",
     "prisma": "^6.19.3",
     "tailwindcss": "4.3.3",
-    "tsx": "^4.23.0",
     "typescript": "latest",
     "vitest": "latest"
   },

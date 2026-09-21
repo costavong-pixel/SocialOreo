@@ -1,0 +1,24 @@
+[Unit]
+Description=SocialOlla production web application
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/socialolla/current/.next/BUILD_ID
+
+[Service]
+Type=simple
+User=socialolla
+Group=socialolla
+WorkingDirectory=/srv/socialolla/current
+EnvironmentFile=/srv/socialolla/shared/production.env
+Environment=NODE_ENV=production
+Environment=SOCIALOLLA_ENV=production
+ExecStart=/usr/bin/env NODE_ENV=production SOCIALOLLA_ENV=production /usr/bin/npm run start
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=60s
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -15,6 +15,7 @@ const NPM_PACKAGE_NAME = /^(?:[a-z0-9][a-z0-9._~-]*|@[a-z0-9][a-z0-9._~-]*\/[a-z
 const RELEASE_PREFLIGHT_MODE = "release-preflight";
 const FIRST_DEPLOY_MODE = "first-deploy";
 const DEFAULT_PRODUCTION_ENV_PATH = "/srv/socialolla/shared/production.env";
+const WORKER_RUNTIME = Object.freeze({ packageName: "tsx", binaryName: "tsx" });
 
 function normalize(value) {
   return String(value ?? "").trim();
@@ -162,13 +163,16 @@ async function requireFile(path, label) {
   if (!metadata?.isFile() || metadata.isSymbolicLink()) throw new Error(`${label} must be an existing regular file.`);
 }
 
-async function assertReadOnlyReleaseTree(releaseDirectory, label) {
+async function assertReadOnlyReleaseTree(releaseDirectory, nodeModulesDirectory, label) {
   const pending = [releaseDirectory];
   while (pending.length > 0) {
     const current = pending.pop();
     const metadata = await lstat(current).catch(() => null);
     if (!metadata) throw new Error(`${label} could not be inspected for immutability.`);
-    if (metadata.isSymbolicLink()) throw new Error(`${label} must not contain symlinks.`);
+    if (metadata.isSymbolicLink()) {
+      await assertAllowedNpmBinSymlink(current, nodeModulesDirectory, label);
+      continue;
+    }
     if (!metadata.isDirectory() && !metadata.isFile()) throw new Error(`${label} contains an unsupported filesystem entry.`);
     if ((metadata.mode & 0o222) !== 0) {
       throw new Error(`${label} must satisfy the read-only immutable release contract.`);
@@ -258,6 +262,164 @@ async function requireContainedRegularFile(root, segments, label) {
   return current;
 }
 
+async function requireContainedExecutableFile(root, segments, label) {
+  const file = await requireContainedRegularFile(root, segments, label);
+  const metadata = await lstat(file).catch(() => null);
+  if (!metadata || (process.platform !== "win32" && (metadata.mode & 0o111) === 0)) {
+    throw new Error(`${label} must be executable.`);
+  }
+  return file;
+}
+
+function relativeContainedSegments(root, target, label) {
+  const targetRelative = relative(root, target);
+  if (!targetRelative || targetRelative === "." || targetRelative === ".." || targetRelative.startsWith(`..${sep}`) || isAbsolute(targetRelative)) {
+    throw new Error(`${label} resolves outside node_modules.`);
+  }
+  return targetRelative.split(/[\\/]+/).filter(Boolean);
+}
+
+function packageBinEntrySegments(value, label) {
+  const rawEntry = exactString(value, label);
+  if (isAbsolute(rawEntry)) throw new Error(`${label} must be a relative package path.`);
+
+  const segments = rawEntry.split(/[\\/]+/);
+  const normalizedSegments = [];
+  for (const segment of segments) {
+    if (!segment || segment === "..") throw new Error(`${label} must not contain parent traversal.`);
+    if (segment !== ".") normalizedSegments.push(segment);
+  }
+  if (normalizedSegments.length === 0) throw new Error(`${label} must identify a package file.`);
+  return normalizedSegments;
+}
+
+function packageBinaryEntry(manifest, packageName, binaryName, label) {
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest) || manifest.name !== packageName) {
+    throw new Error(`${label} package manifest identity is invalid.`);
+  }
+
+  let entry;
+  if (typeof manifest.bin === "string") {
+    const defaultBinaryName = packageName.startsWith("@") ? packageName.split("/")[1] : packageName;
+    if (binaryName !== defaultBinaryName) throw new Error(`${label} does not declare npm binary ${binaryName}.`);
+    entry = manifest.bin;
+  } else if (manifest.bin && typeof manifest.bin === "object" && !Array.isArray(manifest.bin) && typeof manifest.bin[binaryName] === "string") {
+    entry = manifest.bin[binaryName];
+  } else {
+    throw new Error(`${label} does not declare npm binary ${binaryName}.`);
+  }
+
+  return packageBinEntrySegments(entry, `${label} npm binary ${binaryName}`);
+}
+
+function npmBinLinkTargetSegments(rawTarget, label) {
+  if (typeof rawTarget !== "string" || rawTarget.length === 0 || isAbsolute(rawTarget)) {
+    throw new Error(`${label} must use a relative npm binary target.`);
+  }
+
+  // npm creates links such as .bin/tsx -> ../tsx/dist/cli.mjs. Permit that
+  // one step back to the owning node_modules directory, but no other traversal.
+  const segments = rawTarget.split(/[\\/]+/);
+  if (segments.length < 3 || segments[0] !== ".." || segments.slice(1).some(segment => !segment || segment === "." || segment === "..")) {
+    throw new Error(`${label} must use one contained npm binary parent path.`);
+  }
+  return segments.slice(1);
+}
+
+function packageFromNpmBinTarget(targetSegments, label) {
+  const firstSegment = targetSegments[0];
+  const packageSegments = firstSegment?.startsWith("@") ? targetSegments.slice(0, 2) : targetSegments.slice(0, 1);
+  const packageName = packageSegments.join("/");
+  const entrySegments = targetSegments.slice(packageSegments.length);
+  if (!NPM_PACKAGE_NAME.test(packageName) || entrySegments.length === 0) {
+    throw new Error(`${label} must target a package npm binary.`);
+  }
+  return { packageName, packageSegments, entrySegments };
+}
+
+async function assertAllowedNpmBinSymlink(linkPath, nodeModulesDirectory, label) {
+  const binaryDirectory = dirname(linkPath);
+  const owningNodeModulesDirectory = dirname(binaryDirectory);
+  if (basename(binaryDirectory) !== ".bin" || basename(owningNodeModulesDirectory) !== "node_modules" || !isContainedPath(owningNodeModulesDirectory, nodeModulesDirectory)) {
+    throw new Error(`${label} must not contain symlinks outside node_modules/.bin.`);
+  }
+
+  const rawTarget = await readlink(linkPath).catch(() => null);
+  const binaryLabel = `${label} npm binary ${basename(linkPath)}`;
+  const targetSegments = npmBinLinkTargetSegments(rawTarget, binaryLabel);
+  const targetPath = resolve(owningNodeModulesDirectory, ...targetSegments);
+  if (!isContainedPath(targetPath, nodeModulesDirectory)) {
+    throw new Error(`${binaryLabel} must resolve inside node_modules.`);
+  }
+
+  const targetFile = await requireContainedRegularFile(
+    nodeModulesDirectory,
+    relativeContainedSegments(nodeModulesDirectory, targetPath, binaryLabel),
+    binaryLabel,
+  );
+  const { packageName, packageSegments } = packageFromNpmBinTarget(targetSegments, binaryLabel);
+  const packageDirectory = resolve(owningNodeModulesDirectory, ...packageSegments);
+  if (!isContainedPath(packageDirectory, nodeModulesDirectory)) {
+    throw new Error(`${binaryLabel} package must resolve inside node_modules.`);
+  }
+
+  const packageManifestPath = await requireContainedRegularFile(
+    nodeModulesDirectory,
+    relativeContainedSegments(nodeModulesDirectory, resolve(packageDirectory, "package.json"), binaryLabel),
+    `${binaryLabel} package manifest`,
+  );
+  const packageManifest = await readJson(packageManifestPath, `${binaryLabel} package manifest`);
+  const declaredEntrySegments = packageBinaryEntry(packageManifest, packageName, basename(linkPath), binaryLabel);
+  const declaredEntryPath = await requireContainedRegularFile(
+    nodeModulesDirectory,
+    relativeContainedSegments(nodeModulesDirectory, resolve(packageDirectory, ...declaredEntrySegments), binaryLabel),
+    `${binaryLabel} declared entry`,
+  );
+  const [canonicalTarget, canonicalDeclaredEntry] = await Promise.all([
+    realpath(targetFile).catch(() => null),
+    realpath(declaredEntryPath).catch(() => null),
+  ]);
+  if (!canonicalTarget || !canonicalDeclaredEntry || canonicalTarget !== canonicalDeclaredEntry) {
+    throw new Error(`${binaryLabel} must resolve to its declared package entry.`);
+  }
+
+  return { packageName, binaryName: basename(linkPath), targetPath: targetFile };
+}
+
+async function assertWorkerRuntime(nodeModulesDirectory, label) {
+  const runtimeLabel = `${label} worker runtime ${WORKER_RUNTIME.packageName}`;
+  const runtimeManifestPath = await requireContainedRegularFile(
+    nodeModulesDirectory,
+    dependencyPathSegments(WORKER_RUNTIME.packageName, runtimeLabel),
+    runtimeLabel,
+  );
+  const runtimeManifest = await readJson(runtimeManifestPath, runtimeLabel);
+  const runtimeEntrySegments = packageBinaryEntry(
+    runtimeManifest,
+    WORKER_RUNTIME.packageName,
+    WORKER_RUNTIME.binaryName,
+    runtimeLabel,
+  );
+  const runtimeEntryPath = await requireContainedExecutableFile(
+    nodeModulesDirectory,
+    [WORKER_RUNTIME.packageName, ...runtimeEntrySegments],
+    `${runtimeLabel} entry`,
+  );
+  const binaryPath = resolve(nodeModulesDirectory, ".bin", WORKER_RUNTIME.binaryName);
+  const binaryMetadata = await lstat(binaryPath).catch(() => null);
+  if (!binaryMetadata?.isSymbolicLink()) {
+    throw new Error(`${runtimeLabel} npm binary must be a contained symbolic link.`);
+  }
+  const binary = await assertAllowedNpmBinSymlink(binaryPath, nodeModulesDirectory, label);
+  const [canonicalRuntimeEntry, canonicalBinaryTarget] = await Promise.all([
+    realpath(runtimeEntryPath).catch(() => null),
+    realpath(binary.targetPath).catch(() => null),
+  ]);
+  if (binary.packageName !== WORKER_RUNTIME.packageName || binary.binaryName !== WORKER_RUNTIME.binaryName || !canonicalRuntimeEntry || canonicalRuntimeEntry !== canonicalBinaryTarget) {
+    throw new Error(`${runtimeLabel} npm binary must resolve to its runtime entry.`);
+  }
+}
+
 async function readReleaseManifest(releaseDirectory, { required: manifestRequired }) {
   const manifestPath = resolve(releaseDirectory, MANIFEST_NAME);
   const metadata = await lstat(manifestPath).catch(() => null);
@@ -306,7 +468,6 @@ async function inspectReleaseDirectory(releaseDirectory, releasesRoot, label, { 
   if (!dependencies || typeof dependencies !== "object" || Array.isArray(dependencies) || Object.keys(dependencies).length === 0) {
     throw new Error(`${label} package.json must declare production dependencies.`);
   }
-
   await requireDirectory(resolve(canonicalDirectory, ".next"), `${label} .next`, { rejectSymlink: true });
   const buildId = await readNonEmptyFile(resolve(canonicalDirectory, ".next", "BUILD_ID"), `${label} .next/BUILD_ID`);
   const nodeModulesDirectory = resolve(canonicalDirectory, "node_modules");
@@ -319,6 +480,10 @@ async function inspectReleaseDirectory(releaseDirectory, releasesRoot, label, { 
       throw new Error(`${label} dependency ${dependencyName} manifest identity is invalid.`);
     }
   }
+  if (!Object.hasOwn(dependencies, WORKER_RUNTIME.packageName)) {
+    throw new Error(`${label} package.json must declare ${WORKER_RUNTIME.packageName} as a production dependency.`);
+  }
+  await assertWorkerRuntime(nodeModulesDirectory, label);
 
   const manifest = await readReleaseManifest(canonicalDirectory, { required: requireManifest });
   if (manifest && manifest.revision !== canonicalIdentity.revision) {
@@ -335,7 +500,7 @@ async function inspectReleaseDirectory(releaseDirectory, releasesRoot, label, { 
   if (await lstat(embeddedProductionEnv).catch(() => null)) {
     throw new Error(`${label} must not contain production.env; keep it outside releases.`);
   }
-  await assertReadOnlyReleaseTree(canonicalDirectory, label);
+  await assertReadOnlyReleaseTree(canonicalDirectory, nodeModulesDirectory, label);
 
   return {
     revision: canonicalIdentity.revision,

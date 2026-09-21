@@ -28,6 +28,15 @@ export function liveSocialAuditRuntimeAllowed(env: Record<string, string | undef
   return nodeEnvironment === "staging" && socialollaEnvironment === "staging";
 }
 
+/** Production Watch is a separate, Instagram-only provider opt-in. */
+export function productionWatchProviderEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.NODE_ENV === "production"
+    && env.SOCIALOLLA_ENV === "production"
+    && env.SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED === "true"
+    && env.SOCIALOLLA_PRODUCTION_WATCH_PROVIDER_ENABLED === "true"
+    && env.SOCIALOLLA_PROVIDER_DISABLED === "false";
+}
+
 export function assertProviderDisabledMode(): void {
   if (!providerDisabledEnabled()) {
     throw new Error("Live provider calls are disabled in Milestone 2 (set SOCIALOLLA_PROVIDER_DISABLED=true).");
