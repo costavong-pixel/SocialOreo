@@ -1,0 +1,23 @@
+[Unit]
+Description=SocialOlla production Post publishing worker
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/srv/socialolla/current/package.json
+
+[Service]
+Type=oneshot
+User=socialolla
+Group=socialolla
+WorkingDirectory=/srv/socialolla/current
+EnvironmentFile=/srv/socialolla/shared/production.env
+Environment=NODE_ENV=production
+Environment=SOCIALOLLA_ENV=production
+ExecStart=/usr/bin/env NODE_ENV=production SOCIALOLLA_ENV=production /usr/bin/npm run post-worker:once
+TimeoutStartSec=120s
+TimeoutStopSec=30s
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

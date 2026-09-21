@@ -3,8 +3,8 @@ import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import { fetchSocialAudit } from "@/lib/providers/social/provider-router";
-import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { fetchSocialAudit as routeSocialAudit } from "@/lib/providers/social/provider-router";
+import { productionWatchProviderEnabled, providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { socialProviderForPlatform } from "@/lib/providers/social/audit-provider-config";
 import { sanitizeSocialAuditResult } from "@/lib/providers/social/sanitize-audit-result";
 import type { NormalizedSocialAuditResult, SocialPlatform } from "@/lib/providers/social/types";
@@ -12,6 +12,9 @@ import { hasActiveCreditPlan, intentKey, holdCredits, finalizeCredits, refundCre
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { buildPublicSnapshotMetrics } from "@/lib/snapshots/public-profile-snapshots";
 import { normalizeWatchCadence, sanitizedWatchError, watchCaptureKey, watchProviderCostEstimate, type WatchCadenceHours } from "@/lib/snapshots/watch-policy";
+
+const fetchSocialAudit: typeof routeSocialAudit = (platform, input) =>
+  routeSocialAudit(platform, input, { runtime: "production-watch-worker" });
 import { validateSocialUrl } from "@/lib/validators/social-url";
 import { watchCompetitorLimitForUser } from "./resolver";
 
@@ -128,11 +131,25 @@ export function assertWatchWorkerStagingRuntime(env: Record<string, string | und
   }
 }
 
-export function assertWatchWorkerProviderDisabledRuntime(env: Record<string, string | undefined> = process.env): void {
+export function assertWatchWorkerRuntime(env: Record<string, string | undefined> = process.env): void {
+  if (env.NODE_ENV === "production" && env.SOCIALOLLA_ENV === "production") {
+    if (env.SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED !== "true") {
+      throw new Error("SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED=true is required to run the production Watch worker.");
+    }
+    if (!providerDisabledEnabled(env) && !productionWatchProviderEnabled(env)) {
+      throw new Error("The Watch worker requires provider-disabled mode or the explicit production Watch provider gate.");
+    }
+    return;
+  }
+
   assertWatchWorkerStagingRuntime(env);
   if (!providerDisabledEnabled(env)) {
     throw new Error("The Watch worker requires provider-disabled mode.");
   }
+}
+
+export function assertWatchWorkerProviderDisabledRuntime(env: Record<string, string | undefined> = process.env): void {
+  assertWatchWorkerRuntime(env);
 }
 
 function externalId(prefix: string): string {

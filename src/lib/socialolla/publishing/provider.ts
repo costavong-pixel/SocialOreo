@@ -33,13 +33,18 @@ export class PublishingProviderClaimLostError extends Error {
   }
 }
 
-/**
- * The recovered publishing slice is a staging acceptance surface. Keep the
- * production runtime as an unconditional deny boundary until production
- * publishing is separately approved and implemented.
- */
-export function livePublishingRuntimeAllowed(env: Record<string, string | undefined> = process.env): boolean {
+function isStagingRuntime(env: Record<string, string | undefined>): boolean {
   return env.NODE_ENV?.trim().toLowerCase() === "staging" && env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging";
+}
+
+function isExactProductionRuntime(env: Record<string, string | undefined>): boolean {
+  return env.NODE_ENV === "production" && env.SOCIALOLLA_ENV === "production";
+}
+
+/** The worker gate is required for production publishing; provider opt-ins remain separate. */
+export function livePublishingRuntimeAllowed(env: Record<string, string | undefined> = process.env): boolean {
+  if (isStagingRuntime(env)) return true;
+  return isExactProductionRuntime(env) && env.SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED === "true";
 }
 
 export function livePublishingEnabled(env: Record<string, string | undefined> = process.env, hasMediaStorage: boolean): boolean {

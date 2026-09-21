@@ -10,8 +10,8 @@ export async function runPostWorker(argv: string[] = process.argv, env: Record<s
   }
 
   assertWorkerRuntimeEnvironment({ worker: "post", env });
-  const { assertPostWorkerStagingRuntime, processDuePublishJobs } = await import("@/lib/socialolla/publishing/publish-worker");
-  assertPostWorkerStagingRuntime(env);
+  const { assertPostWorkerRuntime, processDuePublishJobs } = await import("@/lib/socialolla/publishing/publish-worker");
+  assertPostWorkerRuntime(env);
   const outcomes = await processDuePublishJobs({ maxJobs: Number(env.POST_WORKER_MAX_JOBS ?? "10") });
   process.stdout.write(`${JSON.stringify({ worker: "post", outcomes })}\n`);
 }

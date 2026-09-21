@@ -49,8 +49,12 @@ outside that directory.
 `releases`. A release must not contain `production.env` at its root or below;
 the preflight never reads or prints its contents. A release is immutable before
 qualification: every entry must be a regular file or directory with no write
-permission bits and no symlinks. The preflight verifies that contract using
-read-only filesystem inspection; it never changes permissions.
+permission bits. The only permitted exception is a direct npm runtime symlink
+inside a `node_modules/.bin` directory. Each such link must be relative, must
+resolve to a regular file inside the same release's `node_modules`, and must
+match its owning package's declared `bin` entry. Broken, absolute, escaping, or
+unrelated release symlinks fail closed. The preflight verifies that contract
+using read-only filesystem inspection; it never changes permissions.
 
 A release manifest is created as part of the separately authorized
 release-build process and has this shape; it contains no credentials:
@@ -65,9 +69,14 @@ release-build process and has this shape; it contains no credentials:
 
 The candidate preflight also requires the release to identify itself as the
 SocialOlla application, contain a non-empty Next build marker, and contain its
-own production dependencies. It compares the manifest revision and timestamp
-with the deployment environment values and timestamped directory name, so an
-operator cannot accidentally preflight one release while naming another.
+own production dependencies. In particular, `tsx` must be a production
+dependency, its `node_modules/tsx/package.json` must identify `tsx`, and its
+contained `node_modules/.bin/tsx` entry must resolve to the declared runtime
+file used by the Post and Watch npm commands; that runtime file must be
+executable without being writable. It compares the manifest revision and
+timestamp with the deployment environment values and timestamped directory
+name, so an operator cannot accidentally preflight one release while naming
+another.
 
 ## Candidate preflight
 
@@ -96,7 +105,7 @@ The command succeeds only when:
    40-character Git SHA with an optional validated timestamp suffix directly
    below `releases`;
 2. its manifest, `package.json`, `node_modules`, and `.next/BUILD_ID` are
-   present and consistent;
+   present and consistent, including the contained `tsx` worker runtime;
 3. production identity is explicit and provider-disabled mode is still in
    force;
 4. `current` and `previous` are existing symbolic links to different release

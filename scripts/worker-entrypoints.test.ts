@@ -70,13 +70,13 @@ function mockPublishWorker() {
     { status: "FAILED", jobId: "job-2", retryScheduled: false, error: "mocked" },
     { maxJobs },
   ]);
-  const assertPostWorkerStagingRuntime = vi.fn();
+  const assertPostWorkerRuntime = vi.fn();
 
   return {
     processDuePublishJobs,
-    assertPostWorkerStagingRuntime,
+    assertPostWorkerRuntime,
     moduleFactory: () => ({
-      assertPostWorkerStagingRuntime,
+      assertPostWorkerRuntime,
       processDuePublishJobs,
     }),
   };
@@ -91,13 +91,13 @@ function mockWatchWorker() {
     skipped: 1,
     limit,
   }));
-  const assertWatchWorkerProviderDisabledRuntime = vi.fn();
+  const assertWatchWorkerRuntime = vi.fn();
 
   return {
     processDueWatchCaptures,
-    assertWatchWorkerProviderDisabledRuntime,
+    assertWatchWorkerRuntime,
     moduleFactory: () => ({
-      assertWatchWorkerProviderDisabledRuntime,
+      assertWatchWorkerRuntime,
       processDueWatchCaptures,
     }),
   };
@@ -109,8 +109,9 @@ vi.mock("@/lib/socialolla/watch/scheduled-watch", async () => mockWatchWorker().
 describe("worker entrypoint preflight", () => {
   it("keeps worker-runtime-preflight.ts side-effect-free", () => {
     const preflightSource = readFileSync(path.join(repoRoot, "scripts", "worker-runtime-preflight.ts"), "utf8");
-    expect(preflightSource).not.toContain("assertPostWorkerStagingRuntime");
+    expect(preflightSource).not.toContain("assertPostWorkerRuntime");
     expect(preflightSource).not.toContain("assertWatchWorkerStagingRuntime");
+    expect(preflightSource).not.toContain("assertWatchWorkerRuntime");
     expect(preflightSource).not.toContain("assertWatchWorkerProviderDisabledRuntime");
     expect(preflightSource).not.toContain("@/lib/socialolla/publishing/publish-worker");
     expect(preflightSource).not.toContain("@/lib/socialolla/watch/scheduled-watch");
@@ -164,6 +165,28 @@ describe("worker entrypoint preflight", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("provider-disabled");
   });
+
+  it.each(entrypoints)("rejects production %s before loading its engine without its exact worker gate", async ({ worker }) => {
+    const postMock = await import("@/lib/socialolla/publishing/publish-worker") as unknown as {
+      assertPostWorkerRuntime: ReturnType<typeof vi.fn>;
+      processDuePublishJobs: ReturnType<typeof vi.fn>;
+    };
+    const watchMock = await import("@/lib/socialolla/watch/scheduled-watch") as unknown as {
+      assertWatchWorkerRuntime: ReturnType<typeof vi.fn>;
+      processDueWatchCaptures: ReturnType<typeof vi.fn>;
+    };
+    const env = { NODE_ENV: "production", SOCIALOLLA_ENV: "production", SOCIALOLLA_PROVIDER_DISABLED: "true" };
+
+    if (worker === "post") {
+      await expect(runPostWorker(["node", "run-post-worker"], env)).rejects.toThrow("SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED");
+      expect(postMock.assertPostWorkerRuntime).not.toHaveBeenCalled();
+      expect(postMock.processDuePublishJobs).not.toHaveBeenCalled();
+    } else {
+      await expect(runWatchWorker(["node", "run-watch-worker"], env)).rejects.toThrow("SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED");
+      expect(watchMock.assertWatchWorkerRuntime).not.toHaveBeenCalled();
+      expect(watchMock.processDueWatchCaptures).not.toHaveBeenCalled();
+    }
+  });
 });
 
 describe("worker entrypoint execution", () => {
@@ -173,9 +196,9 @@ describe("worker entrypoint execution", () => {
 
   it("runs real post mode through authoritative Post worker with exact maxJobs", async () => {
     const moduleMock = await import("@/lib/socialolla/publishing/publish-worker");
-    const postMock = moduleMock as {
+    const postMock = moduleMock as unknown as {
       processDuePublishJobs: ReturnType<typeof vi.fn>;
-      assertPostWorkerStagingRuntime: ReturnType<typeof vi.fn>;
+      assertPostWorkerRuntime: ReturnType<typeof vi.fn>;
     };
 
     const maxJobs = "13";
@@ -185,7 +208,7 @@ describe("worker entrypoint execution", () => {
       SOCIALOLLA_PROVIDER_DISABLED: "true",
     }));
 
-    expect(postMock.assertPostWorkerStagingRuntime).toHaveBeenCalledWith({
+    expect(postMock.assertPostWorkerRuntime).toHaveBeenCalledWith({
       NODE_ENV: "staging",
       SOCIALOLLA_ENV: "staging",
       POST_WORKER_MAX_JOBS: maxJobs,
@@ -208,7 +231,7 @@ describe("worker entrypoint execution", () => {
     const moduleMock = await import("@/lib/socialolla/watch/scheduled-watch");
     const watchMock = moduleMock as unknown as {
       processDueWatchCaptures: ReturnType<typeof vi.fn>;
-      assertWatchWorkerProviderDisabledRuntime: ReturnType<typeof vi.fn>;
+      assertWatchWorkerRuntime: ReturnType<typeof vi.fn>;
     };
 
     const maxMonitors = "7";
@@ -218,7 +241,7 @@ describe("worker entrypoint execution", () => {
       SOCIALOLLA_PROVIDER_DISABLED: "true",
     }));
 
-    expect(watchMock.assertWatchWorkerProviderDisabledRuntime).toHaveBeenCalledWith({
+    expect(watchMock.assertWatchWorkerRuntime).toHaveBeenCalledWith({
       NODE_ENV: "staging",
       SOCIALOLLA_ENV: "staging",
       WATCH_WORKER_MAX_MONITORS: maxMonitors,
@@ -240,6 +263,40 @@ describe("worker entrypoint execution", () => {
     expect(captured.stderr).toBe("");
   });
 
+  it("runs explicitly enabled production workers through their existing mocked engines", async () => {
+    const postMock = await import("@/lib/socialolla/publishing/publish-worker") as unknown as {
+      assertPostWorkerRuntime: ReturnType<typeof vi.fn>;
+      processDuePublishJobs: ReturnType<typeof vi.fn>;
+    };
+    const watchMock = await import("@/lib/socialolla/watch/scheduled-watch") as unknown as {
+      assertWatchWorkerRuntime: ReturnType<typeof vi.fn>;
+      processDueWatchCaptures: ReturnType<typeof vi.fn>;
+    };
+
+    const postEnv = {
+      NODE_ENV: "production",
+      SOCIALOLLA_ENV: "production",
+      SOCIALOLLA_PROVIDER_DISABLED: "true",
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true",
+      POST_WORKER_MAX_JOBS: "2",
+    };
+    const watchEnv = {
+      NODE_ENV: "production",
+      SOCIALOLLA_ENV: "production",
+      SOCIALOLLA_PROVIDER_DISABLED: "true",
+      SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED: "true",
+      WATCH_WORKER_MAX_MONITORS: "3",
+    };
+
+    await captureOutput(() => runPostWorker(["node", "run-post-worker"], postEnv));
+    await captureOutput(() => runWatchWorker(["node", "run-watch-worker"], watchEnv));
+
+    expect(postMock.assertPostWorkerRuntime).toHaveBeenCalledWith(postEnv);
+    expect(postMock.processDuePublishJobs).toHaveBeenCalledWith({ maxJobs: 2 });
+    expect(watchMock.assertWatchWorkerRuntime).toHaveBeenCalledWith(watchEnv);
+    expect(watchMock.processDueWatchCaptures).toHaveBeenCalledWith(expect.any(Date), 3);
+  });
+
   it("rejects real Post mode before loading the engine outside staging", async () => {
     const postMock = await import("@/lib/socialolla/publishing/publish-worker");
 
@@ -247,7 +304,7 @@ describe("worker entrypoint execution", () => {
       ...baseEnv,
       NODE_ENV: "production",
     })).rejects.toThrow("staging-only");
-    expect(postMock.assertPostWorkerStagingRuntime).not.toHaveBeenCalled();
+    expect(postMock.assertPostWorkerRuntime).not.toHaveBeenCalled();
     expect(postMock.processDuePublishJobs).not.toHaveBeenCalled();
   });
 
@@ -258,7 +315,7 @@ describe("worker entrypoint execution", () => {
       ...baseEnv,
       SOCIALOLLA_ENV: "production",
     })).rejects.toThrow("staging-only");
-    expect(watchMock.assertWatchWorkerProviderDisabledRuntime).not.toHaveBeenCalled();
+    expect(watchMock.assertWatchWorkerRuntime).not.toHaveBeenCalled();
     expect(watchMock.processDueWatchCaptures).not.toHaveBeenCalled();
   });
 
@@ -269,7 +326,7 @@ describe("worker entrypoint execution", () => {
       ...baseEnv,
       SOCIALOLLA_PROVIDER_DISABLED: "false",
     })).rejects.toThrow("provider-disabled");
-    expect(postMock.assertPostWorkerStagingRuntime).not.toHaveBeenCalled();
+    expect(postMock.assertPostWorkerRuntime).not.toHaveBeenCalled();
     expect(postMock.processDuePublishJobs).not.toHaveBeenCalled();
   });
 
@@ -280,7 +337,7 @@ describe("worker entrypoint execution", () => {
       ...baseEnv,
       SOCIALOLLA_PROVIDER_DISABLED: "false",
     })).rejects.toThrow("provider-disabled");
-    expect(watchMock.assertWatchWorkerProviderDisabledRuntime).not.toHaveBeenCalled();
+    expect(watchMock.assertWatchWorkerRuntime).not.toHaveBeenCalled();
     expect(watchMock.processDueWatchCaptures).not.toHaveBeenCalled();
   });
 
@@ -313,19 +370,19 @@ describe("worker entrypoint execution", () => {
   it("does not invoke mocked engines during dry-run post/readiness", async () => {
     const postMock = (await import("@/lib/socialolla/publishing/publish-worker")) as unknown as {
       processDuePublishJobs: ReturnType<typeof vi.fn>;
-      assertPostWorkerStagingRuntime: ReturnType<typeof vi.fn>;
+      assertPostWorkerRuntime: ReturnType<typeof vi.fn>;
     };
     const watchMock = (await import("@/lib/socialolla/watch/scheduled-watch")) as unknown as {
       processDueWatchCaptures: ReturnType<typeof vi.fn>;
-      assertWatchWorkerProviderDisabledRuntime: ReturnType<typeof vi.fn>;
+      assertWatchWorkerRuntime: ReturnType<typeof vi.fn>;
     };
 
     await captureOutput(() => runPostWorker(["node", "run-post-worker", "--dry-run"], baseEnv));
     await captureOutput(() => runWatchWorker(["node", "run-watch-worker", "--dry-run"], baseEnv));
 
-    expect(postMock.assertPostWorkerStagingRuntime).not.toHaveBeenCalled();
+    expect(postMock.assertPostWorkerRuntime).not.toHaveBeenCalled();
     expect(postMock.processDuePublishJobs).not.toHaveBeenCalled();
-    expect(watchMock.assertWatchWorkerProviderDisabledRuntime).not.toHaveBeenCalled();
+    expect(watchMock.assertWatchWorkerRuntime).not.toHaveBeenCalled();
     expect(watchMock.processDueWatchCaptures).not.toHaveBeenCalled();
   });
 });

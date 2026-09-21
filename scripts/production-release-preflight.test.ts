@@ -34,7 +34,7 @@ async function makeTreeReadOnly(directory: string) {
   await Promise.all(entries.map(async (entry) => {
     const child = join(directory, entry.name);
     if (entry.isDirectory()) await makeTreeReadOnly(child);
-    if (entry.isFile()) await chmod(child, 0o444);
+    if (entry.isFile()) await chmod(child, child.endsWith(join("node_modules", "tsx", "dist", "cli.mjs")) ? 0o555 : 0o444);
   }));
   await chmod(directory, 0o555);
 }
@@ -64,14 +64,24 @@ async function createRelease(releasesDirectory: string, revision: string, {
       next: "16.3.3",
       react: "latest",
       "@prisma/client": "6.19.3",
+      tsx: "^4.23.0",
     },
   }));
   await mkdir(join(releaseDirectory, "node_modules", "next"), { recursive: true });
   await mkdir(join(releaseDirectory, "node_modules", "react"), { recursive: true });
   await mkdir(join(releaseDirectory, "node_modules", "@prisma", "client"), { recursive: true });
+  await mkdir(join(releaseDirectory, "node_modules", "tsx", "dist"), { recursive: true });
+  await mkdir(join(releaseDirectory, "node_modules", ".bin"), { recursive: true });
   await writeFile(join(releaseDirectory, "node_modules", "next", "package.json"), JSON.stringify({ name: "next", version: "16.3.3" }));
   await writeFile(join(releaseDirectory, "node_modules", "react", "package.json"), JSON.stringify({ name: "react", version: "19.0.0" }));
   await writeFile(join(releaseDirectory, "node_modules", "@prisma", "client", "package.json"), JSON.stringify({ name: "@prisma/client", version: "6.19.3" }));
+  await writeFile(join(releaseDirectory, "node_modules", "tsx", "package.json"), JSON.stringify({
+    name: "tsx",
+    version: "4.23.0",
+    bin: "./dist/cli.mjs",
+  }));
+  await writeFile(join(releaseDirectory, "node_modules", "tsx", "dist", "cli.mjs"), "#!/usr/bin/env node\n");
+  await symlink(`..${sep}tsx${sep}dist${sep}cli.mjs`, join(releaseDirectory, "node_modules", ".bin", "tsx"), "file");
   await writeFile(join(releaseDirectory, ".next", "BUILD_ID"), `build-${revision}`);
   if (manifest) {
     await writeFile(join(releaseDirectory, "release-manifest.json"), JSON.stringify({
@@ -287,6 +297,116 @@ describe("production release preflight", () => {
 
     const source = await readFile(join(process.cwd(), "scripts", "production-release-preflight.mjs"), "utf8");
     expect(source).not.toMatch(/chmod\s*\(/);
+  });
+
+  it("qualifies the declared tsx production runtime through its contained npm binary", async () => {
+    const layout = await createLayout();
+    const tsxManifest = JSON.parse(await readFile(join(layout.candidateDirectory, "node_modules", "tsx", "package.json"), "utf8"));
+    const tsxBinary = join(layout.candidateDirectory, "node_modules", ".bin", "tsx");
+
+    expect(tsxManifest).toMatchObject({ name: "tsx", bin: "./dist/cli.mjs" });
+    expect((await lstat(tsxBinary)).isSymbolicLink()).toBe(true);
+    expect((await lstat(join(layout.candidateDirectory, "node_modules", "tsx", "dist", "cli.mjs"))).mode & 0o222).toBe(0);
+    await expect(runReleasePreflight(productionInput(layout))).resolves.toMatchObject({ ready: true });
+
+    const objectBin = await createLayout();
+    const objectBinManifestPath = join(objectBin.candidateDirectory, "node_modules", "tsx", "package.json");
+    await makeTreeWritable(objectBin.candidateDirectory);
+    await writeFile(objectBinManifestPath, JSON.stringify({
+      ...JSON.parse(await readFile(objectBinManifestPath, "utf8")),
+      bin: { tsx: "./dist/cli.mjs" },
+    }));
+    await makeTreeReadOnly(objectBin.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(objectBin))).resolves.toMatchObject({ ready: true });
+  });
+
+  it("fails closed when tsx is not declared as a production dependency or is absent", async () => {
+    const undeclared = await createLayout();
+    await makeTreeWritable(undeclared.candidateDirectory);
+    const packagePath = join(undeclared.candidateDirectory, "package.json");
+    const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+    delete packageJson.dependencies.tsx;
+    await writeFile(packagePath, JSON.stringify(packageJson));
+    await makeTreeReadOnly(undeclared.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(undeclared))).rejects.toThrow(/declare tsx as a production dependency/);
+
+    const missing = await createLayout();
+    await makeTreeWritable(missing.candidateDirectory);
+    await rm(join(missing.candidateDirectory, "node_modules", "tsx"), { recursive: true, force: true });
+    await makeTreeReadOnly(missing.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(missing))).rejects.toThrow(/dependency tsx is missing/);
+  });
+
+  it("fails closed when the tsx runtime entry or npm binary is missing", async () => {
+    const missingEntry = await createLayout();
+    await makeTreeWritable(missingEntry.candidateDirectory);
+    await rm(join(missingEntry.candidateDirectory, "node_modules", "tsx", "dist", "cli.mjs"));
+    await makeTreeReadOnly(missingEntry.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(missingEntry))).rejects.toThrow(/worker runtime tsx entry is missing/);
+
+    const missingBinary = await createLayout();
+    await makeTreeWritable(missingBinary.candidateDirectory);
+    await rm(join(missingBinary.candidateDirectory, "node_modules", ".bin", "tsx"));
+    await makeTreeReadOnly(missingBinary.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(missingBinary))).rejects.toThrow(/worker runtime tsx npm binary must be a contained symbolic link/);
+
+    const nonExecutable = await createLayout();
+    const nonExecutableEntry = join(nonExecutable.candidateDirectory, "node_modules", "tsx", "dist", "cli.mjs");
+    await chmod(nonExecutableEntry, 0o444);
+    if (process.platform === "win32") {
+      await expect(runReleasePreflight(productionInput(nonExecutable))).resolves.toMatchObject({ ready: true });
+    } else {
+      await expect(runReleasePreflight(productionInput(nonExecutable))).rejects.toThrow(/worker runtime tsx entry must be executable/);
+    }
+  });
+
+  it("allows only declared contained npm .bin links and rejects broken or escaping links", async () => {
+    const undeclared = await createLayout();
+    await makeTreeWritable(undeclared.candidateDirectory);
+    const undeclaredBinary = join(undeclared.candidateDirectory, "node_modules", ".bin", "tsx");
+    await rm(undeclaredBinary);
+    await symlink(`..${sep}tsx${sep}package.json`, undeclaredBinary, "file");
+    await makeTreeReadOnly(undeclared.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(undeclared))).rejects.toThrow(/declared package entry/);
+
+    const broken = await createLayout();
+    await makeTreeWritable(broken.candidateDirectory);
+    const brokenBinary = join(broken.candidateDirectory, "node_modules", ".bin", "tsx");
+    await rm(brokenBinary);
+    await symlink(`..${sep}tsx${sep}dist${sep}missing.mjs`, brokenBinary, "file");
+    await makeTreeReadOnly(broken.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(broken))).rejects.toThrow(/npm binary tsx is missing/);
+
+    const escaping = await createLayout();
+    await makeTreeWritable(escaping.candidateDirectory);
+    const escapingBinary = join(escaping.candidateDirectory, "node_modules", ".bin", "tsx");
+    await rm(escapingBinary);
+    await symlink(`..${sep}..${sep}outside`, escapingBinary, "file");
+    await makeTreeReadOnly(escaping.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(escaping))).rejects.toThrow(/contained npm binary parent path/);
+
+    const absolute = await createLayout();
+    await makeTreeWritable(absolute.candidateDirectory);
+    const outside = join(absolute.root, "outside-runtime.mjs");
+    await writeFile(outside, "#!/usr/bin/env node\n");
+    const absoluteBinary = join(absolute.candidateDirectory, "node_modules", ".bin", "tsx");
+    await rm(absoluteBinary);
+    await symlink(outside, absoluteBinary, "file");
+    await makeTreeReadOnly(absolute.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(absolute))).rejects.toThrow(/relative npm binary target/);
+  });
+
+  it("rejects arbitrary symlinks outside the narrow npm .bin boundary", async () => {
+    const layout = await createLayout();
+    await makeTreeWritable(layout.candidateDirectory);
+    await symlink(
+      `node_modules${sep}tsx${sep}dist${sep}cli.mjs`,
+      join(layout.candidateDirectory, "unrelated-runtime-link"),
+      "file",
+    );
+    await makeTreeReadOnly(layout.candidateDirectory);
+
+    await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/must not contain symlinks outside node_modules\/\.bin/);
   });
 
   it("fails closed when production identity or provider-disabled mode is unsafe", async () => {

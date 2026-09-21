@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule the SocialOlla production Post worker
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=60s
+AccuracySec=5s
+RandomizedDelaySec=15s
+Unit=socialolla-post-worker.service
+
+[Install]
+WantedBy=timers.target

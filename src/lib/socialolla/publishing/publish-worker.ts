@@ -25,6 +25,17 @@ export function assertPostWorkerStagingRuntime(env: Record<string, string | unde
   }
 }
 
+export function assertPostWorkerRuntime(env: Record<string, string | undefined> = process.env): void {
+  if (env.NODE_ENV === "production" && env.SOCIALOLLA_ENV === "production") {
+    if (env.SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED !== "true") {
+      throw new Error("SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED=true is required to run the production Post worker.");
+    }
+    return;
+  }
+
+  assertPostWorkerStagingRuntime(env);
+}
+
 export async function processDuePublishJobs(input: { now?: Date; workerId?: string; maxJobs?: number; jobIds?: readonly string[]; workspaceId?: string } = {}): Promise<PublishWorkerOutcome[]> {
   const now = input.now ?? new Date();
   const workerId = input.workerId ?? `publish-worker:${randomUUID()}`;

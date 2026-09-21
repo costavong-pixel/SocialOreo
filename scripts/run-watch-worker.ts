@@ -10,8 +10,8 @@ export async function runWatchWorker(argv: string[] = process.argv, env: Record<
   }
 
   assertWorkerRuntimeEnvironment({ worker: "watch", env });
-  const { assertWatchWorkerProviderDisabledRuntime, processDueWatchCaptures } = await import("@/lib/socialolla/watch/scheduled-watch");
-  assertWatchWorkerProviderDisabledRuntime(env);
+  const { assertWatchWorkerRuntime, processDueWatchCaptures } = await import("@/lib/socialolla/watch/scheduled-watch");
+  assertWatchWorkerRuntime(env);
   const summary = await processDueWatchCaptures(new Date(), Number(env.WATCH_WORKER_MAX_MONITORS ?? "10"));
   process.stdout.write(`${JSON.stringify({ worker: "watch", summary })}\n`);
 }
