@@ -45,7 +45,12 @@ async function makeTreeWritable(directory: string) {
   await Promise.all(entries.map(async (entry) => {
     const child = join(directory, entry.name);
     if (entry.isDirectory()) await makeTreeWritable(child);
-    if (entry.isFile()) await chmod(child, 0o644);
+    if (entry.isFile()) {
+      await chmod(
+        child,
+        child.endsWith(join("node_modules", "tsx", "dist", "cli.mjs")) ? 0o755 : 0o644,
+      );
+    }
   }));
 }
 
