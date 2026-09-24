@@ -10,7 +10,7 @@ function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(value);
 }
 
-export async function ContactInboxPageContent() {
+async function ContactInboxPageContent() {
   const sessionUser = await getVerifiedSessionUser();
   const resolution = await resolveDbUserFromVerifiedSession();
   if (hasDbSessionIdentityConflict(resolution)) redirect("/account-conflict");
