@@ -10,7 +10,7 @@ function formatDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium" }).format(value);
 }
 
-export async function FeedbackInboxPageContent() {
+async function FeedbackInboxPageContent() {
   const sessionUser = await getVerifiedSessionUser();
   const resolution = await resolveDbUserFromVerifiedSession();
 

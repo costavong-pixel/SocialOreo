@@ -60,7 +60,7 @@ function recommendationTone(recommendation: PublicReelEvidence["recommendation"]
  * available while its useful analysis capabilities move behind /analysis, but
  * it is no longer a customer-facing canonical route.
  */
-export async function LegacyDashboardPage() {
+async function LegacyDashboardPage() {
   const sessionUser = await getSessionUser();
   if (!sessionUser) redirect("/auth/login");
 

@@ -7,7 +7,7 @@ import { hasDbSessionIdentityConflict, resolveDbUserFromVerifiedSession } from "
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { prisma } from "@/lib/db/prisma";
 
-export async function AngleLibraryPageContent() {
+async function AngleLibraryPageContent() {
   const sessionUser = await getVerifiedSessionUser();
   const resolution = await resolveDbUserFromVerifiedSession();
 
