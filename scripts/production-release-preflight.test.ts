@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { basename, join, sep } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 // @ts-expect-error The operational release module is native ESM JavaScript executed directly by Node.
@@ -412,6 +412,61 @@ describe("production release preflight", () => {
     await makeTreeReadOnly(layout.candidateDirectory);
 
     await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/must not contain symlinks outside node_modules\/\.bin/);
+  });
+
+  it("allows contained Next runtime links and rejects external, escaping, and broken links", async () => {
+    const valid = await createLayout();
+    await makeTreeWritable(valid.candidateDirectory);
+    const validLinkDirectory = join(valid.candidateDirectory, ".next", "node_modules", "@prisma");
+    const validLink = join(validLinkDirectory, "client-runtime");
+    const validTarget = join(valid.candidateDirectory, "node_modules", "@prisma", "client");
+    await mkdir(validLinkDirectory, { recursive: true });
+    await symlink(relative(validLinkDirectory, validTarget), validLink, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(valid.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(valid))).resolves.toMatchObject({ ready: true });
+
+    const external = await createLayout();
+    await makeTreeWritable(external.candidateDirectory);
+    const externalLinkDirectory = join(external.candidateDirectory, ".next", "node_modules", "@prisma");
+    const externalLink = join(externalLinkDirectory, "client-runtime");
+    const externalTarget = await mkdtemp(join(tmpdir(), "socialolla-next-runtime-external-"));
+    temporaryDirectories.push(externalTarget);
+    await mkdir(externalLinkDirectory, { recursive: true });
+    await symlink(externalTarget, externalLink, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(external.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(external))).rejects.toThrow(/inside candidate\/node_modules/);
+
+    const traversal = await createLayout();
+    await makeTreeWritable(traversal.candidateDirectory);
+    const traversalLinkDirectory = join(traversal.candidateDirectory, ".next", "node_modules", "@prisma");
+    const traversalLink = join(traversalLinkDirectory, "client-runtime");
+    const traversalTarget = join(traversal.root, "outside-candidate");
+    await mkdir(traversalLinkDirectory, { recursive: true });
+    await mkdir(traversalTarget);
+    await symlink(relative(traversalLinkDirectory, traversalTarget), traversalLink, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(traversal.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(traversal))).rejects.toThrow(/escape the candidate/);
+
+    const candidateOutsideNodeModules = await createLayout();
+    await makeTreeWritable(candidateOutsideNodeModules.candidateDirectory);
+    const candidateOutsideLinkDirectory = join(candidateOutsideNodeModules.candidateDirectory, ".next", "node_modules", "@prisma");
+    const candidateOutsideLink = join(candidateOutsideLinkDirectory, "client-runtime");
+    const candidateOutsideTarget = join(candidateOutsideNodeModules.candidateDirectory, "runtime-target");
+    await mkdir(candidateOutsideLinkDirectory, { recursive: true });
+    await mkdir(candidateOutsideTarget);
+    await symlink(relative(candidateOutsideLinkDirectory, candidateOutsideTarget), candidateOutsideLink, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(candidateOutsideNodeModules.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(candidateOutsideNodeModules))).rejects.toThrow(/inside candidate\/node_modules/);
+
+    const broken = await createLayout();
+    await makeTreeWritable(broken.candidateDirectory);
+    const brokenLinkDirectory = join(broken.candidateDirectory, ".next", "node_modules", "@prisma");
+    const brokenLink = join(brokenLinkDirectory, "client-runtime");
+    const brokenTarget = join(broken.candidateDirectory, "node_modules", "@prisma", "missing");
+    await mkdir(brokenLinkDirectory, { recursive: true });
+    await symlink(relative(brokenLinkDirectory, brokenTarget), brokenLink, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(broken.candidateDirectory);
+    await expect(runReleasePreflight(productionInput(broken))).rejects.toThrow(/existing target inside candidate\/node_modules/);
   });
 
   it("fails closed when production identity or provider-disabled mode is unsafe", async () => {

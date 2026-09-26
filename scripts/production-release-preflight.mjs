@@ -170,7 +170,13 @@ async function assertReadOnlyReleaseTree(releaseDirectory, nodeModulesDirectory,
     const metadata = await lstat(current).catch(() => null);
     if (!metadata) throw new Error(`${label} could not be inspected for immutability.`);
     if (metadata.isSymbolicLink()) {
-      await assertAllowedNpmBinSymlink(current, nodeModulesDirectory, label);
+      const nextNodeModulesDirectory = resolve(releaseDirectory, ".next", "node_modules");
+      const relativeNextRuntimePath = relative(nextNodeModulesDirectory, current);
+      if (relativeNextRuntimePath && isContainedPath(current, nextNodeModulesDirectory)) {
+        await assertAllowedNextNodeModulesSymlink(current, releaseDirectory, nodeModulesDirectory, label);
+      } else {
+        await assertAllowedNpmBinSymlink(current, nodeModulesDirectory, label);
+      }
       continue;
     }
     if (!metadata.isDirectory() && !metadata.isFile()) throw new Error(`${label} contains an unsupported filesystem entry.`);
@@ -386,6 +392,43 @@ async function assertAllowedNpmBinSymlink(linkPath, nodeModulesDirectory, label)
   return { packageName, binaryName: basename(linkPath), targetPath: targetFile };
 }
 
+async function assertAllowedNextNodeModulesSymlink(linkPath, releaseDirectory, nodeModulesDirectory, label) {
+  const nextNodeModulesDirectory = resolve(releaseDirectory, ".next", "node_modules");
+  const relativeLinkPath = relative(nextNodeModulesDirectory, linkPath);
+  if (!relativeLinkPath || !isContainedPath(linkPath, nextNodeModulesDirectory)) {
+    throw new Error(`${label} must not contain symlinks outside the allowed runtime directories.`);
+  }
+  await assertNoSymlinkComponents(linkPath, `${label} Next runtime link`, { allowFinalSymlink: true });
+
+  const rawTarget = await readlink(linkPath).catch(() => null);
+  const runtimeLabel = `${label} Next runtime link ${relativeLinkPath}`;
+  if (typeof rawTarget !== "string" || rawTarget.length === 0) {
+    throw new Error(`${runtimeLabel} target could not be read.`);
+  }
+
+  assertRelativeTargetStaysInsideRoot(rawTarget, dirname(linkPath), releaseDirectory, runtimeLabel);
+  const targetPath = resolve(dirname(linkPath), rawTarget);
+  if (!isContainedPath(targetPath, nodeModulesDirectory) || targetPath === nodeModulesDirectory) {
+    throw new Error(`${runtimeLabel} must resolve inside candidate/node_modules.`);
+  }
+
+  const [canonicalReleaseDirectory, canonicalNodeModulesDirectory, canonicalTarget] = await Promise.all([
+    realpath(releaseDirectory).catch(() => null),
+    realpath(nodeModulesDirectory).catch(() => null),
+    realpath(targetPath).catch(() => null),
+  ]);
+  if (
+    !canonicalReleaseDirectory
+    || !canonicalNodeModulesDirectory
+    || !canonicalTarget
+    || !isContainedPath(canonicalTarget, canonicalReleaseDirectory)
+    || !isContainedPath(canonicalTarget, canonicalNodeModulesDirectory)
+    || canonicalTarget === canonicalNodeModulesDirectory
+  ) {
+    throw new Error(`${runtimeLabel} must resolve to an existing target inside candidate/node_modules.`);
+  }
+}
+
 async function assertWorkerRuntime(nodeModulesDirectory, label) {
   const runtimeLabel = `${label} worker runtime ${WORKER_RUNTIME.packageName}`;
   const runtimeManifestPath = await requireContainedRegularFile(
@@ -541,6 +584,23 @@ async function inspectOptionalReleaseLink(linkPath, releasesRoot, label, { requi
 function isContainedPath(target, root) {
   const relativeTarget = relative(root, target);
   return relativeTarget === "" || (!relativeTarget.startsWith(`..${sep}`) && relativeTarget !== ".." && !isAbsolute(relativeTarget));
+}
+
+function assertRelativeTargetStaysInsideRoot(rawTarget, startDirectory, rootDirectory, label) {
+  if (isAbsolute(rawTarget)) return;
+
+  let current = startDirectory;
+  for (const segment of rawTarget.split(/[\\/]+/)) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      current = dirname(current);
+      if (!isContainedPath(current, rootDirectory)) {
+        throw new Error(`${label} must not escape the candidate.`);
+      }
+      continue;
+    }
+    current = resolve(current, segment);
+  }
 }
 
 async function assertExternalProductionEnvironment(productionEnvPath, releasesRoot) {
