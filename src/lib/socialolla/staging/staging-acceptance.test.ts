@@ -3,6 +3,7 @@ import { parsePurpose, identifyGaps, approveProfile, selectProviderDisabledDesti
 import { runAssistantStep, confirmExecute, sanitizeTranscript, costExplanation } from "@/lib/socialolla/assistant/assistant";
 import { normalizeUnicode, checkCharacterLimit } from "@/lib/socialolla/i18n/unicode";
 import { translate } from "@/lib/socialolla/i18n/translations";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -28,8 +29,8 @@ const BATCH_ROW = {
   externalId: "cbt_abcdefghijklmnop",
   workspaceId: "ws-internal-1",
   kind: "MONTHLY",
-  amount: 20,
-  remaining: 20,
+  amount: INCLUDED_MONTHLY_CREDITS,
+  remaining: INCLUDED_MONTHLY_CREDITS,
   expiresAt: null,
   periodKey,
   createdAt: new Date("2026-08-03T00:00:00Z"),
@@ -56,7 +57,7 @@ describe("Staging acceptance — approved conversational onboarding flow", () =>
       label: "Work Instagram",
       platform: "instagram",
     });
-    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, includedMonthlyCredits: 20 });
+    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH_ROW);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH_ROW, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH_ROW]);

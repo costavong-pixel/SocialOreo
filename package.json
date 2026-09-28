@@ -17,6 +17,7 @@
     "test:mutation-watch": "node scripts/watch-mutation-contract.mjs",
     "post-worker:once": "tsx scripts/run-post-worker.ts",
     "watch-worker:once": "tsx scripts/run-watch-worker.ts",
+    "production:reconcile-lifetime": "tsx scripts/reconcile-lifetime-entitlement.ts",
     "staging:ensure-normal-user": "tsx scripts/ensure-staging-normal-user.ts",
     "db:backup": "node scripts/database-backup.mjs",
     "db:restore:drill": "node scripts/database-restore-drill.mjs",

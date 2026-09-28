@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const { mockSettleSquareCheckout, mockSettleSquareRefund, mockSettleSquareRenewal, mockRecordSquareSubscription, mockWithSquareWebhookClaim } = vi.hoisted(() => ({
   mockSettleSquareCheckout: vi.fn(),
@@ -384,7 +385,7 @@ describe("POST /api/square/webhook", () => {
   it("reconciles a COMPLETED unknown-order payment as a MONTHLY renewal when amount matches", async () => {
     configureSandbox();
     mockSettleSquareCheckout.mockResolvedValue({ status: "unknown", creditsGranted: 0 });
-    mockSettleSquareRenewal.mockResolvedValue({ status: "settled", creditsGranted: 20 });
+    mockSettleSquareRenewal.mockResolvedValue({ status: "settled", creditsGranted: INCLUDED_MONTHLY_CREDITS });
     const body = JSON.stringify({
       event_id: "event-renewal",
       merchant_id: "sandbox-merchant-id",
@@ -396,7 +397,7 @@ describe("POST /api/square/webhook", () => {
     const response = await POST(new Request("https://example.test/api/square/webhook", { method: "POST", headers: { "x-square-hmacsha256-signature": signature(body) }, body }));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: 20, duplicate: false, ignored: false });
+    await expect(response.json()).resolves.toEqual({ received: true, creditsGranted: INCLUDED_MONTHLY_CREDITS, duplicate: false, ignored: false });
     expect(mockSettleSquareRenewal).toHaveBeenCalledWith(expect.objectContaining({
       orderId: "order-renew",
       paymentId: "pay-renew",

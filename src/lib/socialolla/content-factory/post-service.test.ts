@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -36,8 +37,8 @@ const BATCH_ROW = {
   externalId: "cbt_abcdefghijklmnop",
   workspaceId: "ws-internal-1",
   kind: "MONTHLY",
-  amount: 20,
-  remaining: 20,
+  amount: INCLUDED_MONTHLY_CREDITS,
+  remaining: INCLUDED_MONTHLY_CREDITS,
   expiresAt: null,
   periodKey,
   createdAt: new Date("2026-08-03T00:00:00Z"),
@@ -70,7 +71,7 @@ describe("Slice C — SocialOreo Post integration", () => {
     mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({
       externalId: "ent_abcdefghijklmnop",
       postCreditsPerRequest: 1,
-      includedMonthlyCredits: 20,
+      includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS,
     });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH_ROW);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH_ROW, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });

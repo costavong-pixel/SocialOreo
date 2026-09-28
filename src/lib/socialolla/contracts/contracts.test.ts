@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 import {
   creditBatchSchema,
   creditTransactionSchema,
@@ -81,8 +82,8 @@ describe("SocialOlla shared canonical contracts", () => {
       id: "cbt_abc123def456",
       workspaceId: "wsp_abc123def456",
       kind: "MONTHLY",
-      amount: 20,
-      remaining: 20,
+      amount: INCLUDED_MONTHLY_CREDITS,
+      remaining: INCLUDED_MONTHLY_CREDITS,
       expiresAt: null,
       createdAt: "2026-08-03T00:00:00.000Z",
     });

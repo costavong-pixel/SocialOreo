@@ -1,3 +1,6 @@
+/** Canonical included monthly allowance for paid SocialOlla plans. */
+export const INCLUDED_MONTHLY_CREDITS = 1200;
+
 /**
  * Canonical M2 plan configuration (single pricing source for page + checkout).
  * Slice E: admin-configurable provisional $79 lifetime sandbox plan.
@@ -12,7 +15,7 @@ export const DEFAULT_PLANS = {
     entitlements: {
       maxDestinations: 3,
       maxWatchCompetitors: 3,
-      includedMonthlyCredits: 20,
+      includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS,
       postCreditsPerRequest: 1,
       watchCreditsPerRequest: 1,
     },
@@ -26,7 +29,7 @@ export const DEFAULT_PLANS = {
     entitlements: {
       maxDestinations: 1,
       maxWatchCompetitors: 3,
-      includedMonthlyCredits: 20,
+      includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS,
       postCreditsPerRequest: 1,
       watchCreditsPerRequest: 1,
     },
