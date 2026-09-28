@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -49,8 +50,8 @@ const BATCH = {
   externalId: "cbt_slice00000000000",
   workspaceId: "ws-1",
   kind: "MONTHLY",
-  amount: 20,
-  remaining: 20,
+  amount: INCLUDED_MONTHLY_CREDITS,
+  remaining: INCLUDED_MONTHLY_CREDITS,
   expiresAt: null,
   periodKey,
   createdAt: new Date("2026-08-04T00:00:00Z"),
@@ -96,7 +97,7 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     mocks.prisma.scheduleSlot.findFirst.mockResolvedValue(null);
     mocks.prisma.scheduleSlot.update.mockResolvedValue({});
     mocks.prisma.sevenDayPlan.create.mockResolvedValue({ id: "plan-1" });
-    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, watchCreditsPerRequest: 1, includedMonthlyCredits: 20 });
+    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ postCreditsPerRequest: 1, watchCreditsPerRequest: 1, includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([BATCH]);
     mocks.prisma.creditBatch.findUnique.mockResolvedValue({ ...BATCH, workspace: { ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } } });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(BATCH);

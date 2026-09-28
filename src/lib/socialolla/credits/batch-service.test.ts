@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -19,8 +20,8 @@ const MONTHLY_ROW = {
   externalId: "cbt_monthly0000000000",
   workspaceId: "ws-1",
   kind: "MONTHLY",
-  amount: 20,
-  remaining: 20,
+  amount: INCLUDED_MONTHLY_CREDITS,
+  remaining: INCLUDED_MONTHLY_CREDITS,
   expiresAt: null,
   periodKey: "2026-08",
   createdAt: new Date("2026-08-04T00:00:00Z"),
@@ -225,14 +226,15 @@ describe("Slice E — canonical credit engine", () => {
   it("ensures a monthly batch per period without double-grant", async () => {
     const { ensureMonthlyBatch } = await import("./batch-service");
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(MONTHLY_ROW);
-    const existing = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-08" });
+    const existing = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: INCLUDED_MONTHLY_CREDITS, periodKey: "2026-08" });
     expect(existing?.id).toBe("cbt_monthly0000000000");
     expect(mocks.prisma.creditBatch.create).not.toHaveBeenCalled();
     // A different period creates a new batch.
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(null);
     mocks.prisma.creditBatch.create.mockResolvedValue({ ...MONTHLY_ROW, id: "cb-monthly-2", externalId: "cbt_monthly2", periodKey: "2026-09" });
-    const next = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: 20, periodKey: "2026-09" });
+    const next = await ensureMonthlyBatch({ internalWorkspaceId: "ws-1", externalWorkspaceId: "wsp_abc", includedCredits: INCLUDED_MONTHLY_CREDITS, periodKey: "2026-09" });
     expect(mocks.prisma.creditBatch.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ periodKey: "2026-09" }) }));
+    expect(mocks.prisma.creditBatch.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: INCLUDED_MONTHLY_CREDITS, remaining: INCLUDED_MONTHLY_CREDITS }) }));
     void next;
   });
 
@@ -244,7 +246,7 @@ describe("Slice E — canonical credit engine", () => {
     await expect(ensureMonthlyBatch({
       internalWorkspaceId: "ws-1",
       externalWorkspaceId: "wsp_abc",
-      includedCredits: 20,
+      includedCredits: INCLUDED_MONTHLY_CREDITS,
       periodKey: "2026-09",
     })).resolves.toBeNull();
     expect(mocks.prisma.creditBatch.create).not.toHaveBeenCalled();
@@ -253,7 +255,7 @@ describe("Slice E — canonical credit engine", () => {
     await expect(ensureMonthlyBatchForSettlement({
       internalWorkspaceId: "ws-1",
       externalWorkspaceId: "wsp_abc",
-      includedCredits: 20,
+      includedCredits: INCLUDED_MONTHLY_CREDITS,
       periodKey: "2026-09",
       db: mocks.prisma,
     })).resolves.toMatchObject({ id: "cbt_settlement", created: true });

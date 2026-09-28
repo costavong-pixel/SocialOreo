@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -41,8 +42,8 @@ const MONTHLY_BATCH = {
   externalId: "cbt_monthly",
   workspaceId: "ws-1",
   kind: "MONTHLY",
-  amount: 20,
-  remaining: 20,
+  amount: INCLUDED_MONTHLY_CREDITS,
+  remaining: INCLUDED_MONTHLY_CREDITS,
   expiresAt: null,
   periodKey: "2026-09",
   createdAt: new Date("2026-09-01T00:00:00Z"),
@@ -68,7 +69,7 @@ describe("M2 credit actions honor payment entitlement revocation", () => {
     mocks.getOrCreatePersonalWorkspace.mockResolvedValue({ dbId: "ws-1", id: "wsp-1" });
     mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "NONE" });
     mocks.prisma.workspace.findUnique.mockResolvedValue({ ownerUser: { accessPlan: "NONE" } });
-    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ includedMonthlyCredits: 20, postCreditsPerRequest: 1, watchCreditsPerRequest: 1 });
+    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS, postCreditsPerRequest: 1, watchCreditsPerRequest: 1 });
     mocks.prisma.creditBatch.findMany.mockResolvedValue([MONTHLY_BATCH, PURCHASED_BATCH]);
     mocks.prisma.creditTransaction.findMany.mockResolvedValue([]);
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(null);
@@ -96,7 +97,7 @@ describe("M2 credit actions honor payment entitlement revocation", () => {
   it("still allows an active lifetime plan to reuse the current monthly batch", async () => {
     mocks.prisma.user.findUnique.mockResolvedValue({ accessPlan: "LIFETIME" });
     mocks.prisma.workspace.findUnique.mockResolvedValue({ ownerUserId: "user-1", ownerUser: { accessPlan: "LIFETIME" } });
-    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ includedMonthlyCredits: 20 });
+    mocks.prisma.entitlementSnapshot.findFirst.mockResolvedValue({ includedMonthlyCredits: INCLUDED_MONTHLY_CREDITS });
     mocks.prisma.creditBatch.findFirst.mockResolvedValue(MONTHLY_BATCH);
 
     const result = await m2EnsureMonthlyBatch();

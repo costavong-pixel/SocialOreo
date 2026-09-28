@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const { mockTransaction, mockPrisma } = vi.hoisted(() => {
   const mockTransaction = vi.fn();
@@ -301,7 +302,7 @@ describe("settleSquareCheckout", () => {
     const planVersionUpsert = vi.fn().mockResolvedValue({ id: "plv-1", externalId: "plv_monthly_v1" });
     const entitlementCreate = vi.fn().mockResolvedValue({ id: "ent-1", externalId: "ent_1" });
     const batchFindFirst = vi.fn().mockResolvedValue(null);
-    const batchCreate = vi.fn().mockResolvedValue({ id: "batch-1", externalId: "cbt_1", amount: 20, remaining: 20, kind: "MONTHLY", expiresAt: null, periodKey: "2026-08", createdAt: new Date() });
+    const batchCreate = vi.fn().mockResolvedValue({ id: "batch-1", externalId: "cbt_1", amount: INCLUDED_MONTHLY_CREDITS, remaining: INCLUDED_MONTHLY_CREDITS, kind: "MONTHLY", expiresAt: null, periodKey: "2026-08", createdAt: new Date() });
     const auditCreate = vi.fn().mockResolvedValue({});
     mockTransaction.mockImplementation((callback) => callback({
       squareCheckout: {
@@ -321,7 +322,7 @@ describe("settleSquareCheckout", () => {
       auditEvent: { create: auditCreate },
     }));
 
-    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1900, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
+    await expect(settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 1900, currency: "CAD" })).resolves.toEqual({ status: "settled", creditsGranted: INCLUDED_MONTHLY_CREDITS });
     expect(subscriptionUpdateMany).toHaveBeenCalledWith({
       where: { userId: null, squareCustomerId: "customer-1", planVariationId: "plan-a" },
       data: { userId: "user-1" },
@@ -332,7 +333,7 @@ describe("settleSquareCheckout", () => {
     });
     expect(userUpdate).toHaveBeenCalledWith({ where: { id: "user-1" }, data: { accessPlan: "MONTHLY" } });
     expect(entitlementCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ planVersionId: "plv-1" }) }));
-    expect(batchCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: "MONTHLY", amount: 20 }) }));
+    expect(batchCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: "MONTHLY", amount: INCLUDED_MONTHLY_CREDITS }) }));
     expect(auditCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ eventType: "entitlement.grant" }) }));
   });
 
@@ -352,7 +353,7 @@ describe("settleSquareCheckout", () => {
       },
       planVersion: { upsert: vi.fn().mockResolvedValue({ id: "plv-1", externalId: "plv_monthly_v1" }) },
       entitlementSnapshot: { create: vi.fn().mockResolvedValue({ id: "ent-1" }) },
-      creditBatch: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "batch-1", amount: 20, remaining: 20, kind: "MONTHLY", createdAt: new Date() }) },
+      creditBatch: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "batch-1", amount: INCLUDED_MONTHLY_CREDITS, remaining: INCLUDED_MONTHLY_CREDITS, kind: "MONTHLY", createdAt: new Date() }) },
       auditEvent: { create: auditCreate },
     }));
 
@@ -556,7 +557,7 @@ describe("settleSquareCheckout", () => {
     const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
     const second = await settleSquareCheckout({ orderId: "order-2", paymentId: "payment-2", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
 
-    expect(first).toEqual({ status: "settled", creditsGranted: 20 });
+    expect(first).toEqual({ status: "settled", creditsGranted: INCLUDED_MONTHLY_CREDITS });
     expect(second).toEqual({ status: "settled", creditsGranted: 0 });
     // Exactly-once per squarePaymentId: both payments are durably marked settled.
     expect(tx.squareCheckout.update).toHaveBeenCalledTimes(2);
@@ -576,7 +577,7 @@ describe("settleSquareCheckout", () => {
     const first = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
     const second = await settleSquareCheckout({ orderId: "order-1", paymentId: "payment-1", customerId: "customer-1", paymentStatus: "COMPLETED", config: checkoutConfig, amountCents: 7900, currency: "CAD" });
 
-    expect(first).toEqual({ status: "settled", creditsGranted: 20 });
+    expect(first).toEqual({ status: "settled", creditsGranted: INCLUDED_MONTHLY_CREDITS });
     expect(second).toEqual({ status: "duplicate", creditsGranted: 0 });
     // The entitlement grant happened exactly once for this payment.
     expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(1);
@@ -786,7 +787,7 @@ describe("settleSquareRenewal", () => {
       },
       planVersion: { upsert: vi.fn().mockResolvedValue({ id: "plv-1", externalId: "plv_monthly_v1" }) },
       entitlementSnapshot: { create: vi.fn().mockResolvedValue({ id: "ent-1" }) },
-      creditBatch: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "batch-1", amount: 20, remaining: 20, kind: "MONTHLY", createdAt: new Date() }) },
+      creditBatch: { findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: "batch-1", amount: INCLUDED_MONTHLY_CREDITS, remaining: INCLUDED_MONTHLY_CREDITS, kind: "MONTHLY", createdAt: new Date() }) },
       auditEvent: { create: vi.fn().mockResolvedValue({ id: "evt-1" }) },
       user: { update: vi.fn().mockResolvedValue({}) },
     };
@@ -808,7 +809,7 @@ describe("settleSquareRenewal", () => {
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
       monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
-    })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
+    })).resolves.toEqual({ status: "settled", creditsGranted: INCLUDED_MONTHLY_CREDITS });
 
     expect(tx.squareCheckout.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -897,7 +898,7 @@ describe("settleSquareRenewal", () => {
     await expect(settleSquareRenewal({
       orderId: "order-renew-1", paymentId: "pay-renew-1", customerId: "customer-1",
       monthlyPlanVariationId: "plan-a", paymentStatus: "COMPLETED", amountCents: 1900, currency: "CAD", config: checkoutConfig,
-    })).resolves.toEqual({ status: "settled", creditsGranted: 20 });
+    })).resolves.toEqual({ status: "settled", creditsGranted: INCLUDED_MONTHLY_CREDITS });
     // Inference must exclude synthetic rows (checkoutUrl IS NULL).
     expect(tx.squareCheckout.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ checkoutUrl: { not: null } }) }));
   });

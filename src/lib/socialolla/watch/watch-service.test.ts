@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { providerDisabledEnabled, providerDisabledFixture, assertProviderDisabledMode } from "@/lib/providers/social/provider-guard";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -27,8 +28,8 @@ const BATCH = {
   externalId: "cbt_watch000000000000",
   workspaceId: "ws-1",
   kind: "MONTHLY",
-  amount: 20,
-  remaining: 20,
+  amount: INCLUDED_MONTHLY_CREDITS,
+  remaining: INCLUDED_MONTHLY_CREDITS,
   expiresAt: null,
   periodKey,
   createdAt: new Date("2026-08-04T00:00:00Z"),

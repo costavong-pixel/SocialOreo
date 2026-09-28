@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { INCLUDED_MONTHLY_CREDITS } from "@/lib/socialolla/plans/plan-config";
 
 const mocks = vi.hoisted(() => {
   const prisma = {
@@ -98,8 +99,8 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
     expect(tx.entitlementSnapshot.create).toHaveBeenCalledTimes(2);
     expect(first.externalIds.entitlement).not.toBe(second.externalIds.entitlement);
 
-    // No duplicate credits: first minted 20, second reused the batch and minted 0.
-    expect(first.creditsGranted).toBe(20);
+    // No duplicate credits: first minted the canonical allowance, second reused the batch and minted 0.
+    expect(first.creditsGranted).toBe(INCLUDED_MONTHLY_CREDITS);
     expect(second.creditsGranted).toBe(0);
 
     // Audit events reference the shared batch and flag the reuse.
@@ -116,7 +117,7 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
     const { tx } = buildTx();
     // Pre-provisioned period batch (e.g. manual admin/dev ensure call). The
     // default create stores the row into the mock batch store.
-    await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, periodKey: "2026-08" } });
+    await tx.creditBatch.create({ data: { externalId: "cbt_pre000000000000000", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: INCLUDED_MONTHLY_CREDITS, remaining: INCLUDED_MONTHLY_CREDITS, periodKey: "2026-08" } });
     tx.creditBatch.create.mockClear();
 
     const granted = await grantLifetimeEntitlement({ ownerUserId: "user-1", squarePaymentId: "payment-1", priceCents: 7900 }, tx as never);
@@ -139,7 +140,7 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
         (conflict as { code?: string }).code = "P2002";
         throw conflict;
       }
-      return { id: "cb-2", externalId: "cbt_shouldnotbeused", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: 20, remaining: 20, expiresAt: null, periodKey: "2026-08", createdAt: new Date() };
+      return { id: "cb-2", externalId: "cbt_shouldnotbeused", workspaceId: "ws-internal-1", kind: "MONTHLY", amount: INCLUDED_MONTHLY_CREDITS, remaining: INCLUDED_MONTHLY_CREDITS, expiresAt: null, periodKey: "2026-08", createdAt: new Date() };
     });
     // Winner already exists (written by the concurrent transaction).
     tx.creditBatch.findFirst.mockImplementation(async () => ({
@@ -147,8 +148,8 @@ describe("Slice E — grantLifetimeEntitlement period batch reuse (BACKEND-01)",
       externalId: "cbt_winner00000000000",
       workspaceId: "ws-internal-1",
       kind: "MONTHLY",
-      amount: 20,
-      remaining: 20,
+      amount: INCLUDED_MONTHLY_CREDITS,
+      remaining: INCLUDED_MONTHLY_CREDITS,
       expiresAt: null,
       periodKey: "2026-08",
       createdAt: new Date("2026-08-04T00:00:00Z"),
