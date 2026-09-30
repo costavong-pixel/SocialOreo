@@ -161,4 +161,77 @@ describe("publish worker ambiguity boundary", () => {
       retryable: false,
     }));
   });
+
+  it("isolates destination failures and never republishes the successful destination", async () => {
+    const makeClaim = (jobId: string, destination: string, platform: string) => ({
+      job: {
+        id: jobId,
+        claimToken: `${jobId}-claim`,
+        postDestinationId: `${jobId}-destination`,
+        postRequestId: "post-1",
+        attemptCount: 0,
+        postDestination: {
+          destination: { externalId: destination },
+          variant: { id: `${jobId}-variant`, platform, title: "Title", caption: "Caption", cta: null, hashtags: [], mediaAssetIds: [] },
+          postRequest: { workspaceId: "workspace-1" },
+        },
+      },
+      attempt: { attemptNumber: 1 },
+    });
+    mocks.claim.mockReset().mockResolvedValueOnce(makeClaim("job-instagram", "destination-instagram", "instagram")).mockResolvedValueOnce(makeClaim("job-facebook", "destination-facebook", "facebook")).mockResolvedValueOnce(null);
+    mocks.markStarted.mockResolvedValue(true);
+    mocks.markSuccess.mockResolvedValue({ published: true, replayed: false });
+    mocks.markFailure.mockResolvedValue({ accepted: true, replayed: false, retryScheduled: false });
+    const successfulPublish = vi.fn(async (input: { onProviderRequestStart?: () => Promise<boolean> }) => {
+      await input.onProviderRequestStart?.();
+      return { provider: "instagram", externalId: "ig-1", publishedAt: new Date().toISOString() };
+    });
+    const failedPublish = vi.fn(async () => { throw new Error("facebook permanent failure"); });
+    mocks.provider.mockReset().mockReturnValueOnce({ enabled: true, publish: successfulPublish }).mockReturnValueOnce({ enabled: true, publish: failedPublish });
+
+    const { processDuePublishJobs } = await import("./publish-worker");
+    const outcomes = await processDuePublishJobs({ maxJobs: 2, workerId: "worker-1" });
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(["PUBLISHED", "FAILED"]);
+    expect(successfulPublish).toHaveBeenCalledTimes(1);
+    expect(failedPublish).toHaveBeenCalledTimes(1);
+    expect(mocks.markSuccess).toHaveBeenCalledTimes(1);
+    expect(mocks.markFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes adapted title/text to each platform without losing the shared concept", async () => {
+    const makeClaim = (jobId: string, platform: string, title: string) => ({
+      job: {
+        id: jobId,
+        claimToken: `${jobId}-claim`,
+        postDestinationId: `${jobId}-destination`,
+        postRequestId: "post-1",
+        attemptCount: 0,
+        postDestination: {
+          destination: { externalId: `${jobId}-destination` },
+          variant: { id: `${jobId}-variant`, platform, title, caption: "Caption", cta: "CTA", hashtags: ["#tag"], mediaAssetIds: [] },
+          postRequest: { workspaceId: "workspace-1" },
+        },
+      },
+      attempt: { attemptNumber: 1 },
+    });
+    mocks.claim.mockReset().mockResolvedValueOnce(makeClaim("job-instagram", "instagram", "Instagram title")).mockResolvedValueOnce(makeClaim("job-youtube", "youtube", "YouTube title")).mockResolvedValueOnce(null);
+    mocks.markStarted.mockResolvedValue(true);
+    mocks.markSuccess.mockResolvedValue({ published: true, replayed: false });
+    const inputs: Array<{ platform: string; variant: { content: { title?: string; text: string } } }> = [];
+    mocks.provider.mockImplementation(() => ({
+      enabled: true,
+      publish: vi.fn(async (input: { platform: string; variant: { content: { title?: string; text: string }; }; onProviderRequestStart?: () => Promise<boolean> }) => {
+        inputs.push(input);
+        await input.onProviderRequestStart?.();
+        return { provider: input.platform, externalId: `${input.platform}-1`, publishedAt: new Date().toISOString() };
+      }),
+    }));
+
+    const { processDuePublishJobs } = await import("./publish-worker");
+    await processDuePublishJobs({ maxJobs: 2, workerId: "worker-1" });
+
+    expect(inputs[0]).toMatchObject({ platform: "instagram", variant: { content: { title: "", text: expect.stringContaining("Instagram title") } } });
+    expect(inputs[1]).toMatchObject({ platform: "youtube", variant: { content: { title: "YouTube title", text: expect.not.stringContaining("YouTube title") } } });
+  });
 });

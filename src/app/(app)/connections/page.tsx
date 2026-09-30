@@ -3,18 +3,23 @@ import Link from "next/link";
 import { m2DisconnectInstagramDestination, m2Workspace } from "@/app/m2-actions";
 import { prisma } from "@/lib/db/prisma";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { allPlatformCapabilities, platformLabel } from "@/lib/socialolla/publishing/platform-adaptation";
+import { createPublishingConnectionAdapters } from "@/lib/socialolla/publishing/connection-contract";
 
 export const metadata = { title: "Connections — SocialOlla" };
 
-const SUPPORTED_CONNECTIONS = [
-  { name: "Instagram", description: "Publishing and Profile Analysis connections." },
-  { name: "TikTok", description: "Publishing connections when provider access is enabled." },
-] as const;
+const SUPPORTED_CONNECTIONS = allPlatformCapabilities().map((capabilities) => ({
+  platform: capabilities.platform,
+  name: platformLabel(capabilities.platform),
+  description: `${platformLabel(capabilities.platform)} publishing destination (${capabilities.destinationType.toLowerCase()}).`,
+  externalApprovalRequired: capabilities.externalApprovalRequired,
+}));
 
 export default async function ConnectionsPage() {
   const workspace = await m2Workspace();
   const destinations = await prisma.destination.findMany({ where: { workspaceId: workspace.dbId }, orderBy: { createdAt: "asc" } });
   const publishingDisabled = providerDisabledEnabled();
+  const connectionAdapters = createPublishingConnectionAdapters();
   const destinationByPlatform = new Map(destinations.map((destination) => [destination.platform.toLowerCase(), destination]));
 
   return (
@@ -36,18 +41,28 @@ export default async function ConnectionsPage() {
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        {SUPPORTED_CONNECTIONS.map((connection) => (
+        {SUPPORTED_CONNECTIONS.map((connection) => {
+          const destination = destinationByPlatform.get(connection.platform);
+          const status = destination?.status === "CONNECTED"
+            ? "Connected"
+            : destination?.status === "REAUTH_REQUIRED"
+              ? "Reauth required"
+              : connectionAdapters[connection.platform].externalApprovalRequired && connection.platform !== "instagram"
+                ? "API approval required"
+                : "Not connected";
+          return (
           <article key={connection.name} className="rounded-3xl border border-white/10 bg-white/[0.02] p-5">
             <div className="flex items-start justify-between gap-3">
               <h2 className="font-display text-lg font-extrabold">{connection.name}</h2>
               <span className="rounded-full border border-white/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/60">
-                {destinationByPlatform.get(connection.name.toLowerCase())?.status === "CONNECTED" ? "Connected" : "Not connected"}
+                {status}
               </span>
             </div>
             <p className="mt-3 text-sm text-white/65">{connection.description}</p>
-            <p className="mt-2 text-xs text-white/45">{publishingDisabled ? "Connection setup is unavailable in staging." : "Connection setup is available for approved provider access."}</p>
+            <p className="mt-2 text-xs text-white/45">{connection.platform === "instagram" && !publishingDisabled ? "Connection setup is available through the existing Meta OAuth flow." : connectionAdapters[connection.platform].externalApprovalRequired ? "Connection adapter is present, but provider approval/credentials are required before OAuth is enabled." : "Connection setup is unavailable in this runtime."}</p>
           </article>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">

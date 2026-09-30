@@ -16,7 +16,7 @@ export type VariantShape = {
   mediaAssetIds?: string[];
 };
 
-export function VariantEditor({ postExternalId, variants }: { postExternalId: string; variants: VariantShape[] }) {
+export function VariantEditor({ postExternalId, variantId, variants }: { postExternalId: string; variantId?: string; variants: VariantShape[] }) {
   const first = variants[0];
   const router = useRouter();
   const [title, setTitle] = useState(first?.title ?? "");
@@ -36,6 +36,7 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
       const hashtagList = hashtags.split(",").map((tag) => tag.trim()).filter(Boolean);
       const outcome = await m2UpdateVariant({
         postRequestExternalId: postExternalId,
+        variantId,
         title,
         caption,
         hashtags: hashtagList,
@@ -59,8 +60,8 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
       formData.set("file", file);
       const uploaded = await m2UploadMedia(formData);
       const oldAssetId = mediaAssetIds[0];
-      if (oldAssetId) await m2ReplacePostMedia({ postRequestExternalId: postExternalId, oldAssetId, newAssetId: uploaded.assetId });
-      else await m2UpdateVariant({ postRequestExternalId: postExternalId, title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [uploaded.assetId] });
+      if (oldAssetId) await m2ReplacePostMedia({ postRequestExternalId: postExternalId, variantId, oldAssetId, newAssetId: uploaded.assetId });
+      else await m2UpdateVariant({ postRequestExternalId: postExternalId, variantId, title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [uploaded.assetId] });
       const preview = await m2MediaPreviewUrl(uploaded.assetId);
       setMediaAssetIds([uploaded.assetId]);
       setPreviewUrls((current) => ({ ...current, [uploaded.assetId]: preview.url }));
@@ -78,7 +79,7 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
     if (!assetId) return;
     setBusy(true);
     try {
-      await m2UpdateVariant({ postRequestExternalId: postExternalId, title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [] });
+      await m2UpdateVariant({ postRequestExternalId: postExternalId, variantId, title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [] });
       await m2DeleteMedia(assetId);
       setMediaAssetIds([]);
       setResult("Media detached and deleted from owned storage.");

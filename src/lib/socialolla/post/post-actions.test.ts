@@ -39,9 +39,24 @@ function postWithVariants(variants: Array<{ id: string; isFinal: boolean; mediaA
     variants: variants.map((variant) => ({ ...variant, platform: "instagram" })),
     destinations: [{
       externalId: "postdst_1",
+      platform: "instagram",
       destination: { status: "CONNECTED" },
       publishJobs: [],
     }],
+  };
+}
+
+function multiDestinationPost() {
+  return {
+    externalId: "post_multi",
+    variants: [
+      { id: "final_ig", platform: "instagram", isFinal: true, mediaAssetIds: ["asset_1"] },
+      { id: "final_fb", platform: "facebook", isFinal: true, mediaAssetIds: [] },
+    ],
+    destinations: [
+      { externalId: "postdst_ig", platform: "instagram", destination: { status: "CONNECTED" }, publishJobs: [{ id: "job_ig", status: "PUBLISHED" }] },
+      { externalId: "postdst_fb", platform: "facebook", destination: { status: "CONNECTED" }, publishJobs: [] },
+    ],
   };
 }
 
@@ -72,5 +87,13 @@ describe("Publish now approval boundary", () => {
       .resolves.toMatchObject({ status: "PUBLISHED" });
     expect(mocks.enqueue).toHaveBeenCalledTimes(1);
     expect(mocks.process).toHaveBeenCalledWith({ maxJobs: 1, jobIds: ["job_1"], workspaceId: "workspace_1" });
+  });
+
+  it("fans out only the unfinished destination and does not republish a successful one", async () => {
+    mocks.findFirstPost.mockResolvedValue(multiDestinationPost());
+    mocks.enqueue.mockResolvedValue({ id: "job_fb" });
+    await expect(publishPostNow({ authUserId: "user_1", postRequestExternalId: "post_multi", confirmed: true })).resolves.toMatchObject({ status: "PUBLISHED" });
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ postDestinationExternalId: "postdst_fb" }));
   });
 });

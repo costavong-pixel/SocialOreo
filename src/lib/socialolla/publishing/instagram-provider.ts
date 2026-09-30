@@ -53,7 +53,7 @@ export function createInstagramPublishingProvider(storage: PrivateMediaStorage):
         }
       }
       const grant = await storage.createControlledReadGrant({ descriptor: { assetId: asset.externalId, ownerWorkspaceId: destination.workspace.externalId, kind: "image", mimeType: asset.mimeType, detectedMimeType: asset.detectedMimeType, sizeBytes: asset.sizeBytes, originalName: asset.originalName, storageKey: asset.storageKey }, expiresInSeconds: 300 });
-      if (input.onProviderRequestStart && !(await input.onProviderRequestStart())) throw new PublishingProviderClaimLostError();
+      if (!input.onProviderRequestStart || !(await input.onProviderRequestStart())) throw new PublishingProviderClaimLostError();
       return publishInstagramImage({ graphVersion: config.graphVersion, userId: destination.platformUserId, accessToken: token, controlledMediaUrl: grant.grant, caption: input.variant.content.text });
     },
   };
