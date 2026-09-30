@@ -23,6 +23,7 @@ function context(platform: "facebook" | "threads", media: PlatformPublishContext
     storage: {} as PlatformPublishContext["storage"],
     beforeProviderRequest: boundary,
     providerRequestState: { started: false, completed: false },
+    sleep: vi.fn(async () => undefined),
   };
 }
 
@@ -50,13 +51,16 @@ describe("Meta Post adapters", () => {
   it("publishes a Threads container then uses the publish endpoint", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "container_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "FINISHED" }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "thread_1" }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const input = context("threads");
     await metaPlatformAdapters.threads.publish(input);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]?.[0]).toContain("/threads");
-    expect(fetchMock.mock.calls[1]?.[0]).toContain("/threads_publish");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("fields=status,error_message");
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "GET" });
+    expect(fetchMock.mock.calls[2]?.[0]).toContain("/threads_publish");
   });
 
   it("classifies a rate-limit response as retryable without reconciliation", async () => {
@@ -87,8 +91,55 @@ describe("Meta Post adapters", () => {
   it("requires reconciliation when Threads publishing fails after creating a container", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "container_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "FINISHED" }), { status: 200 }))
       .mockResolvedValueOnce(new Response("{}", { status: 400 }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(metaPlatformAdapters.threads.publish(context("threads"))).rejects.toMatchObject({ reconciliationRequired: true, status: 400 });
+  });
+
+  it("polls an in-progress Threads container until it is finished", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "container_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "IN_PROGRESS" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "FINISHED" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "thread_1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const input = context("threads");
+    await metaPlatformAdapters.threads.publish(input);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(input.sleep).toHaveBeenCalledWith(5_000);
+    expect(fetchMock.mock.calls[3]?.[0]).toContain("/threads_publish");
+  });
+
+  it.each(["ERROR", "EXPIRED"] as const)("does not publish a Threads container in %s state", async (status) => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "container_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(metaPlatformAdapters.threads.publish(context("threads"))).rejects.toMatchObject({ reconciliationRequired: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("threads_publish"))).toBe(false);
+  });
+
+  it("fails closed without publishing when Threads readiness exceeds the poll bound", async () => {
+    const responses = [new Response(JSON.stringify({ id: "container_1" }), { status: 200 })];
+    for (let index = 0; index < 24; index += 1) responses.push(new Response(JSON.stringify({ status: "IN_PROGRESS" }), { status: 200 }));
+    const fetchMock = vi.fn();
+    for (const response of responses) fetchMock.mockResolvedValueOnce(response);
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(metaPlatformAdapters.threads.publish(context("threads"))).rejects.toMatchObject({ retryable: true, reconciliationRequired: false });
+    expect(fetchMock).toHaveBeenCalledTimes(25);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("threads_publish"))).toBe(false);
+  });
+
+  it.each(["PUBLISHED", "UNKNOWN"] as const)("fails closed for an unexpected Threads status %s", async (status) => {
+    const reported = status === "UNKNOWN" ? "UNKNOWN" : status;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "container_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: reported }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(metaPlatformAdapters.threads.publish(context("threads"))).rejects.toMatchObject({ reconciliationRequired: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("threads_publish"))).toBe(false);
   });
 });

@@ -17,6 +17,7 @@ export type PlatformPublishContext = Readonly<{
   storage: PrivateMediaStorage;
   beforeProviderRequest: () => Promise<void>;
   providerRequestState: { started: boolean; completed: boolean };
+  sleep: (milliseconds: number) => Promise<void>;
 }>;
 export type PlatformAdapter = Readonly<{
   platform: PublishingPlatform;
@@ -150,6 +151,7 @@ async function loadContext(input: PublishProviderInput, storage: PrivateMediaSto
     storage,
     beforeProviderRequest,
     providerRequestState,
+    sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   };
 }
 

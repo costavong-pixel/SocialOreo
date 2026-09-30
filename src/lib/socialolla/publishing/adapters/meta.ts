@@ -17,6 +17,29 @@ function receipt(provider: string, body: Record<string, unknown>, url?: string, 
   return { provider, externalId, url, publishedAt: new Date().toISOString(), metadata };
 }
 
+const THREADS_STATUS_POLL_INTERVAL_MS = 5_000;
+const THREADS_STATUS_MAX_ATTEMPTS = 24;
+
+async function waitForThreadsContainer(context: PlatformPublishContext, creationId: string): Promise<void> {
+  const statusUrl = `https://graph.threads.net/${graphVersion()}/${encodeURIComponent(creationId)}?fields=status,error_message`;
+  for (let attempt = 0; attempt < THREADS_STATUS_MAX_ATTEMPTS; attempt += 1) {
+    const statusResult = await providerJsonRequest(context, { url: statusUrl, method: "GET" });
+    const status = typeof statusResult.body.status === "string" ? statusResult.body.status : "";
+    if (status === "FINISHED") return;
+    if (status === "ERROR" || status === "EXPIRED") {
+      throw new PlatformPublishingError(`Threads container is ${status.toLowerCase()}; publishing was not attempted.`);
+    }
+    if (status === "PUBLISHED") {
+      throw new PlatformPublishingError("Threads container was already published; reconciliation is required.", false, true);
+    }
+    if (status !== "IN_PROGRESS") {
+      throw new PlatformPublishingError("Threads container returned an unknown status; reconciliation is required.", false, true);
+    }
+    if (attempt + 1 < THREADS_STATUS_MAX_ATTEMPTS) await context.sleep(THREADS_STATUS_POLL_INTERVAL_MS);
+  }
+  throw new PlatformPublishingError("Threads container readiness timed out before publishing.", true, false);
+}
+
 const facebook: PlatformAdapter = {
   platform: "facebook",
   provider: "meta-pages",
@@ -65,6 +88,7 @@ const threads: PlatformAdapter = {
     if (context.media[0]) createBody.set(context.media[0].descriptor.kind === "video" ? "video_url" : "image_url", context.media[0].grant);
     const container = await providerJsonRequest(context, { url: `https://graph.threads.net/${version}/${userId}/threads`, body: createBody });
     const creationId = requiredId(container.body, "container");
+    await waitForThreadsContainer(context, creationId);
     const published = await providerJsonRequest(context, {
       url: `https://graph.threads.net/${version}/${userId}/threads_publish`,
       body: new URLSearchParams({ creation_id: creationId }),
