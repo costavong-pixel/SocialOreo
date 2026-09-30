@@ -1,7 +1,17 @@
 import type { PostVariant, ProviderReceipt } from "./contracts";
-import { platformCapabilities, type PlatformCapabilities, type PublishingPlatform } from "./platform-adaptation";
+import { platformCapabilities, platformFlagName, isPublishingPlatform, type PlatformCapabilities, type PublishingPlatform } from "./platform-adaptation";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { createInstagramPublishingProvider } from "./instagram-provider";
+import { createFacebookPublishingProvider } from "./facebook-provider";
+import { createThreadsPublishingProvider } from "./threads-provider";
+import { createGoogleBusinessPublishingProvider } from "./google-business-provider";
+import { createLinkedInPublishingProvider } from "./linkedin-provider";
+import { createTikTokPublishingProvider } from "./tiktok-provider";
+import { createYouTubePublishingProvider } from "./youtube-provider";
+import { createPinterestPublishingProvider } from "./pinterest-provider";
+import { createXPublishingProvider } from "./x-provider";
+import { createRedditPublishingProvider } from "./reddit-provider";
 
 export type PublishProviderInput = Readonly<{
   workspaceId: string;
@@ -48,7 +58,31 @@ export function livePublishingRuntimeAllowed(env: Record<string, string | undefi
 }
 
 export function livePublishingEnabled(env: Record<string, string | undefined> = process.env, hasMediaStorage: boolean): boolean {
-  return hasMediaStorage && livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+  return hasMediaStorage && postPublishingEnabled("instagram", env);
+}
+
+/** Provider failures preserve retry/permanence and request-boundary ambiguity. */
+export class PublishingProviderRequestError extends Error {
+  readonly retryable: boolean;
+  readonly reconciliationRequired: boolean;
+
+  constructor(message: string, options: { retryable: boolean; reconciliationRequired: boolean }) {
+    super(message);
+    this.name = "PublishingProviderRequestError";
+    this.retryable = options.retryable;
+    this.reconciliationRequired = options.reconciliationRequired;
+  }
+}
+
+/**
+ * Every Post platform has its own explicit opt-in. Production also requires
+ * the exact Post worker gate, while staging keeps its existing exact staging
+ * boundary. Provider-disabled remains the safe default in both runtimes.
+ */
+export function postPublishingEnabled(platform: PublishingPlatform, env: Record<string, string | undefined> = process.env): boolean {
+  return livePublishingRuntimeAllowed(env)
+    && env[platformFlagName(platform)] === "true"
+    && !providerDisabledEnabled(env);
 }
 
 /**
@@ -57,15 +91,45 @@ export function livePublishingEnabled(env: Record<string, string | undefined> = 
  * than relying on the Connections page hiding the link.
  */
 export function instagramPublishingOAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+  return postPublishingEnabled("instagram", env);
 }
 
-export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {
+export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage; fetcher?: typeof fetch } = {}): PublishProvider {
   const capabilities = platformCapabilities(platform);
-  if (!capabilities || platform !== "instagram") throw new Error(`No publishing provider contract exists for ${platform}`);
-  if (options.mediaStorage && livePublishingEnabled(process.env, true)) {
-    const { createInstagramPublishingProvider } = require("./instagram-provider") as typeof import("./instagram-provider");
-    return createInstagramPublishingProvider(options.mediaStorage);
+  if (!capabilities || !isPublishingPlatform(platform)) throw new Error(`No publishing provider contract exists for ${platform}`);
+  if (options.mediaStorage && postPublishingEnabled(platform, process.env)) {
+    switch (platform) {
+      case "instagram": {
+        return createInstagramPublishingProvider(options.mediaStorage);
+      }
+      case "facebook": {
+        return createFacebookPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "threads": {
+        return createThreadsPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "google_business": {
+        return createGoogleBusinessPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "linkedin": {
+        return createLinkedInPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "tiktok": {
+        return createTikTokPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "youtube": {
+        return createYouTubePublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "pinterest": {
+        return createPinterestPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "x": {
+        return createXPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+      case "reddit": {
+        return createRedditPublishingProvider(options.mediaStorage, options.fetcher);
+      }
+    }
   }
-  return { platform: "instagram", capabilities, enabled: false, async publish() { throw new PublishingProviderDisabledError("instagram"); } };
+  return { platform, capabilities, enabled: false, async publish() { throw new PublishingProviderDisabledError(platform); } };
 }

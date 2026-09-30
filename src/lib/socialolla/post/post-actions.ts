@@ -7,6 +7,7 @@ import { enqueuePublishJob, reschedulePublishJob, cancelPublishJob } from "@/lib
 import { processDuePublishJobs } from "@/lib/socialolla/publishing/publish-worker";
 import { deleteOwnedMedia } from "@/lib/socialolla/media/media-service";
 import { toPostListView, type PostListView } from "./post-view";
+import { adaptPostContent, isPublishingPlatform, platformCapabilities } from "@/lib/socialolla/publishing/platform-adaptation";
 
 function externalId(prefix: string): string { return `${prefix}_${randomBytes(12).toString("base64url")}`; }
 
@@ -26,6 +27,10 @@ export async function createPostRequest(input: { authUserId: string; destination
   const workspace = await ownedWorkspace(input.authUserId);
   const destination = await prisma.destination.findFirst({ where: { externalId: input.destinationExternalId, workspaceId: workspace.dbId }, select: { id: true, externalId: true, platform: true } });
   if (!destination) throw new Error("Destination not found for this workspace");
+  const platform = destination.platform;
+  if (!isPublishingPlatform(platform)) throw new Error(`Unsupported publishing platform: ${platform}`);
+  const capabilities = platformCapabilities(platform);
+  if (!capabilities) throw new Error(`Unsupported publishing platform: ${platform}`);
   const profileExternalId = input.profileExternalId?.trim() || undefined;
   if (profileExternalId) {
     const profile = await prisma.profile.findFirst({ where: { externalId: profileExternalId, workspaceId: workspace.dbId }, select: { externalId: true } });
@@ -33,6 +38,7 @@ export async function createPostRequest(input: { authUserId: string; destination
   }
   const mediaAssetIds = [...new Set(input.mediaAssetIds ?? [])];
   await assertOwnedMedia(workspace.dbId, mediaAssetIds);
+  adaptPostContent(platform, { title: `Draft title (${input.language})`, text: `Draft caption for ${platform} in ${input.language}.`, hashtags: [], cta: "Learn more", mediaAssetIds });
   const intent = intentKey(workspace.id, input.destinationExternalId, input.contentIntent?.trim() || "post");
   const replay = await prisma.postRequest.findUnique({ where: { intentKey: intent }, select: { externalId: true, cfRequestRef: true, status: true } });
   if (replay) return result(replay);
@@ -44,19 +50,70 @@ export async function createPostRequest(input: { authUserId: string; destination
     const existing = await tx.postRequest.findUnique({ where: { intentKey: intent }, select: { externalId: true, cfRequestRef: true, status: true } });
     if (existing) return existing;
     const created = await tx.postRequest.create({ data: { externalId: externalId("post"), workspaceId: workspace.dbId, destinationRef: input.destinationExternalId, profileRef: profileExternalId, language: input.language, requestedCount: input.requestedCount, status: "REVIEW", intentKey: intent, cfRequestRef: request.id } });
-    const variant = await tx.postVariant.create({ data: { postRequestId: created.id, platform: destination.platform, title: `Draft title (${input.language})`, caption: `Draft caption for ${destination.platform} in ${input.language}.`, hashtags: [], cta: "Learn more", variantLocale: `${input.language}-US`, mediaAssetIds } });
+    adaptPostContent(platform, { title: `Draft title (${input.language})`, text: `Draft caption for ${platform} in ${input.language}.`, hashtags: [], cta: "Learn more", mediaAssetIds });
+    const variant = await tx.postVariant.create({ data: { postRequestId: created.id, platform, title: `Draft title (${input.language})`, caption: `Draft caption for ${platform} in ${input.language}.`, hashtags: [], cta: "Learn more", characterLimit: capabilities.maxTextLength, variantLocale: `${input.language}-US`, mediaAssetIds } });
     await tx.postOccurrence.create({ data: { postRequestId: created.id, kind: "FIRST", status: "LIGHT_DRAFT", destinationRef: input.destinationExternalId } });
-    await tx.postDestination.create({ data: { externalId: externalId("postdst"), postRequestId: created.id, destinationId: destination.id, variantId: variant.id, platform: destination.platform, status: "PENDING" } });
+    await tx.postDestination.create({ data: { externalId: externalId("postdst"), postRequestId: created.id, destinationId: destination.id, variantId: variant.id, platform, status: "PENDING" } });
     return created;
   });
   return result(postRequest);
 }
 
-export async function updatePostVariant(input: { authUserId: string; postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
+/** Create one shared PostRequest and one platform variant/job target per destination. */
+export async function createMultiDestinationPostRequest(input: { authUserId: string; destinationExternalIds: readonly string[]; profileExternalId?: string; language: string; requestedCount: number; contentIntent?: string; confirmed: boolean; mediaAssetIds?: string[] }) {
+  const ids = [...new Set(input.destinationExternalIds.map((id) => id.trim()).filter(Boolean))];
+  if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
+  if (ids.length === 0) throw new Error("Select at least one publishing destination");
+  const workspace = await ownedWorkspace(input.authUserId);
+  const destinations = await prisma.destination.findMany({ where: { externalId: { in: ids }, workspaceId: workspace.dbId }, select: { id: true, externalId: true, platform: true } });
+  if (destinations.length !== ids.length) throw new Error("One or more destinations are not owned by this workspace");
+  for (const destination of destinations) {
+    if (!isPublishingPlatform(destination.platform)) throw new Error(`Unsupported publishing platform: ${destination.platform}`);
+  }
+  const profileExternalId = input.profileExternalId?.trim() || undefined;
+  if (profileExternalId) {
+    const profile = await prisma.profile.findFirst({ where: { externalId: profileExternalId, workspaceId: workspace.dbId }, select: { externalId: true } });
+    if (!profile) throw new Error("Profile not found for this workspace");
+  }
+  const mediaAssetIds = [...new Set(input.mediaAssetIds ?? [])];
+  await assertOwnedMedia(workspace.dbId, mediaAssetIds);
+  for (const destination of destinations) {
+    const platform = destination.platform;
+    if (!isPublishingPlatform(platform)) throw new Error(`Unsupported publishing platform: ${platform}`);
+    adaptPostContent(platform, { title: `Draft title (${input.language})`, text: `Draft caption for ${platform} in ${input.language}.`, hashtags: [], cta: "Learn more", mediaAssetIds });
+  }
+  const destinationRef = [...ids].sort().join(",");
+  const intent = intentKey(workspace.id, destinationRef, input.contentIntent?.trim() || "post");
+  const replay = await prisma.postRequest.findUnique({ where: { intentKey: intent }, select: { externalId: true, cfRequestRef: true, status: true } });
+  if (replay) return result(replay);
+  const primary = destinations[0];
+  const service = createPostService();
+  const preview = await service.preview(input.authUserId, primary.externalId, input.requestedCount);
+  if (!preview.batchAvailable) throw new Error("Insufficient credits");
+  const request = await service.execute({ authUserId: input.authUserId, destinationExternalId: primary.externalId, profileExternalId, language: input.language, requestedCount: input.requestedCount, confirmed: input.confirmed, contentIntent: input.contentIntent });
+  const postRequest = await prisma.$transaction(async (tx) => {
+    const existing = await tx.postRequest.findUnique({ where: { intentKey: intent }, select: { externalId: true, cfRequestRef: true, status: true } });
+    if (existing) return existing;
+    const created = await tx.postRequest.create({ data: { externalId: externalId("post"), workspaceId: workspace.dbId, destinationRef, profileRef: profileExternalId, language: input.language, requestedCount: input.requestedCount, status: "REVIEW", intentKey: intent, cfRequestRef: request.id } });
+    for (const destination of destinations) {
+      const platform = destination.platform;
+      const capabilities = platformCapabilities(platform);
+      if (!capabilities || !isPublishingPlatform(platform)) throw new Error(`Unsupported publishing platform: ${platform}`);
+      adaptPostContent(platform, { title: `Draft title (${input.language})`, text: `Draft caption for ${platform} in ${input.language}.`, hashtags: [], cta: "Learn more", mediaAssetIds });
+      const variant = await tx.postVariant.create({ data: { postRequestId: created.id, platform, title: `Draft title (${input.language})`, caption: `Draft caption for ${platform} in ${input.language}.`, hashtags: [], cta: "Learn more", characterLimit: capabilities.maxTextLength, variantLocale: `${input.language}-US`, mediaAssetIds } });
+      await tx.postDestination.create({ data: { externalId: externalId("postdst"), postRequestId: created.id, destinationId: destination.id, variantId: variant.id, platform: destination.platform, status: "PENDING" } });
+    }
+    await tx.postOccurrence.create({ data: { postRequestId: created.id, kind: "FIRST", status: "LIGHT_DRAFT", destinationRef } });
+    return created;
+  });
+  return result(postRequest);
+}
+
+export async function updatePostVariant(input: { authUserId: string; postRequestExternalId: string; variantId?: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
   const workspace = await ownedWorkspace(input.authUserId);
   const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId } });
   if (!postRequest) throw new Error("Post request not found");
-  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id } });
+  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, ...(input.variantId ? { id: input.variantId } : {}) } });
   if (!variant) throw new Error("Variant not found");
   const mediaAssetIds = input.mediaAssetIds ?? variant.mediaAssetIds;
   await assertOwnedMedia(workspace.dbId, mediaAssetIds);
@@ -64,26 +121,31 @@ export async function updatePostVariant(input: { authUserId: string; postRequest
   return { updated: true };
 }
 
-export async function replacePostMedia(input: { authUserId: string; postRequestExternalId: string; oldAssetId: string; newAssetId: string }) {
+export async function replacePostMedia(input: { authUserId: string; postRequestExternalId: string; variantId?: string; oldAssetId: string; newAssetId: string }) {
   const workspace = await ownedWorkspace(input.authUserId);
   const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId } });
   if (!postRequest) throw new Error("Post request not found");
-  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, mediaAssetIds: { has: input.oldAssetId } } });
+  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, ...(input.variantId ? { id: input.variantId } : {}), mediaAssetIds: { has: input.oldAssetId } } });
   if (!variant) throw new Error("The original media is not attached to this Post");
   await assertOwnedMedia(workspace.dbId, [input.newAssetId]);
   const nextMedia = variant.mediaAssetIds.map((assetId) => assetId === input.oldAssetId ? input.newAssetId : assetId);
   await prisma.postVariant.update({ where: { id: variant.id }, data: { mediaAssetIds: nextMedia } });
-  await deleteOwnedMedia({ authUserId: input.authUserId, assetId: input.oldAssetId });
+  const remainingReferences = await prisma.postVariant.count({ where: { postRequest: { workspaceId: workspace.dbId }, mediaAssetIds: { has: input.oldAssetId } } });
+  if (remainingReferences === 0) await deleteOwnedMedia({ authUserId: input.authUserId, assetId: input.oldAssetId });
   return { replaced: true, mediaAssetIds: nextMedia };
 }
 
 export async function approveAndSchedulePost(input: { authUserId: string; postRequestExternalId: string; scheduleAt: Date; timezone: string; confirmed: boolean }) {
   if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
   const workspace = await ownedWorkspace(input.authUserId);
-  const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { destinations: true } });
+  const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { destinations: true, variants: true } });
   if (!postRequest) throw new Error("Post request not found");
   const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, isFinal: true } });
   if (!variant) throw new Error("No approved final variant");
+  const approvedVariants = (postRequest.variants?.filter((candidate) => candidate.isFinal) ?? [variant]);
+  for (const target of postRequest.destinations) {
+    if (!approvedVariants.some((candidate) => candidate.platform === target.platform)) throw new Error(`No approved final variant exists for ${target.platform}`);
+  }
   if (Number.isNaN(input.scheduleAt.getTime()) || input.scheduleAt.getTime() <= Date.now()) throw new Error("Scheduled publish time must be in the future");
   await prisma.$transaction(async (tx) => {
     await tx.postRequest.update({ where: { id: postRequest.id }, data: { status: "SCHEDULED" } });
@@ -101,14 +163,18 @@ export async function publishPostNow(input: { authUserId: string; postRequestExt
   const workspace = await ownedWorkspace(input.authUserId);
   const post = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { variants: true, destinations: { include: { destination: true, publishJobs: true } } } });
   if (!post) throw new Error("Post request not found");
-  const variant = post.variants.find((candidate) => candidate.isFinal);
-  if (!variant) throw new Error("No approved final variant");
-  if (variant.platform === "instagram" && (!variant.mediaAssetIds.length || variant.mediaAssetIds.length > 1)) throw new Error("Instagram image publishing requires exactly one image asset");
+  const finalVariants = post.variants.filter((candidate) => candidate.isFinal);
+  if (!finalVariants.length) throw new Error("No approved final variant");
   const targets = post.destinations.filter((target) => target.destination.status === "CONNECTED");
-  if (!targets.length) throw new Error("Connect a publishing-eligible Instagram destination first");
-  const completed = targets.find((target) => target.publishJobs.some((job) => job.status === "PUBLISHED"));
-  if (completed) return { status: "PUBLISHED" as const, jobs: completed.publishJobs.filter((job) => job.status === "PUBLISHED"), outcomes: [] as const, duplicate: true as const };
-  const jobs = await Promise.all(targets.map((target) => enqueuePublishJob({ authUserId: input.authUserId, postRequestExternalId: post.externalId, postDestinationExternalId: target.externalId, mode: "NOW" })));
+  if (!targets.length) throw new Error("Connect a publishing-eligible destination first");
+  for (const target of targets) {
+    const variant = finalVariants.find((candidate) => candidate.platform === target.platform);
+    if (!variant) throw new Error(`No approved final variant exists for ${target.platform}`);
+    if (variant.platform === "instagram" && (!variant.mediaAssetIds.length || variant.mediaAssetIds.length > 1)) throw new Error("Instagram image publishing requires exactly one image asset");
+  }
+  const pendingTargets = targets.filter((target) => !target.publishJobs.some((job) => job.status === "PUBLISHED"));
+  if (!pendingTargets.length) return { status: "PUBLISHED" as const, jobs: targets.flatMap((target) => target.publishJobs.filter((job) => job.status === "PUBLISHED")), outcomes: [] as const, duplicate: true as const };
+  const jobs = await Promise.all(pendingTargets.map((target) => enqueuePublishJob({ authUserId: input.authUserId, postRequestExternalId: post.externalId, postDestinationExternalId: target.externalId, mode: "NOW" })));
   // A user-triggered publish may process only the jobs just created/replayed
   // for this workspace. The scheduled worker intentionally omits this scope
   // and is the only path allowed to drain the global due queue.

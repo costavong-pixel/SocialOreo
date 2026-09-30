@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createPublishingProvider, instagramPublishingOAuthEnabled, livePublishingEnabled, livePublishingRuntimeAllowed } from "./provider";
+import { createPublishingProvider, instagramPublishingOAuthEnabled, livePublishingEnabled, livePublishingRuntimeAllowed, postPublishingEnabled } from "./provider";
+import { PUBLISHING_PLATFORMS, platformFlagName } from "./platform-adaptation";
+import { createFacebookPublishingProvider } from "./facebook-provider";
 
 describe("publishing runtime boundary", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -117,5 +119,33 @@ describe("publishing runtime boundary", () => {
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "TRUE" })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true " })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true" })).toBe(true);
+  });
+
+  it("keeps every platform publish gate fail-closed and independent", () => {
+    const base = {
+      NODE_ENV: "production",
+      SOCIALOLLA_ENV: "production",
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    };
+    for (const platform of PUBLISHING_PLATFORMS) {
+      expect(postPublishingEnabled(platform, base)).toBe(false);
+      expect(postPublishingEnabled(platform, { ...base, [platformFlagName(platform)]: "TRUE" })).toBe(false);
+      expect(postPublishingEnabled(platform, { ...base, [platformFlagName(platform)]: "true " })).toBe(false);
+      expect(postPublishingEnabled(platform, { ...base, [platformFlagName(platform)]: "true" })).toBe(true);
+      expect(postPublishingEnabled(platform, { ...base, [platformFlagName(platform)]: "true", SOCIALOLLA_PROVIDER_DISABLED: "true" })).toBe(false);
+    }
+  });
+
+  it("rechecks the complete runtime gate inside a direct adapter factory", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SOCIALOLLA_ENV", "production");
+    vi.stubEnv("SOCIALOLLA_FACEBOOK_PUBLISH_ENABLED", "true");
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
+    const provider = createFacebookPublishingProvider({} as never, fetcher);
+    expect(provider.enabled).toBe(true);
+    await expect(provider.publish({} as never)).rejects.toThrow("Live publishing is disabled");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@ export type PostVariant = {
   id: string;
   postId: string;
   platform: string;
-  content: { text: string; mediaAssetIds: string[] };
+  content: { text: string; mediaAssetIds: string[]; title?: string; link?: string };
 };
 
 export type ProviderReceipt = {

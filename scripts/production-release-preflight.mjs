@@ -408,23 +408,19 @@ async function assertAllowedNextNodeModulesSymlink(linkPath, releaseDirectory, n
 
   assertRelativeTargetStaysInsideRoot(rawTarget, dirname(linkPath), releaseDirectory, runtimeLabel);
   const targetPath = resolve(dirname(linkPath), rawTarget);
-  if (!isContainedPath(targetPath, nodeModulesDirectory) || targetPath === nodeModulesDirectory) {
-    throw new Error(`${runtimeLabel} must resolve inside candidate/node_modules.`);
-  }
 
   const [canonicalReleaseDirectory, canonicalNodeModulesDirectory, canonicalTarget] = await Promise.all([
     realpath(releaseDirectory).catch(() => null),
     realpath(nodeModulesDirectory).catch(() => null),
     realpath(targetPath).catch(() => null),
   ]);
-  if (
-    !canonicalReleaseDirectory
-    || !canonicalNodeModulesDirectory
-    || !canonicalTarget
-    || !isContainedPath(canonicalTarget, canonicalReleaseDirectory)
-    || !isContainedPath(canonicalTarget, canonicalNodeModulesDirectory)
-    || canonicalTarget === canonicalNodeModulesDirectory
-  ) {
+  if (!canonicalReleaseDirectory || !canonicalNodeModulesDirectory || !canonicalTarget) {
+    throw new Error(`${runtimeLabel} must resolve to an existing target inside candidate/node_modules.`);
+  }
+  if (!isContainedPath(canonicalTarget, canonicalReleaseDirectory)) {
+    throw new Error(`${runtimeLabel} must not escape the candidate and must resolve inside candidate/node_modules.`);
+  }
+  if (!isContainedPath(canonicalTarget, canonicalNodeModulesDirectory) || canonicalTarget === canonicalNodeModulesDirectory) {
     throw new Error(`${runtimeLabel} must resolve to an existing target inside candidate/node_modules.`);
   }
 }

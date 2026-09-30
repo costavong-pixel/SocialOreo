@@ -4,7 +4,7 @@ import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { claimDuePublishJob, markPublishFailure, markPublishProviderStarted, markPublishReconciliationRequired, markPublishSuccess } from "./job-service";
 import { createPublishingProvider, PublishingProviderClaimLostError } from "./provider";
 import { InstagramPublishError } from "@/lib/instagram-publishing/publish-client";
-import type { PublishingPlatform } from "./platform-adaptation";
+import { adaptPostContent, isPublishingPlatform } from "./platform-adaptation";
 import type { PostVariant } from "./contracts";
 
 export type PublishWorkerOutcome =
@@ -13,6 +13,10 @@ export type PublishWorkerOutcome =
   | { status: "RECONCILIATION_REQUIRED"; jobId: string; error: string };
 
 function message(error: unknown): string { return error instanceof Error ? error.message : "Publish attempt failed"; }
+
+function isPublishingProviderRequestError(error: unknown): error is { retryable: boolean; reconciliationRequired: boolean } {
+  return Boolean(error && typeof error === "object" && "retryable" in error && "reconciliationRequired" in error);
+}
 
 export function assertPostWorkerStagingRuntime(env: Record<string, string | undefined> = process.env): void {
   const nodeEnvironment = (env.NODE_ENV ?? "").trim().toLowerCase();
@@ -45,16 +49,35 @@ export async function processDuePublishJobs(input: { now?: Date; workerId?: stri
     const claimed = await claimDuePublishJob({ now, workerId, jobIds: input.jobIds, workspaceId: input.workspaceId });
     if (!claimed) break;
     const destination = claimed.job.postDestination;
-    const variant: PostVariant = { id: destination.variant.id, postId: destination.postRequestId, platform: destination.variant.platform, content: { text: [destination.variant.title, destination.variant.caption, destination.variant.cta, destination.variant.hashtags.join(" ")].filter(Boolean).join("\n\n"), mediaAssetIds: destination.variant.mediaAssetIds } };
+    const platform = destination.variant.platform;
     let providerCallStarted = false;
     let providerEnabled = false;
     try {
-      const provider = createPublishingProvider(destination.platform as PublishingPlatform, { mediaStorage: createLocalPrivateMediaStorage() });
+      const publishingPlatform = isPublishingPlatform(platform) ? platform : null;
+      if (!publishingPlatform) throw new Error(`Unsupported publishing platform: ${platform}`);
+      const adapted = adaptPostContent(publishingPlatform, {
+        title: destination.variant.title,
+        text: destination.variant.caption ?? "",
+        hashtags: destination.variant.hashtags,
+        cta: destination.variant.cta ?? undefined,
+        mediaAssetIds: destination.variant.mediaAssetIds,
+      });
+      const variant: PostVariant = {
+        id: destination.variant.id,
+        postId: destination.postRequestId,
+        platform: publishingPlatform,
+        content: {
+          title: adapted.title,
+          text: adapted.text,
+          mediaAssetIds: [...adapted.mediaAssetIds],
+        },
+      };
+      const provider = createPublishingProvider(publishingPlatform, { mediaStorage: createLocalPrivateMediaStorage() });
       providerEnabled = provider.enabled;
       const receipt = await provider.publish({
         workspaceId: destination.postRequest.workspaceId,
         destinationExternalId: destination.destination.externalId,
-        platform: destination.platform as PublishingPlatform,
+        platform: publishingPlatform,
         variant,
         onProviderRequestStart: async () => {
           providerCallStarted = await markPublishProviderStarted({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, startedAt: now });
@@ -71,14 +94,14 @@ export async function processDuePublishJobs(input: { now?: Date; workerId?: stri
       // response or a local persistence failure after the provider accepted
       // the operation. Never downgrade that state to definitive FAILED.
       const reconciliationRequired = providerCallStarted && providerEnabled && (
-        !(error instanceof InstagramPublishError) || error.reconciliationRequired
+        isPublishingProviderRequestError(error) ? error.reconciliationRequired : !(error instanceof InstagramPublishError) || error.reconciliationRequired
       );
       if (reconciliationRequired) {
         await markPublishReconciliationRequired({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error });
         outcomes.push({ status: "RECONCILIATION_REQUIRED", jobId: claimed.job.id, error: errorText });
         continue;
       }
-      const result = await markPublishFailure({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error, retryable: error instanceof InstagramPublishError && error.retryable });
+      const result = await markPublishFailure({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error, retryable: (error instanceof InstagramPublishError && error.retryable) || (isPublishingProviderRequestError(error) && error.retryable) });
       if (result.accepted) outcomes.push({ status: "FAILED", jobId: claimed.job.id, retryScheduled: result.retryScheduled, error: errorText });
     }
   }

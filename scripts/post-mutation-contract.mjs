@@ -8,14 +8,14 @@ const mutations = [
   {
     name: "publish unapproved first variant",
     file: "src/lib/socialolla/post/post-actions.ts",
-    mutate: (text) => text.replace("const variant = post.variants.find((candidate) => candidate.isFinal);", "const variant = post.variants.find((candidate) => candidate.isFinal) ?? post.variants[0];"),
-    control: (text) => text.includes("const variant = post.variants.find((candidate) => candidate.isFinal);") && text.includes('throw new Error("No approved final variant")'),
+    mutate: (text) => text.replace("const finalVariants = post.variants.filter((candidate) => candidate.isFinal);", "const finalVariants = post.variants.filter(() => true);"),
+    control: (text) => text.includes("const finalVariants = post.variants.filter((candidate) => candidate.isFinal);") && text.includes('throw new Error("No approved final variant")'),
   },
   {
     name: "enable provider in production factory",
     file: "src/lib/socialolla/publishing/provider.ts",
-    mutate: (text) => text.replace("if (options.mediaStorage && livePublishingEnabled(process.env, true)) {", "if (options.mediaStorage) {"),
-    control: (text) => text.includes("if (options.mediaStorage && livePublishingEnabled(process.env, true)) {") && text.includes('env.NODE_ENV?.trim().toLowerCase() === "staging"'),
+    mutate: (text) => text.replace("if (options.mediaStorage && postPublishingEnabled(platform, process.env)) {", "if (options.mediaStorage) {"),
+    control: (text) => text.includes("if (options.mediaStorage && postPublishingEnabled(platform, process.env)) {") && text.includes('env.NODE_ENV?.trim().toLowerCase() === "staging"'),
   },
   {
     name: "enable direct Instagram provider in production",
@@ -26,8 +26,8 @@ const mutations = [
   {
     name: "remove DB Post write",
     file: "src/lib/socialolla/post/post-actions.ts",
-    mutate: (text) => text.replace("tx.postRequest.create({", "tx.postRequest.create_REMOVED({"),
-    control: (text) => text.includes("tx.postRequest.create({") && text.includes("tx.postDestination.create({"),
+    mutate: (text) => text.replaceAll("tx.postRequest.create({", "tx.postRequest.create_REMOVED({"),
+    control: (text) => text.split("tx.postRequest.create({").length - 1 === 2 && text.includes("tx.postDestination.create({"),
   },
   {
     name: "disable provider call",
