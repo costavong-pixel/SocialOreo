@@ -17,6 +17,7 @@ function context(platform: "google_business" | "youtube", media: PlatformPublish
     media,
     storage: { read: vi.fn(), put: vi.fn(), createControlledReadGrant: vi.fn() } as unknown as PlatformPublishContext["storage"],
     beforeProviderRequest: vi.fn(async () => undefined),
+    providerRequestState: { started: false, completed: false },
   };
 }
 

@@ -185,4 +185,26 @@ describe("publish worker ambiguity boundary", () => {
     expect(mocks.markFailure).toHaveBeenCalledWith(expect.objectContaining({ retryable: true }));
     expect(mocks.markReconciliation).not.toHaveBeenCalled();
   });
+
+  it("reconciles a platform adapter error after an earlier provider request", async () => {
+    const { PlatformPublishingError } = await import("./platform-provider");
+    mocks.provider.mockReturnValue({
+      enabled: true,
+      publish: vi.fn(async (input: { onProviderRequestStart?: () => Promise<boolean> }) => {
+        await input.onProviderRequestStart?.();
+        throw new PlatformPublishingError("Threads rejected the publish step.", true, true, 400);
+      }),
+    });
+
+    const { processDuePublishJobs } = await import("./publish-worker");
+    const outcomes = await processDuePublishJobs({ maxJobs: 1, workerId: "worker-1" });
+
+    expect(outcomes).toEqual([{
+      status: "RECONCILIATION_REQUIRED",
+      jobId: "job-1",
+      error: "Threads rejected the publish step.",
+    }]);
+    expect(mocks.markReconciliation).toHaveBeenCalledWith(expect.objectContaining({ jobId: "job-1" }));
+    expect(mocks.markFailure).not.toHaveBeenCalled();
+  });
 });

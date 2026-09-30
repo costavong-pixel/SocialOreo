@@ -16,6 +16,7 @@ export type PlatformPublishContext = Readonly<{
   media: readonly PlatformMediaContext[];
   storage: PrivateMediaStorage;
   beforeProviderRequest: () => Promise<void>;
+  providerRequestState: { started: boolean; completed: boolean };
 }>;
 export type PlatformAdapter = Readonly<{
   platform: PublishingPlatform;
@@ -37,13 +38,13 @@ function tokenEncryptionKey(platform: PublishingPlatform): string {
   return key;
 }
 
-function safeProviderError(provider: string, status?: number): PlatformPublishingError {
+function safeProviderError(provider: string, status?: number, priorRequestCompleted = false): PlatformPublishingError {
   const retryable = status === 408 || status === 409 || status === 425 || status === 429 || (status !== undefined && status >= 500);
   // A response-level rate limit or timeout is a definitive provider rejection
   // and may be retried by the shared job engine. Conflicts and 5xx responses
   // stay reconciliation-required because the provider may have accepted the
   // mutation before returning an ambiguous response.
-  const reconciliationRequired = status === 409 || (status !== undefined && status >= 500);
+  const reconciliationRequired = priorRequestCompleted || status === 409 || (status !== undefined && status >= 500);
   return new PlatformPublishingError(`${provider} rejected the publishing request.`, retryable, reconciliationRequired, status);
 }
 
@@ -53,6 +54,7 @@ async function readProviderBody(response: Response): Promise<Record<string, unkn
 }
 
 export async function providerJsonRequest(context: PlatformPublishContext, input: { url: string; method?: string; headers?: Record<string, string>; body?: BodyInit }): Promise<{ response: Response; body: Record<string, unknown> }> {
+  const priorRequestCompleted = context.providerRequestState.completed;
   await context.beforeProviderRequest();
   let response: Response;
   try {
@@ -66,7 +68,8 @@ export async function providerJsonRequest(context: PlatformPublishContext, input
     throw new PlatformPublishingError(`${context.capabilities.provider} transport failed; reconciliation is required before retry.`, true, true);
   }
   const body = await readProviderBody(response);
-  if (!response.ok) throw safeProviderError(context.capabilities.provider, response.status);
+  if (!response.ok) throw safeProviderError(context.capabilities.provider, response.status, priorRequestCompleted);
+  context.providerRequestState.completed = true;
   return { response, body };
 }
 
@@ -126,11 +129,11 @@ async function loadContext(input: PublishProviderInput, storage: PrivateMediaSto
     media.push({ descriptor, grant: grant.grant });
   }
 
-  let providerBoundaryStarted = false;
+  const providerRequestState = { started: false, completed: false };
   const beforeProviderRequest = async () => {
-    if (providerBoundaryStarted) return;
+    if (providerRequestState.started) return;
     if (input.onProviderRequestStart && !(await input.onProviderRequestStart())) throw new PublishingProviderClaimLostError();
-    providerBoundaryStarted = true;
+    providerRequestState.started = true;
   };
   return {
     input,
@@ -146,6 +149,7 @@ async function loadContext(input: PublishProviderInput, storage: PrivateMediaSto
     media,
     storage,
     beforeProviderRequest,
+    providerRequestState,
   };
 }
 

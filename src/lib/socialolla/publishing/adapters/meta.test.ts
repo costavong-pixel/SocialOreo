@@ -22,6 +22,7 @@ function context(platform: "facebook" | "threads", media: PlatformPublishContext
     media,
     storage: {} as PlatformPublishContext["storage"],
     beforeProviderRequest: boundary,
+    providerRequestState: { started: false, completed: false },
   };
 }
 
@@ -69,5 +70,25 @@ describe("Meta Post adapters", () => {
     const result = providerJsonRequest(context("facebook"), { url: "https://graph.facebook.com/v25.0/provider-user/feed" });
     await expect(result).rejects.toBeInstanceOf(PlatformPublishingError);
     await expect(result).rejects.toMatchObject({ retryable: true, reconciliationRequired: true, status: 500 });
+  });
+
+  it("requires reconciliation when a Facebook album fails after an earlier upload", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "photo_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const media = [
+      { descriptor: { assetId: "image-1", ownerWorkspaceId: "workspace-1", kind: "image" as const, mimeType: "image/jpeg", detectedMimeType: "image/jpeg", sizeBytes: 10, originalName: "one.jpg", storageKey: "media/workspace-1/image-1" }, grant: "https://app.test/media/image-1" },
+      { descriptor: { assetId: "image-2", ownerWorkspaceId: "workspace-1", kind: "image" as const, mimeType: "image/jpeg", detectedMimeType: "image/jpeg", sizeBytes: 10, originalName: "two.jpg", storageKey: "media/workspace-1/image-2" }, grant: "https://app.test/media/image-2" },
+    ];
+    await expect(metaPlatformAdapters.facebook.publish(context("facebook", media))).rejects.toMatchObject({ reconciliationRequired: true, status: 400 });
+  });
+
+  it("requires reconciliation when Threads publishing fails after creating a container", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "container_1" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(metaPlatformAdapters.threads.publish(context("threads"))).rejects.toMatchObject({ reconciliationRequired: true, status: 400 });
   });
 });
