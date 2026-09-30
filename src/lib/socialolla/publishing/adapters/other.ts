@@ -120,6 +120,18 @@ const linkedin: PlatformAdapter = {
 const TIKTOK_STATUS_POLL_INTERVAL_MS = 5_000;
 const TIKTOK_STATUS_MAX_ATTEMPTS = 24;
 
+function tiktokData(body: Record<string, unknown>): Record<string, unknown> {
+  const error = body.error && typeof body.error === "object" ? body.error as Record<string, unknown> : {};
+  const errorCode = typeof error.code === "string" ? error.code : "ok";
+  if (errorCode !== "ok") {
+    const retryable = errorCode === "internal" || errorCode === "rate_limit_exceeded";
+    throw new PlatformPublishingError("TikTok rejected the publishing request.", retryable, false);
+  }
+  const data = body.data && typeof body.data === "object" ? body.data as Record<string, unknown> : null;
+  if (!data) throw new PlatformPublishingError("TikTok returned no publish data; reconciliation is required.", false, true);
+  return data;
+}
+
 async function waitForTikTokPublish(context: PlatformPublishContext, publishId: string): Promise<Record<string, unknown>> {
   for (let attempt = 0; attempt < TIKTOK_STATUS_MAX_ATTEMPTS; attempt += 1) {
     const result = await providerJsonRequest(context, {
@@ -127,10 +139,14 @@ async function waitForTikTokPublish(context: PlatformPublishContext, publishId: 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ publish_id: publishId }),
     });
-    const status = typeof result.body.status === "string" ? result.body.status : "";
-    if (status === "PUBLISH_COMPLETE") return result.body;
-    if (status === "FAILED") throw new PlatformPublishingError("TikTok rejected the publish request.");
-    if (status !== "PROCESSING" && status !== "SCHEDULED") throw new PlatformPublishingError("TikTok returned an unknown publish status; reconciliation is required.", false, true);
+    const data = tiktokData(result.body);
+    const status = typeof data.status === "string" ? data.status : "";
+    if (status === "PUBLISH_COMPLETE") return data;
+    if (status === "FAILED") {
+      const retryable = data.fail_reason === "internal" || data.fail_reason === "video_pull_failed" || data.fail_reason === "photo_pull_failed";
+      throw new PlatformPublishingError("TikTok rejected the publishing request.", retryable, false);
+    }
+    if (status !== "PROCESSING" && status !== "PROCESSING_UPLOAD" && status !== "PROCESSING_DOWNLOAD" && status !== "SCHEDULED") throw new PlatformPublishingError("TikTok returned an unknown publish status; reconciliation is required.", false, true);
     if (attempt + 1 < TIKTOK_STATUS_MAX_ATTEMPTS) await context.sleep(TIKTOK_STATUS_POLL_INTERVAL_MS);
   }
   throw new PlatformPublishingError("TikTok publish readiness timed out before completion.", true, false);
@@ -151,7 +167,8 @@ const tiktok: PlatformAdapter = {
         ? { post_info: postInfo, source_info: { source: "PULL_FROM_URL", video_url: media.grant } }
         : { post_mode: "DIRECT_POST", media_type: "PHOTO", post_info: postInfo, source_info: { source: "PULL_FROM_URL", photo_images: [media.grant], photo_cover_index: 0 } }),
     });
-    const publishId = requiredString(result.body.publish_id, "TikTok publish identifier");
+    const data = tiktokData(result.body);
+    const publishId = requiredString(data.publish_id, "TikTok publish identifier");
     await waitForTikTokPublish(context, publishId);
     return { provider: "tiktok-content-posting", externalId: publishId, publishedAt: new Date().toISOString(), metadata: { mediaType: isVideo ? "video" : "photo" } };
   },

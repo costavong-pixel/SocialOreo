@@ -61,15 +61,24 @@ describe("other Post adapters", () => {
 
   it("waits for TikTok processing before returning a receipt", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ publish_id: "tiktok-publish-1" }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "PROCESSING" }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "PUBLISH_COMPLETE" }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { publish_id: "tiktok-publish-1" }, error: { code: "ok", message: "" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { status: "PROCESSING_DOWNLOAD" }, error: { code: "ok", message: "" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { status: "PUBLISH_COMPLETE", publicaly_available_post_id: [] }, error: { code: "ok", message: "" } }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const input = context("tiktok", [video]);
     const result = await otherPlatformAdapters.tiktok.publish(input);
     expect(result).toMatchObject({ provider: "tiktok-content-posting", externalId: "tiktok-publish-1" });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(input.sleep).toHaveBeenCalledWith(5_000);
+  });
+
+  it("classifies a TikTok failed status without leaking provider details", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { publish_id: "tiktok-publish-2" }, error: { code: "ok", message: "" } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { status: "FAILED", fail_reason: "picture_size_check_failed" }, error: { code: "ok", message: "" } }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(otherPlatformAdapters.tiktok.publish(context("tiktok", [image]))).rejects.toMatchObject({ retryable: false, reconciliationRequired: false });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("creates an image Pin on the selected Pinterest board", async () => {
