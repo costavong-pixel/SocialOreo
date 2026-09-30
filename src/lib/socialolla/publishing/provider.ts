@@ -5,6 +5,7 @@ import { postPublishingEnabled, postWorkerRuntimeAllowed } from "./gates";
 import { createPlatformPublishingProvider } from "./platform-provider";
 import { metaPlatformAdapters } from "./adapters/meta";
 import { googlePlatformAdapters } from "./adapters/google";
+import { otherPlatformAdapters } from "./adapters/other";
 import { PublishingProviderClaimLostError, PublishingProviderDisabledError } from "./provider-errors";
 
 export { PublishingProviderClaimLostError, PublishingProviderDisabledError } from "./provider-errors";
@@ -51,15 +52,18 @@ export function createPublishingProvider(platform: string, options: { mediaStora
     const { createInstagramPublishingProvider } = require("./instagram-provider") as typeof import("./instagram-provider");
     return createInstagramPublishingProvider(options.mediaStorage);
   }
-  const adapter = normalizedPlatform === "facebook"
-    ? metaPlatformAdapters.facebook
-    : normalizedPlatform === "threads"
-      ? metaPlatformAdapters.threads
-      : normalizedPlatform === "google_business"
-        ? googlePlatformAdapters.googleBusiness
-        : normalizedPlatform === "youtube"
-          ? googlePlatformAdapters.youtube
-          : null;
+  const adapter = ({
+    instagram: null,
+    facebook: metaPlatformAdapters.facebook,
+    threads: metaPlatformAdapters.threads,
+    google_business: googlePlatformAdapters.googleBusiness,
+    youtube: googlePlatformAdapters.youtube,
+    linkedin: otherPlatformAdapters.linkedin,
+    tiktok: otherPlatformAdapters.tiktok,
+    pinterest: otherPlatformAdapters.pinterest,
+    x: otherPlatformAdapters.x,
+    reddit: otherPlatformAdapters.reddit,
+  } as const)[capabilities.platform] ?? null;
   if (adapter && options.mediaStorage) return createPlatformPublishingProvider(adapter, options.mediaStorage);
   return {
     platform: capabilities.platform,

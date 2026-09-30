@@ -80,14 +80,14 @@ const registry: Record<PublishingPlatform, PlatformCapabilities> = {
   },
   pinterest: {
     platform: "pinterest", provider: "pinterest", destinationType: "BOARD",
-    text: true, title: true, image: true, multipleImages: false, video: true, link: true,
+    text: true, title: true, image: true, multipleImages: false, video: false, link: true,
     scheduling: true, nativeScheduling: false, maxTextLength: 500, maxTitleLength: 100, maxMedia: 1,
     requiredScopes: ["boards:read", "pins:write"],
   },
   x: {
     platform: "x", provider: "x-api", destinationType: "ACCOUNT",
-    text: true, title: false, image: true, multipleImages: true, video: true, link: true,
-    scheduling: true, nativeScheduling: false, maxTextLength: 280, maxTitleLength: 0, maxMedia: 4,
+    text: true, title: false, image: false, multipleImages: false, video: false, link: true,
+    scheduling: true, nativeScheduling: false, maxTextLength: 280, maxTitleLength: 0, maxMedia: 0,
     requiredScopes: ["tweet.read", "tweet.write", "users.read"],
   },
   reddit: {

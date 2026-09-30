@@ -134,7 +134,7 @@ describe("publishing runtime boundary", () => {
     vi.stubEnv("NODE_ENV", "staging");
     vi.stubEnv("SOCIALOLLA_ENV", "staging");
     vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
-    const platforms = ["facebook", "threads", "google_business", "youtube"] as const;
+    const platforms = ["facebook", "threads", "google_business", "youtube", "linkedin", "tiktok", "pinterest", "x", "reddit"] as const;
     for (const platform of platforms) {
       const envName = `SOCIALOLLA_${platform.toUpperCase()}_PUBLISH_ENABLED`;
       vi.stubEnv(envName, "true");
