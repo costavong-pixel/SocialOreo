@@ -72,6 +72,17 @@ describe("publishing runtime boundary", () => {
     }, true)).toBe(true);
   });
 
+  it("keeps normalized staging compatibility for publishing and OAuth gates", () => {
+    const staging = {
+      NODE_ENV: " StAgInG ",
+      SOCIALOLLA_ENV: " staging ",
+      SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    };
+    expect(livePublishingEnabled(staging, true)).toBe(true);
+    expect(instagramPublishingOAuthEnabled(staging)).toBe(true);
+  });
+
   it("does not activate Instagram from production or the Post worker gate alone", () => {
     const base = { NODE_ENV: "production", SOCIALOLLA_ENV: "production" };
     expect(livePublishingEnabled(base, true)).toBe(false);
