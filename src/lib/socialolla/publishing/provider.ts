@@ -1,7 +1,7 @@
 import type { PostVariant, ProviderReceipt } from "./contracts";
 import { platformCapabilities, type PlatformCapabilities, type PublishingPlatform } from "./platform-adaptation";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
-import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { postPublishingEnabled, postWorkerRuntimeAllowed } from "./gates";
 
 export type PublishProviderInput = Readonly<{
   workspaceId: string;
@@ -33,22 +33,13 @@ export class PublishingProviderClaimLostError extends Error {
   }
 }
 
-function isStagingRuntime(env: Record<string, string | undefined>): boolean {
-  return env.NODE_ENV?.trim().toLowerCase() === "staging" && env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging";
-}
-
-function isExactProductionRuntime(env: Record<string, string | undefined>): boolean {
-  return env.NODE_ENV === "production" && env.SOCIALOLLA_ENV === "production";
-}
-
 /** The worker gate is required for production publishing; provider opt-ins remain separate. */
 export function livePublishingRuntimeAllowed(env: Record<string, string | undefined> = process.env): boolean {
-  if (isStagingRuntime(env)) return true;
-  return isExactProductionRuntime(env) && env.SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED === "true";
+  return postWorkerRuntimeAllowed(env);
 }
 
 export function livePublishingEnabled(env: Record<string, string | undefined> = process.env, hasMediaStorage: boolean): boolean {
-  return hasMediaStorage && livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+  return postPublishingEnabled("instagram", env, hasMediaStorage);
 }
 
 /**
@@ -57,7 +48,7 @@ export function livePublishingEnabled(env: Record<string, string | undefined> = 
  * than relying on the Connections page hiding the link.
  */
 export function instagramPublishingOAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+  return postPublishingEnabled("instagram", env, true);
 }
 
 export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {
