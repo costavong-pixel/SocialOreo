@@ -56,7 +56,15 @@ describe("other Post adapters", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0]?.[0]).toContain("initializeUpload");
     expect(fetchMock.mock.calls[1]?.[0]).toBe("https://upload.linkedin.test/image");
+    expect(fetchMock.mock.calls[1]?.[1]?.headers).not.toHaveProperty("Authorization");
     expect(fetchMock.mock.calls[2]?.[0]).toBe("https://api.linkedin.com/rest/posts");
+  });
+
+  it("rejects multiple LinkedIn videos before any provider request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(otherPlatformAdapters.linkedin.publish(context("linkedin", [video, { ...video, descriptor: { ...video.descriptor, assetId: "video-2" } }]))).rejects.toThrow("exactly one video asset");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("waits for TikTok processing before returning a receipt", async () => {

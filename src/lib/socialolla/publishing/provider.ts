@@ -64,7 +64,11 @@ export function createPublishingProvider(platform: string, options: { mediaStora
     x: otherPlatformAdapters.x,
     reddit: otherPlatformAdapters.reddit,
   } as const)[capabilities.platform] ?? null;
-  if (adapter && options.mediaStorage) return createPlatformPublishingProvider(adapter, options.mediaStorage);
+  // TikTok direct posting stays hard-disabled until the integration can prove
+  // creator-info/privacy controls and durable verified media URLs required by
+  // the Content Posting API. The adapter remains contract-tested, but a live
+  // factory can never cross its provider boundary yet.
+  if (adapter && options.mediaStorage && capabilities.platform !== "tiktok") return createPlatformPublishingProvider(adapter, options.mediaStorage);
   return {
     platform: capabilities.platform,
     capabilities,

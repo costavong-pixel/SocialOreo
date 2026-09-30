@@ -54,14 +54,16 @@ async function readProviderBody(response: Response): Promise<Record<string, unkn
   return body && typeof body === "object" ? body as Record<string, unknown> : {};
 }
 
-export async function providerJsonRequest(context: PlatformPublishContext, input: { url: string; method?: string; headers?: Record<string, string>; body?: BodyInit }): Promise<{ response: Response; body: Record<string, unknown> }> {
+export async function providerJsonRequest(context: PlatformPublishContext, input: { url: string; method?: string; headers?: Record<string, string>; body?: BodyInit; includeAuthorization?: boolean }): Promise<{ response: Response; body: Record<string, unknown> }> {
   const priorRequestCompleted = context.providerRequestState.completed;
   await context.beforeProviderRequest();
   let response: Response;
   try {
     response = await fetch(input.url, {
       method: input.method ?? "POST",
-      headers: { Authorization: `Bearer ${context.accessToken}`, ...(input.headers ?? {}) },
+      // Provider supplied upload URLs are treated as untrusted hosts. They
+      // receive the bytes but never the destination access token.
+      headers: { ...(input.includeAuthorization === false ? {} : { Authorization: `Bearer ${context.accessToken}` }), ...(input.headers ?? {}) },
       body: input.body,
       cache: "no-store",
     });

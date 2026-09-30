@@ -1,12 +1,13 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { m2RunWatchMock } = vi.hoisted(() => ({ m2RunWatchMock: vi.fn() }));
+const { m2RunWatchMock, m2CreatePostMock, m2CreateMultiDestinationPostMock } = vi.hoisted(() => ({ m2RunWatchMock: vi.fn(), m2CreatePostMock: vi.fn(), m2CreateMultiDestinationPostMock: vi.fn() }));
 
 vi.mock("@/app/m2-actions", () => ({
   m2RunWatch: m2RunWatchMock,
   m2AddDestination: vi.fn(),
-  m2CreatePost: vi.fn(),
+  m2CreatePost: m2CreatePostMock,
+  m2CreateMultiDestinationPost: m2CreateMultiDestinationPostMock,
   m2FirstPostAndPlan: vi.fn(),
 }));
 
@@ -76,5 +77,25 @@ describe("CreatePostForm", () => {
     expect(screen.getByLabelText("Connected account")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Create draft" })).toBeTruthy();
     expect(screen.queryByLabelText("Destination external id")).toBeNull();
+  });
+
+  it("queues one shared request for multiple selected platforms", async () => {
+    m2CreateMultiDestinationPostMock.mockResolvedValue({ postRequestId: "post_1", status: "REVIEW" });
+    render(<CreatePostForm destinations={[
+      { externalId: "dst_1", label: "Work Facebook", platform: "facebook" },
+      { externalId: "dst_2", label: "Work LinkedIn", platform: "linkedin" },
+    ]} />);
+
+    fireEvent.click(screen.getByLabelText("Select Work LinkedIn"));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+    await waitFor(() => expect(m2CreateMultiDestinationPostMock).toHaveBeenCalledWith({
+      destinationExternalIds: ["dst_1", "dst_2"],
+      language: "en",
+      requestedCount: 10,
+      contentIntent: "post",
+      mediaAssetIds: [],
+    }));
+    expect(m2CreatePostMock).not.toHaveBeenCalled();
   });
 });

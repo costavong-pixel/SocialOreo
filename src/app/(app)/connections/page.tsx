@@ -3,13 +3,10 @@ import Link from "next/link";
 import { m2DisconnectInstagramDestination, m2Workspace } from "@/app/m2-actions";
 import { prisma } from "@/lib/db/prisma";
 import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { CONNECTION_REGISTRY } from "@/lib/socialolla/connections/registry";
+import { ConnectionCard } from "@/components/connections/connection-card";
 
 export const metadata = { title: "Connections — SocialOlla" };
-
-const SUPPORTED_CONNECTIONS = [
-  { name: "Instagram", description: "Publishing and Profile Analysis connections." },
-  { name: "TikTok", description: "Publishing connections when provider access is enabled." },
-] as const;
 
 export default async function ConnectionsPage() {
   const workspace = await m2Workspace();
@@ -36,18 +33,7 @@ export default async function ConnectionsPage() {
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        {SUPPORTED_CONNECTIONS.map((connection) => (
-          <article key={connection.name} className="rounded-3xl border border-white/10 bg-white/[0.02] p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-display text-lg font-extrabold">{connection.name}</h2>
-              <span className="rounded-full border border-white/15 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white/60">
-                {destinationByPlatform.get(connection.name.toLowerCase())?.status === "CONNECTED" ? "Connected" : "Not connected"}
-              </span>
-            </div>
-            <p className="mt-3 text-sm text-white/65">{connection.description}</p>
-            <p className="mt-2 text-xs text-white/45">{publishingDisabled ? "Connection setup is unavailable in staging." : "Connection setup is available for approved provider access."}</p>
-          </article>
-        ))}
+        {CONNECTION_REGISTRY.map((descriptor) => <ConnectionCard key={descriptor.platform} descriptor={descriptor} status={destinationByPlatform.get(descriptor.platform)?.status ?? "NOT_CONNECTED"} actionHref={descriptor.platform === "instagram" && !publishingDisabled ? "/api/meta/instagram/publish/connect" : undefined} />)}
       </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">

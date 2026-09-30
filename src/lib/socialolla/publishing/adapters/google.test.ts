@@ -39,4 +39,14 @@ describe("Google-family Post adapters", () => {
     await expect(googlePlatformAdapters.youtube.publish(context("youtube"))).rejects.toThrow("one owned video");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("uploads one owned video to YouTube and normalizes the receipt", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "video_1" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const input = context("youtube", [{ descriptor: { assetId: "video-1", ownerWorkspaceId: "workspace-1", kind: "video", mimeType: "video/mp4", detectedMimeType: "video/mp4", sizeBytes: 10, originalName: "clip.mp4", storageKey: "media/workspace-1/video-1" }, grant: "https://app.test/media/video-1" }]);
+    input.storage.read = vi.fn(async () => Buffer.from("video"));
+    const result = await googlePlatformAdapters.youtube.publish(input);
+    expect(result).toMatchObject({ provider: "youtube-data-api", externalId: "video_1" });
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("upload/youtube/v3/videos");
+  });
 });

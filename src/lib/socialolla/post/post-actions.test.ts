@@ -73,4 +73,31 @@ describe("Publish now approval boundary", () => {
     expect(mocks.enqueue).toHaveBeenCalledTimes(1);
     expect(mocks.process).toHaveBeenCalledWith({ maxJobs: 1, jobIds: ["job_1"], workspaceId: "workspace_1" });
   });
+
+  it("fans out only pending destinations and preserves independent outcomes", async () => {
+    mocks.findFirstPost.mockResolvedValue({
+      externalId: "post_1",
+      variants: [{ id: "shared", isFinal: true, mediaAssetIds: [], platform: "facebook" }],
+      destinations: [
+        { externalId: "postdst_published", destination: { status: "CONNECTED" }, variant: { id: "v1", isFinal: true, mediaAssetIds: [], platform: "facebook" }, publishJobs: [{ id: "existing", status: "PUBLISHED" }] },
+        { externalId: "postdst_retry", destination: { status: "CONNECTED" }, variant: { id: "v2", isFinal: true, mediaAssetIds: [], platform: "linkedin" }, publishJobs: [] },
+        { externalId: "postdst_failed", destination: { status: "CONNECTED" }, variant: { id: "v3", isFinal: true, mediaAssetIds: [], platform: "reddit" }, publishJobs: [] },
+      ],
+    });
+    mocks.enqueue.mockImplementation(async ({ postDestinationExternalId }: { postDestinationExternalId: string }) => ({ id: `job-${postDestinationExternalId}` }));
+    mocks.process.mockResolvedValue([
+      { status: "PUBLISHED", jobId: "job-postdst_retry", replayed: false },
+      { status: "FAILED", jobId: "job-postdst_failed", retryScheduled: false, error: "permanent provider rejection" },
+    ]);
+
+    const result = await publishPostNow({ authUserId: "user_1", postRequestExternalId: "post_1", confirmed: true });
+
+    expect(mocks.enqueue).toHaveBeenCalledTimes(2);
+    expect(mocks.enqueue).not.toHaveBeenCalledWith(expect.objectContaining({ postDestinationExternalId: "postdst_published" }));
+    expect(mocks.process).toHaveBeenCalledWith({ maxJobs: 2, jobIds: ["job-postdst_retry", "job-postdst_failed"], workspaceId: "workspace_1" });
+    expect(result).toMatchObject({ status: "PUBLISHED", outcomes: [
+      { status: "PUBLISHED", jobId: "job-postdst_retry" },
+      { status: "FAILED", jobId: "job-postdst_failed" },
+    ] });
+  });
 });

@@ -57,7 +57,8 @@ describe("Meta Post adapters", () => {
     const input = context("threads");
     await metaPlatformAdapters.threads.publish(input);
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("/threads");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("https://graph.threads.net/v1.0/provider-user/threads");
+    expect(fetchMock.mock.calls[1]?.[0]).toContain("https://graph.threads.net/v1.0/container_1");
     expect(fetchMock.mock.calls[1]?.[0]).toContain("fields=status,error_message");
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: "GET" });
     expect(fetchMock.mock.calls[2]?.[0]).toContain("/threads_publish");

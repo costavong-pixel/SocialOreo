@@ -20,8 +20,12 @@ function receipt(provider: string, body: Record<string, unknown>, url?: string, 
 const THREADS_STATUS_POLL_INTERVAL_MS = 5_000;
 const THREADS_STATUS_MAX_ATTEMPTS = 24;
 
+function threadsApiVersion(): string {
+  return process.env.THREADS_API_VERSION?.trim() || "v1.0";
+}
+
 async function waitForThreadsContainer(context: PlatformPublishContext, creationId: string): Promise<void> {
-  const statusUrl = `https://graph.threads.net/${graphVersion()}/${encodeURIComponent(creationId)}?fields=status,error_message`;
+  const statusUrl = `https://graph.threads.net/${threadsApiVersion()}/${encodeURIComponent(creationId)}?fields=status,error_message`;
   for (let attempt = 0; attempt < THREADS_STATUS_MAX_ATTEMPTS; attempt += 1) {
     const statusResult = await providerJsonRequest(context, { url: statusUrl, method: "GET" });
     const status = typeof statusResult.body.status === "string" ? statusResult.body.status : "";
@@ -83,7 +87,7 @@ const threads: PlatformAdapter = {
   provider: "meta-threads",
   async publish(context: PlatformPublishContext) {
     const userId = encodeURIComponent(context.destination.platformUserId);
-    const version = graphVersion();
+    const version = threadsApiVersion();
     const createBody = new URLSearchParams({ media_type: context.media.length ? (context.media[0]?.descriptor.kind === "video" ? "VIDEO" : "IMAGE") : "TEXT", text: context.input.variant.content.text });
     if (context.media[0]) createBody.set(context.media[0].descriptor.kind === "video" ? "video_url" : "image_url", context.media[0].grant);
     const container = await providerJsonRequest(context, { url: `https://graph.threads.net/${version}/${userId}/threads`, body: createBody });

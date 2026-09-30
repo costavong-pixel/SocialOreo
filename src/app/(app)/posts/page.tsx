@@ -55,7 +55,7 @@ export default async function PostsPage() {
             <p className="text-sm text-white/60">status: {p.status} · destination: {destinations.find((d) => d.externalId === p.destinationRef)?.label ?? "Connected account"} · language: {p.language}</p>
             <p className="text-sm text-white/60">variants: {p.variants?.length ?? 0} · occurrences: {p.occurrences?.length ?? 0}</p>
             <div className="mt-2 flex flex-wrap gap-2">{p.variants.flatMap((variant) => variant.mediaAssetIds.map((assetId) => mediaPreviewUrls.get(assetId) ? <img key={assetId} src={mediaPreviewUrls.get(assetId)} alt="Post media" className="h-16 w-16 rounded-xl object-cover" /> : <span className="rounded-lg border border-amber-300/30 px-2 py-1 text-xs text-amber-200" key={assetId}>Media preview unavailable</span>))}</div>
-            {p.destinations?.map((target) => target.publishJobs.map((job) => <p className="mt-1 text-xs text-white/60" key={job.id}>Instagram delivery · {job.status}{job.receipt?.providerObjectId ? " · provider receipt recorded" : ""}</p>))}
+            {p.destinations?.map((target) => target.publishJobs.map((job) => <p className="mt-1 text-xs text-white/60" key={job.id}>{target.platform} delivery · {job.status}{job.receipt?.providerObjectId ? " · provider receipt recorded" : ""}</p>))}
             <DeliveryControls jobs={p.destinations.flatMap((target) => target.publishJobs) as DeliveryJobShape[]} />
             <VariantEditor postExternalId={p.externalId} variants={p.variants as unknown as VariantShape[]} />
             <PublishButton postRequestExternalId={p.externalId} />

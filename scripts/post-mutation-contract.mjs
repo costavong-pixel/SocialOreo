@@ -14,8 +14,8 @@ const mutations = [
   {
     name: "enable provider in production factory",
     file: "src/lib/socialolla/publishing/provider.ts",
-    mutate: (text) => text.replace("if (options.mediaStorage && livePublishingEnabled(process.env, true)) {", "if (options.mediaStorage) {"),
-    control: (text) => text.includes("if (options.mediaStorage && livePublishingEnabled(process.env, true)) {") && text.includes('env.NODE_ENV?.trim().toLowerCase() === "staging"'),
+    mutate: (text) => text.replace("options.mediaStorage && livePublishingEnabled(process.env, true)", "options.mediaStorage"),
+    control: (text) => text.includes("options.mediaStorage && livePublishingEnabled(process.env, true)") && text.includes("postPublishingEnabled"),
   },
   {
     name: "enable direct Instagram provider in production",
@@ -26,7 +26,7 @@ const mutations = [
   {
     name: "remove DB Post write",
     file: "src/lib/socialolla/post/post-actions.ts",
-    mutate: (text) => text.replace("tx.postRequest.create({", "tx.postRequest.create_REMOVED({"),
+    mutate: (text) => text.replaceAll("tx.postRequest.create({", "tx.postRequest.create_REMOVED({"),
     control: (text) => text.includes("tx.postRequest.create({") && text.includes("tx.postDestination.create({"),
   },
   {

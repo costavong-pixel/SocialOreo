@@ -37,6 +37,7 @@ async function uploadLinkedInImage(context: PlatformPublishContext, media: Platf
     url: uploadUrl,
     method: "PUT",
     headers: { "Content-Type": media.descriptor.mimeType },
+    includeAuthorization: false,
     body: new Blob([new Uint8Array(bytes)], { type: media.descriptor.mimeType }),
   });
   return imageUrn;
@@ -66,6 +67,7 @@ async function uploadLinkedInVideo(context: PlatformPublishContext, media: Platf
       url: uploadUrl,
       method: "PUT",
       headers: { "Content-Type": "application/octet-stream", "Content-Range": `bytes ${firstByte}-${lastByte}/${bytes.length}` },
+      includeAuthorization: false,
       body: new Blob([new Uint8Array(bytes.slice(firstByte, lastByte + 1))], { type: "application/octet-stream" }),
     });
     const etag = uploaded.response.headers.get("etag");
@@ -92,6 +94,9 @@ const linkedin: PlatformAdapter = {
   async publish(context) {
     if (context.media.length > 0 && context.media.some((item) => item.descriptor.kind === "video") && context.media.some((item) => item.descriptor.kind === "image")) {
       throw new PlatformPublishingError("LinkedIn does not support mixed image and video media in one post.");
+    }
+    if (context.media.filter((item) => item.descriptor.kind === "video").length > 0 && (context.media.length !== 1 || context.media[0]?.descriptor.kind !== "video")) {
+      throw new PlatformPublishingError("LinkedIn video publishing requires exactly one video asset.");
     }
     const owner = ownerUrn(context.destination.platformUserId);
     let content: Record<string, unknown> | undefined;

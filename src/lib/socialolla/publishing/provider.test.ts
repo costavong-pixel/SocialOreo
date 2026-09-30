@@ -134,7 +134,7 @@ describe("publishing runtime boundary", () => {
     vi.stubEnv("NODE_ENV", "staging");
     vi.stubEnv("SOCIALOLLA_ENV", "staging");
     vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
-    const platforms = ["facebook", "threads", "google_business", "youtube", "linkedin", "tiktok", "pinterest", "x", "reddit"] as const;
+    const platforms = ["facebook", "threads", "google_business", "youtube", "linkedin", "pinterest", "x", "reddit"] as const;
     for (const platform of platforms) {
       const envName = `SOCIALOLLA_${platform.toUpperCase()}_PUBLISH_ENABLED`;
       vi.stubEnv(envName, "true");
@@ -142,5 +142,7 @@ describe("publishing runtime boundary", () => {
       vi.stubEnv(envName, "false");
       expect(createPublishingProvider(platform, { mediaStorage: {} as never }).enabled).toBe(false);
     }
+    vi.stubEnv("SOCIALOLLA_TIKTOK_PUBLISH_ENABLED", "true");
+    expect(createPublishingProvider("tiktok", { mediaStorage: {} as never }).enabled).toBe(false);
   });
 });

@@ -68,8 +68,8 @@ const registry: Record<PublishingPlatform, PlatformCapabilities> = {
   },
   tiktok: {
     platform: "tiktok", provider: "tiktok-content-posting", destinationType: "ACCOUNT",
-    text: true, title: false, image: true, multipleImages: true, video: true, link: false,
-    scheduling: true, nativeScheduling: false, maxTextLength: 2_200, maxTitleLength: 0, maxMedia: 35,
+    text: true, title: false, image: true, multipleImages: false, video: true, link: false,
+    scheduling: true, nativeScheduling: false, maxTextLength: 2_200, maxTitleLength: 0, maxMedia: 1,
     requiredScopes: ["video.publish"],
   },
   youtube: {
