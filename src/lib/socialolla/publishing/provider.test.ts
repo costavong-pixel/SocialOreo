@@ -129,4 +129,18 @@ describe("publishing runtime boundary", () => {
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true " })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true" })).toBe(true);
   });
+
+  it("exposes the Meta and Google adapters only behind their own explicit gates", () => {
+    vi.stubEnv("NODE_ENV", "staging");
+    vi.stubEnv("SOCIALOLLA_ENV", "staging");
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
+    const platforms = ["facebook", "threads", "google_business", "youtube"] as const;
+    for (const platform of platforms) {
+      const envName = `SOCIALOLLA_${platform.toUpperCase()}_PUBLISH_ENABLED`;
+      vi.stubEnv(envName, "true");
+      expect(createPublishingProvider(platform, { mediaStorage: {} as never })).toMatchObject({ platform, enabled: true });
+      vi.stubEnv(envName, "false");
+      expect(createPublishingProvider(platform, { mediaStorage: {} as never }).enabled).toBe(false);
+    }
+  });
 });

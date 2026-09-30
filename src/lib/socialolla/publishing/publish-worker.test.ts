@@ -161,4 +161,28 @@ describe("publish worker ambiguity boundary", () => {
       retryable: false,
     }));
   });
+
+  it("preserves retry classification for a platform adapter error", async () => {
+    const { PlatformPublishingError } = await import("./platform-provider");
+    mocks.provider.mockReturnValue({
+      enabled: true,
+      publish: vi.fn(async (input: { onProviderRequestStart?: () => Promise<boolean> }) => {
+        await input.onProviderRequestStart?.();
+        throw new PlatformPublishingError("Facebook rejected the publishing request.", true, false, 429);
+      }),
+    });
+    mocks.markFailure.mockResolvedValue({ accepted: true, replayed: false, retryScheduled: true });
+
+    const { processDuePublishJobs } = await import("./publish-worker");
+    const outcomes = await processDuePublishJobs({ maxJobs: 1, workerId: "worker-1" });
+
+    expect(outcomes).toEqual([{
+      status: "FAILED",
+      jobId: "job-1",
+      retryScheduled: true,
+      error: "Facebook rejected the publishing request.",
+    }]);
+    expect(mocks.markFailure).toHaveBeenCalledWith(expect.objectContaining({ retryable: true }));
+    expect(mocks.markReconciliation).not.toHaveBeenCalled();
+  });
 });

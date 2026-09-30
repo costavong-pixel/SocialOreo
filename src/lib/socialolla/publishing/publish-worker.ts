@@ -4,6 +4,7 @@ import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { claimDuePublishJob, markPublishFailure, markPublishProviderStarted, markPublishReconciliationRequired, markPublishSuccess } from "./job-service";
 import { createPublishingProvider, PublishingProviderClaimLostError } from "./provider";
 import { InstagramPublishError } from "@/lib/instagram-publishing/publish-client";
+import { PlatformPublishingError } from "./platform-provider";
 import type { PublishingPlatform } from "./platform-adaptation";
 import type { PostVariant } from "./contracts";
 
@@ -13,6 +14,10 @@ export type PublishWorkerOutcome =
   | { status: "RECONCILIATION_REQUIRED"; jobId: string; error: string };
 
 function message(error: unknown): string { return error instanceof Error ? error.message : "Publish attempt failed"; }
+
+function isClassifiedProviderError(error: unknown): error is InstagramPublishError | PlatformPublishingError {
+  return error instanceof InstagramPublishError || error instanceof PlatformPublishingError;
+}
 
 export function assertPostWorkerStagingRuntime(env: Record<string, string | undefined> = process.env): void {
   const nodeEnvironment = (env.NODE_ENV ?? "").trim().toLowerCase();
@@ -71,14 +76,14 @@ export async function processDuePublishJobs(input: { now?: Date; workerId?: stri
       // response or a local persistence failure after the provider accepted
       // the operation. Never downgrade that state to definitive FAILED.
       const reconciliationRequired = providerCallStarted && providerEnabled && (
-        !(error instanceof InstagramPublishError) || error.reconciliationRequired
+        !isClassifiedProviderError(error) || error.reconciliationRequired
       );
       if (reconciliationRequired) {
         await markPublishReconciliationRequired({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error });
         outcomes.push({ status: "RECONCILIATION_REQUIRED", jobId: claimed.job.id, error: errorText });
         continue;
       }
-      const result = await markPublishFailure({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error, retryable: error instanceof InstagramPublishError && error.retryable });
+      const result = await markPublishFailure({ jobId: claimed.job.id, claimToken: claimed.job.claimToken, postDestinationId: claimed.job.postDestinationId, attemptNumber: claimed.attempt.attemptNumber, now, error, retryable: isClassifiedProviderError(error) && error.retryable });
       if (result.accepted) outcomes.push({ status: "FAILED", jobId: claimed.job.id, retryScheduled: result.retryScheduled, error: errorText });
     }
   }

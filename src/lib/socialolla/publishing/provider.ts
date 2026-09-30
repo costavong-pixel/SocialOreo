@@ -2,6 +2,12 @@ import type { PostVariant, ProviderReceipt } from "./contracts";
 import { platformCapabilities, type PlatformCapabilities, type PublishingPlatform } from "./platform-adaptation";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
 import { postPublishingEnabled, postWorkerRuntimeAllowed } from "./gates";
+import { createPlatformPublishingProvider } from "./platform-provider";
+import { metaPlatformAdapters } from "./adapters/meta";
+import { googlePlatformAdapters } from "./adapters/google";
+import { PublishingProviderClaimLostError, PublishingProviderDisabledError } from "./provider-errors";
+
+export { PublishingProviderClaimLostError, PublishingProviderDisabledError } from "./provider-errors";
 
 export type PublishProviderInput = Readonly<{
   workspaceId: string;
@@ -17,20 +23,6 @@ export interface PublishProvider {
   readonly capabilities: PlatformCapabilities;
   readonly enabled: boolean;
   publish(input: PublishProviderInput): Promise<ProviderReceipt>;
-}
-
-export class PublishingProviderDisabledError extends Error {
-  constructor(platform: string) {
-    super(`Live publishing is disabled for ${platform}; no provider request was made.`);
-    this.name = "PublishingProviderDisabledError";
-  }
-}
-
-export class PublishingProviderClaimLostError extends Error {
-  constructor() {
-    super("Publish job ownership was lost before the provider request.");
-    this.name = "PublishingProviderClaimLostError";
-  }
 }
 
 /** The worker gate is required for production publishing; provider opt-ins remain separate. */
@@ -52,11 +44,29 @@ export function instagramPublishingOAuthEnabled(env: Record<string, string | und
 }
 
 export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {
-  const capabilities = platformCapabilities(platform);
-  if (!capabilities || platform !== "instagram") throw new Error(`No publishing provider contract exists for ${platform}`);
-  if (options.mediaStorage && livePublishingEnabled(process.env, true)) {
+  const normalizedPlatform = platform.trim().toLowerCase();
+  const capabilities = platformCapabilities(normalizedPlatform);
+  if (!capabilities) throw new Error(`No publishing provider contract exists for ${platform}`);
+  if (normalizedPlatform === "instagram" && options.mediaStorage && livePublishingEnabled(process.env, true)) {
     const { createInstagramPublishingProvider } = require("./instagram-provider") as typeof import("./instagram-provider");
     return createInstagramPublishingProvider(options.mediaStorage);
   }
-  return { platform: "instagram", capabilities, enabled: false, async publish() { throw new PublishingProviderDisabledError("instagram"); } };
+  const adapter = normalizedPlatform === "facebook"
+    ? metaPlatformAdapters.facebook
+    : normalizedPlatform === "threads"
+      ? metaPlatformAdapters.threads
+      : normalizedPlatform === "google_business"
+        ? googlePlatformAdapters.googleBusiness
+        : normalizedPlatform === "youtube"
+          ? googlePlatformAdapters.youtube
+          : null;
+  if (adapter && options.mediaStorage) return createPlatformPublishingProvider(adapter, options.mediaStorage);
+  return {
+    platform: capabilities.platform,
+    capabilities,
+    enabled: false,
+    async publish() {
+      throw new PublishingProviderDisabledError(capabilities.platform);
+    },
+  };
 }
