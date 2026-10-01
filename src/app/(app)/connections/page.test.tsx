@@ -78,6 +78,7 @@ describe("customer connections state", () => {
     for (const name of ["Instagram", "Facebook", "Threads", "Google Business Profile", "LinkedIn", "TikTok", "YouTube", "Pinterest", "X", "Reddit"]) {
       expect(screen.getByRole("heading", { name })).not.toBeNull();
     }
-    expect(screen.getAllByText("API approval required")).toHaveLength(9);
+    expect(screen.getAllByText("External approval required")).toHaveLength(8);
+    expect(screen.getByText("Hard disabled")).not.toBeNull();
   });
 });

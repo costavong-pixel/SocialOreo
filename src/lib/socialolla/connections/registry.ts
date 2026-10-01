@@ -1,6 +1,6 @@
 import { PLATFORM_REGISTRY, PUBLISHING_PLATFORMS, type PublishingPlatform } from "@/lib/socialolla/publishing/platform-adaptation";
 
-export type ConnectionAvailability = "AVAILABLE" | "APPROVAL_REQUIRED";
+export type ConnectionAvailability = "AVAILABLE" | "EXTERNAL_APPROVAL_REQUIRED" | "HARD_DISABLED";
 
 export type ConnectionDescriptor = Readonly<{
   platform: PublishingPlatform;
@@ -28,19 +28,19 @@ const descriptions: Record<PublishingPlatform, string> = {
   facebook: "Page publishing through the Meta Pages API.",
   threads: "Threads publishing through the Meta Threads API.",
   google_business: "Local post publishing for verified Business Profile locations.",
-  linkedin: "Member and organization post publishing.",
-  tiktok: "Direct photo and video posting through Content Posting API.",
+  linkedin: "Member publishing; organization destinations require additional provider scopes.",
+  tiktok: "Creator connection and eligibility discovery; publishing remains hard-disabled.",
   youtube: "Video uploads to an authorized YouTube channel.",
   pinterest: "Image Pin publishing to an authorized board.",
   x: "Text post publishing through the X API.",
-  reddit: "Self and link submissions to an authorized subreddit.",
+  reddit: "Self-post submissions to an authorized subreddit; native media/link publishing is not claimed.",
 };
 
 export const CONNECTION_REGISTRY: readonly ConnectionDescriptor[] = PUBLISHING_PLATFORMS.map((platform) => ({
   platform,
   name: names[platform],
   description: descriptions[platform],
-  availability: platform === "instagram" ? "AVAILABLE" : "APPROVAL_REQUIRED",
+  availability: platform === "instagram" ? "AVAILABLE" : platform === "tiktok" ? "HARD_DISABLED" : "EXTERNAL_APPROVAL_REQUIRED",
   destinationType: PLATFORM_REGISTRY[platform].destinationType,
 }));
 

@@ -21,6 +21,8 @@ describe("shared publishing connection contract", () => {
   it.each([
     [undefined, "NOT_CONNECTED"],
     ["REAUTH_REQUIRED", "REAUTH_REQUIRED"],
+    ["EXTERNAL_APPROVAL_REQUIRED", "EXTERNAL_APPROVAL_REQUIRED"],
+    ["HARD_DISABLED", "HARD_DISABLED"],
     ["UNSUPPORTED", "UNSUPPORTED"],
   ])("maps %s status", (status, expected) => {
     expect(toConnectionDestination({ externalId: "dst_1", platform: "reddit", destinationType: "SUBREDDIT", label: "r/example", status }).state).toBe(expected);
