@@ -18,7 +18,10 @@ describe("canonical Post platform registry", () => {
     expect(PLATFORM_REGISTRY.reddit.destinationType).toBe("SUBREDDIT");
     expect(PLATFORM_REGISTRY.reddit.image).toBe(false);
     expect(PLATFORM_REGISTRY.reddit.video).toBe(false);
+    expect(PLATFORM_REGISTRY.reddit.link).toBe(false);
     expect(PLATFORM_REGISTRY.reddit.maxMedia).toBe(0);
+    expect(PLATFORM_REGISTRY.pinterest.requiredScopes).toEqual(["boards:read", "boards:write", "pins:read", "pins:write"]);
+    expect(PLATFORM_REGISTRY.youtube.nativeScheduling).toBe(false);
   });
 
   it("returns a clear adaptation result without dropping unsupported fields", () => {

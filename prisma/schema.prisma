@@ -89,6 +89,7 @@ model User {
   publicProfileMonitors       PublicProfileMonitor[]
   trendWatchlists             TrendWatchlist[]
   instagramInsightsConnection InstagramInsightsConnection?
+  oauthStates                 OAuthState[]
   squareCheckouts             SquareCheckout[]
   squareSubscriptions         SquareSubscription[]
   squarePaymentAuditLogs      SquarePaymentAuditLog[]
@@ -590,6 +591,7 @@ model Destination {
   status                          DestinationStatus @default(DISCONNECTED)
   providerDisabled                Boolean           @default(true)
   accessTokenCiphertext           String?
+  refreshTokenCiphertext          String?
   accessTokenExpiresAt            DateTime?
   publishingEligibilityVerifiedAt DateTime?
   scopes                          String[]          @default([])
@@ -599,6 +601,22 @@ model Destination {
   postDestinations                PostDestination[]
 
   @@index([workspaceId, platform])
+}
+
+model OAuthState {
+  id                     String   @id @default(cuid())
+  stateHash              String   @unique
+  userId                 String
+  provider               String
+  redirectUri            String
+  codeVerifierCiphertext String?
+  createdAt              DateTime @default(now())
+  expiresAt              DateTime
+  consumedAt             DateTime?
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider, expiresAt])
+  @@index([expiresAt, consumedAt])
 }
 
 model Profile {
