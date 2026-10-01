@@ -18,6 +18,7 @@ export type VariantShape = {
 
 export function VariantEditor({ postExternalId, variants }: { postExternalId: string; variants: VariantShape[] }) {
   const first = variants[0];
+  const editorId = first?.id ?? postExternalId;
   const router = useRouter();
   const [title, setTitle] = useState(first?.title ?? "");
   const [caption, setCaption] = useState(first?.caption ?? "");
@@ -36,6 +37,7 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
       const hashtagList = hashtags.split(",").map((tag) => tag.trim()).filter(Boolean);
       const outcome = await m2UpdateVariant({
         postRequestExternalId: postExternalId,
+        variantId: first?.id ?? "",
         title,
         caption,
         hashtags: hashtagList,
@@ -59,8 +61,8 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
       formData.set("file", file);
       const uploaded = await m2UploadMedia(formData);
       const oldAssetId = mediaAssetIds[0];
-      if (oldAssetId) await m2ReplacePostMedia({ postRequestExternalId: postExternalId, oldAssetId, newAssetId: uploaded.assetId });
-      else await m2UpdateVariant({ postRequestExternalId: postExternalId, title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [uploaded.assetId] });
+      if (oldAssetId) await m2ReplacePostMedia({ postRequestExternalId: postExternalId, variantId: first?.id ?? "", oldAssetId, newAssetId: uploaded.assetId });
+      else await m2UpdateVariant({ postRequestExternalId: postExternalId, variantId: first?.id ?? "", title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [uploaded.assetId] });
       const preview = await m2MediaPreviewUrl(uploaded.assetId);
       setMediaAssetIds([uploaded.assetId]);
       setPreviewUrls((current) => ({ ...current, [uploaded.assetId]: preview.url }));
@@ -78,10 +80,15 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
     if (!assetId) return;
     setBusy(true);
     try {
-      await m2UpdateVariant({ postRequestExternalId: postExternalId, title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [] });
-      await m2DeleteMedia(assetId);
+      await m2UpdateVariant({ postRequestExternalId: postExternalId, variantId: first?.id ?? "", title, caption, hashtags: hashtags.split(",").map((tag) => tag.trim()).filter(Boolean), cta, isFinal, mediaAssetIds: [] });
+      let deleted = false;
+      try {
+        deleted = (await m2DeleteMedia(assetId)).deleted;
+      } catch (cause) {
+        if (!(cause instanceof Error) || cause.message !== "Media is attached to a Post; replace it before deleting it.") throw cause;
+      }
       setMediaAssetIds([]);
-      setResult("Media detached and deleted from owned storage.");
+      setResult(deleted ? "Media detached and deleted from owned storage." : "Media detached; shared media retained for the remaining variant.");
       router.refresh();
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : "Could not remove media");
@@ -93,21 +100,21 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
   return (
     <div className="mt-3 grid gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
       <p className="text-xs font-extrabold uppercase tracking-wide text-[var(--social-blue)]">Edit variant ({first?.platform ?? "instagram"})</p>
-      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`title-${postExternalId}`}>
+      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`title-${editorId}`}>
         Title
-        <input id={`title-${postExternalId}`} value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
+        <input id={`title-${editorId}`} value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
       </label>
-      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`caption-${postExternalId}`}>
+      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`caption-${editorId}`}>
         Caption
-        <textarea id={`caption-${postExternalId}`} value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
+        <textarea id={`caption-${editorId}`} value={caption} onChange={(e) => setCaption(e.target.value)} rows={3} className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
       </label>
-      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`hashtags-${postExternalId}`}>
+      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`hashtags-${editorId}`}>
         Hashtags (comma separated)
-        <input id={`hashtags-${postExternalId}`} value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="#coffee, #smallbusiness" className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
+        <input id={`hashtags-${editorId}`} value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="#coffee, #smallbusiness" className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
       </label>
-      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`cta-${postExternalId}`}>
+      <label className="grid gap-1 text-xs font-bold text-white/60" htmlFor={`cta-${editorId}`}>
         CTA
-        <input id={`cta-${postExternalId}`} value={cta} onChange={(e) => setCta(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
+        <input id={`cta-${editorId}`} value={cta} onChange={(e) => setCta(e.target.value)} className="w-full rounded-2xl border border-white/15 bg-white/5 px-3 py-2 text-sm text-white" />
       </label>
       <label className="flex items-center gap-2 text-xs font-bold text-white/70">
         <input type="checkbox" checked={isFinal} onChange={(e) => setIsFinal(e.target.checked)} />
@@ -116,7 +123,7 @@ export function VariantEditor({ postExternalId, variants }: { postExternalId: st
       <div className="grid gap-2 border-t border-white/10 pt-3">
         <p className="text-xs font-bold text-white/60">Owned media</p>
         {mediaAssetIds.length ? <div className="flex items-center gap-3">{mediaAssetIds.map((assetId) => <div key={assetId}>{previewUrls[assetId] ? <img src={previewUrls[assetId]} alt="Post media preview" className="h-16 w-16 rounded-xl object-cover" /> : <code className="text-xs text-white/70">{assetId}</code>}</div>)}<button type="button" disabled={busy} onClick={removeMedia} className="rounded-full border border-rose-300/30 px-3 py-2 text-xs font-bold text-rose-200">Detach and delete</button></div> : <p className="text-xs text-white/50">No media attached.</p>}
-        <label className="text-xs font-bold text-white/60" htmlFor={`replace-media-${postExternalId}`}>Replace image<input id={`replace-media-${postExternalId}`} type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void replaceMedia(file); }} className="mt-1 block w-full text-xs text-white/70 file:mr-2 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:font-bold file:text-white" /></label>
+        <label className="text-xs font-bold text-white/60" htmlFor={`replace-media-${editorId}`}>Replace image<input id={`replace-media-${editorId}`} type="file" accept="image/jpeg,image/png,image/webp,image/gif" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) void replaceMedia(file); }} className="mt-1 block w-full text-xs text-white/70 file:mr-2 file:rounded-full file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:font-bold file:text-white" /></label>
       </div>
       <div className="flex items-center gap-2">
         <button type="button" disabled={busy} onClick={update} className="rounded-full bg-[var(--social-blue)] px-4 py-2 text-sm font-extrabold text-[var(--social-ink)] hover:bg-[#cdbbff] disabled:opacity-50">

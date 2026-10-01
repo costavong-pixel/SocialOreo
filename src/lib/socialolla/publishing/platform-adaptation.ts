@@ -92,8 +92,8 @@ const registry: Record<PublishingPlatform, PlatformCapabilities> = {
   },
   reddit: {
     platform: "reddit", provider: "reddit-api", destinationType: "SUBREDDIT",
-    text: true, title: true, image: true, multipleImages: false, video: true, link: true,
-    scheduling: true, nativeScheduling: false, maxTextLength: 40_000, maxTitleLength: 300, maxMedia: 1,
+    text: true, title: true, image: false, multipleImages: false, video: false, link: true,
+    scheduling: true, nativeScheduling: false, maxTextLength: 40_000, maxTitleLength: 300, maxMedia: 0,
     requiredScopes: ["submit"],
   },
 };

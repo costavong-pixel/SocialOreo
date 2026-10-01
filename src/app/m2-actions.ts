@@ -117,7 +117,7 @@ export async function m2CreateMultiDestinationPost(input: { destinationExternalI
   return createMultiDestinationPostRequest({ ...input, authUserId: user.dbId, confirmed: true });
 }
 
-export async function m2UpdateVariant(input: { postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
+export async function m2UpdateVariant(input: { postRequestExternalId: string; variantId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
   const user = await requireUser();
   return updatePostVariant({ ...input, authUserId: user.dbId });
 }
@@ -164,7 +164,7 @@ export async function m2DeleteMedia(assetId: string) {
   return deleteOwnedMedia({ authUserId: user.dbId, assetId });
 }
 
-export async function m2ReplacePostMedia(input: { postRequestExternalId: string; oldAssetId: string; newAssetId: string }) {
+export async function m2ReplacePostMedia(input: { postRequestExternalId: string; variantId: string; oldAssetId: string; newAssetId: string }) {
   const user = await requireUser();
   return replacePostMedia({ ...input, authUserId: user.dbId });
 }

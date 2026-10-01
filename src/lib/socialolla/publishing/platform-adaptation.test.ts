@@ -16,6 +16,9 @@ describe("canonical Post platform registry", () => {
     expect(PLATFORM_REGISTRY.youtube.video).toBe(true);
     expect(PLATFORM_REGISTRY.google_business.destinationType).toBe("LOCATION");
     expect(PLATFORM_REGISTRY.reddit.destinationType).toBe("SUBREDDIT");
+    expect(PLATFORM_REGISTRY.reddit.image).toBe(false);
+    expect(PLATFORM_REGISTRY.reddit.video).toBe(false);
+    expect(PLATFORM_REGISTRY.reddit.maxMedia).toBe(0);
   });
 
   it("returns a clear adaptation result without dropping unsupported fields", () => {
@@ -38,6 +41,17 @@ describe("canonical Post platform registry", () => {
     const result = adaptPostVariant("mastodon", { caption: "hello" });
     expect(result.ok).toBe(false);
     expect(result.errors[0]).toContain("Unsupported publishing platform");
+  });
+
+  it("rejects Reddit media instead of treating a controlled URL as native media", () => {
+    const result = adaptPostVariant("reddit", {
+      caption: "A text post",
+      media: [{ kind: "image", assetId: "asset-1" }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain("reddit accepts at most 0 media items.");
+    expect(result.errors).toContain("reddit does not support image media for this post type.");
   });
 });
 

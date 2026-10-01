@@ -8,8 +8,8 @@ const mutations = [
   {
     name: "publish unapproved first variant",
     file: "src/lib/socialolla/post/post-actions.ts",
-    mutate: (text) => text.replace("const variant = post.variants.find((candidate) => candidate.isFinal);", "const variant = post.variants.find((candidate) => candidate.isFinal) ?? post.variants[0];"),
-    control: (text) => text.includes("const variant = post.variants.find((candidate) => candidate.isFinal);") && text.includes('throw new Error("No approved final variant")'),
+    mutate: (text) => text.replace('if (!targetVariant.isFinal) throw new Error("No approved final variant for every selected destination");', 'if (false && !targetVariant.isFinal) throw new Error("No approved final variant for every selected destination");'),
+    control: (text) => text.includes("const targetVariant = target.variant;") && text.includes('if (!targetVariant.isFinal) throw new Error("No approved final variant for every selected destination");'),
   },
   {
     name: "enable provider in production factory",

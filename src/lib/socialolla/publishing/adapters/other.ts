@@ -211,12 +211,10 @@ const reddit: PlatformAdapter = {
   platform: "reddit",
   provider: "reddit-api",
   async publish(context) {
+    if (context.media.length > 0) throw new PlatformPublishingError("Reddit native image/video publishing is not supported by this adapter.");
     const subreddit = context.destination.platformUserId.replace(/^r\//i, "");
     const title = firstLine(context.input.variant.content.text, 300);
-    const media = context.media[0];
-    const fields = new URLSearchParams({ api_type: "json", sr: subreddit, kind: media ? "link" : "self", title, resubmit: "true", sendreplies: "false" });
-    if (media) fields.set("url", media.grant);
-    else fields.set("text", context.input.variant.content.text);
+    const fields = new URLSearchParams({ api_type: "json", sr: subreddit, kind: "self", title, resubmit: "true", sendreplies: "false", text: context.input.variant.content.text });
     const result = await providerJsonRequest(context, { url: "https://oauth.reddit.com/api/submit", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: fields });
     const json = result.body.json && typeof result.body.json === "object" ? result.body.json as Record<string, unknown> : {};
     const errors = Array.isArray(json.errors) ? json.errors : [];

@@ -6,7 +6,7 @@ import { intentKey } from "@/lib/socialolla/credits/batch-service";
 import { enqueuePublishJob, reschedulePublishJob, cancelPublishJob } from "@/lib/socialolla/publishing/job-service";
 import { processDuePublishJobs } from "@/lib/socialolla/publishing/publish-worker";
 import { platformCapabilities } from "@/lib/socialolla/publishing/platform-adaptation";
-import { deleteOwnedMedia } from "@/lib/socialolla/media/media-service";
+import { deleteOwnedMedia, MEDIA_ATTACHED_TO_POST_ERROR } from "@/lib/socialolla/media/media-service";
 import { toPostListView, type PostListView } from "./post-view";
 
 function externalId(prefix: string): string { return `${prefix}_${randomBytes(12).toString("base64url")}`; }
@@ -100,38 +100,42 @@ export async function createMultiDestinationPostRequest(input: { authUserId: str
   return result(postRequest);
 }
 
-export async function updatePostVariant(input: { authUserId: string; postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
+export async function updatePostVariant(input: { authUserId: string; postRequestExternalId: string; variantId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
   const workspace = await ownedWorkspace(input.authUserId);
   const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId } });
   if (!postRequest) throw new Error("Post request not found");
-  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id } });
-  if (!variant) throw new Error("Variant not found");
+  const variant = await prisma.postVariant.findFirst({ where: { id: input.variantId, postRequestId: postRequest.id }, select: { id: true, mediaAssetIds: true, destinations: { select: { id: true } } } });
+  if (!variant || variant.destinations.length === 0) throw new Error("Variant is not linked to a destination for this Post");
   const mediaAssetIds = input.mediaAssetIds ?? variant.mediaAssetIds;
   await assertOwnedMedia(workspace.dbId, mediaAssetIds);
-  await prisma.postVariant.updateMany({ where: { postRequestId: postRequest.id }, data: { title: input.title.trim(), caption: input.caption, hashtags: input.hashtags ?? [], cta: input.cta, isFinal: input.isFinal ?? false, mediaAssetIds } });
+  await prisma.postVariant.update({ where: { id: variant.id }, data: { title: input.title.trim(), caption: input.caption, hashtags: input.hashtags ?? [], cta: input.cta, isFinal: input.isFinal ?? false, mediaAssetIds } });
   return { updated: true };
 }
 
-export async function replacePostMedia(input: { authUserId: string; postRequestExternalId: string; oldAssetId: string; newAssetId: string }) {
+export async function replacePostMedia(input: { authUserId: string; postRequestExternalId: string; variantId: string; oldAssetId: string; newAssetId: string }) {
   const workspace = await ownedWorkspace(input.authUserId);
   const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId } });
   if (!postRequest) throw new Error("Post request not found");
-  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, mediaAssetIds: { has: input.oldAssetId } } });
-  if (!variant) throw new Error("The original media is not attached to this Post");
+  const variant = await prisma.postVariant.findFirst({ where: { id: input.variantId, postRequestId: postRequest.id }, select: { id: true, mediaAssetIds: true, destinations: { select: { id: true } } } });
+  if (!variant || variant.destinations.length === 0 || !variant.mediaAssetIds.includes(input.oldAssetId)) throw new Error("The original media is not attached to this Post variant");
   await assertOwnedMedia(workspace.dbId, [input.newAssetId]);
   const nextMedia = variant.mediaAssetIds.map((assetId) => assetId === input.oldAssetId ? input.newAssetId : assetId);
   await prisma.postVariant.update({ where: { id: variant.id }, data: { mediaAssetIds: nextMedia } });
-  await deleteOwnedMedia({ authUserId: input.authUserId, assetId: input.oldAssetId });
-  return { replaced: true, mediaAssetIds: nextMedia };
+  let oldAssetDeleted = false;
+  try {
+    oldAssetDeleted = (await deleteOwnedMedia({ authUserId: input.authUserId, assetId: input.oldAssetId })).deleted;
+  } catch (cause) {
+    if (!(cause instanceof Error) || cause.message !== MEDIA_ATTACHED_TO_POST_ERROR) throw cause;
+  }
+  return { replaced: true, mediaAssetIds: nextMedia, oldAssetDeleted };
 }
 
 export async function approveAndSchedulePost(input: { authUserId: string; postRequestExternalId: string; scheduleAt: Date; timezone: string; confirmed: boolean }) {
   if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
   const workspace = await ownedWorkspace(input.authUserId);
-  const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { destinations: true } });
+  const postRequest = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { destinations: { include: { variant: { select: { id: true, isFinal: true } } } } } });
   if (!postRequest) throw new Error("Post request not found");
-  const variant = await prisma.postVariant.findFirst({ where: { postRequestId: postRequest.id, isFinal: true } });
-  if (!variant) throw new Error("No approved final variant");
+  if (postRequest.destinations.length === 0 || postRequest.destinations.some((target) => !target.variant.isFinal)) throw new Error("No approved final variant for every selected destination");
   if (Number.isNaN(input.scheduleAt.getTime()) || input.scheduleAt.getTime() <= Date.now()) throw new Error("Scheduled publish time must be in the future");
   await prisma.$transaction(async (tx) => {
     await tx.postRequest.update({ where: { id: postRequest.id }, data: { status: "SCHEDULED" } });
@@ -147,14 +151,12 @@ export async function approveAndSchedulePost(input: { authUserId: string; postRe
 export async function publishPostNow(input: { authUserId: string; postRequestExternalId: string; confirmed: boolean }) {
   if (!input.confirmed) throw new Error("Protected action requires exact confirmation");
   const workspace = await ownedWorkspace(input.authUserId);
-  const post = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { variants: true, destinations: { include: { destination: true, variant: true, publishJobs: true } } } });
+  const post = await prisma.postRequest.findFirst({ where: { externalId: input.postRequestExternalId, workspaceId: workspace.dbId }, include: { destinations: { include: { destination: true, variant: true, publishJobs: true } } } });
   if (!post) throw new Error("Post request not found");
-  const variant = post.variants.find((candidate) => candidate.isFinal);
-  if (!variant) throw new Error("No approved final variant");
   const targets = post.destinations.filter((target) => target.destination.status === "CONNECTED");
   if (!targets.length) throw new Error("Connect a publishing-eligible destination first");
   for (const target of targets) {
-    const targetVariant = target.variant ?? variant;
+    const targetVariant = target.variant;
     if (!targetVariant.isFinal) throw new Error("No approved final variant for every selected destination");
     if (targetVariant.platform === "instagram" && (!targetVariant.mediaAssetIds.length || targetVariant.mediaAssetIds.length > 1)) throw new Error("Instagram image publishing requires exactly one image asset");
   }

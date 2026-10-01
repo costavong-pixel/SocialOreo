@@ -46,6 +46,7 @@ describe("VariantEditor", () => {
     expect(await screen.findByText(/Variant updated and marked final/)).toBeTruthy();
     expect(m2UpdateVariantMock).toHaveBeenCalledWith({
       postRequestExternalId: "req_1",
+      variantId: "v-1",
       title: "New title",
       caption: "Provider-disabled draft caption.",
       hashtags: ["#coffee", "#baking"],

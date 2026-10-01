@@ -164,7 +164,11 @@ export function createPlatformPublishingProvider(adapter: PlatformAdapter, stora
     capabilities: platformCapabilities(adapter.platform)!,
     enabled,
     async publish(input) {
-      if (!enabled) throw new PublishingProviderDisabledError(adapter.platform);
+      // Recompute the complete gate at the last safe boundary. The provider
+      // may have been constructed while publishing was enabled, but runtime
+      // configuration can be disabled before the queued job actually runs.
+      // This must precede destination/token/media work and any provider call.
+      if (!postPublishingEnabled(adapter.platform, process.env, Boolean(storage))) throw new PublishingProviderDisabledError(adapter.platform);
       const context = await loadContext(input, storage);
       return adapter.publish(context);
     },

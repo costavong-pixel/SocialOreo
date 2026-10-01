@@ -7,6 +7,8 @@ function newMediaAssetExternalId(): string {
   return `med_${randomBytes(12).toString("base64url")}`;
 }
 
+export const MEDIA_ATTACHED_TO_POST_ERROR = "Media is attached to a Post; replace it before deleting it.";
+
 export async function storeOwnedMedia(input: {
   authUserId: string;
   kind: MediaKind;
@@ -46,7 +48,7 @@ export async function deleteOwnedMedia(input: { authUserId: string; assetId: str
   const asset = await prisma.mediaAsset.findFirst({ where: { externalId: input.assetId, workspaceId: workspace.dbId, status: "READY" } });
   if (!asset) return { deleted: false };
   const variants = await prisma.postVariant.findMany({ where: { postRequest: { workspaceId: workspace.dbId }, mediaAssetIds: { has: asset.externalId } }, select: { id: true } });
-  if (variants.length > 0) throw new Error("Media is attached to a Post; replace it before deleting it.");
+  if (variants.length > 0) throw new Error(MEDIA_ATTACHED_TO_POST_ERROR);
   await prisma.mediaAsset.update({ where: { id: asset.id }, data: { status: "DELETED" } });
   return { deleted: true };
 }

@@ -113,6 +113,14 @@ describe("other Post adapters", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://oauth.reddit.com/api/submit");
   });
 
+  it("rejects Reddit media before a controlled URL can be submitted as a native post", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(otherPlatformAdapters.reddit.publish(context("reddit", [image]))).rejects.toThrow("Reddit native image/video publishing is not supported");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects media that the current Pinterest and X adapters do not claim to support", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
