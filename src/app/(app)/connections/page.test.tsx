@@ -67,4 +67,17 @@ describe("customer connections state", () => {
     expect(screen.getByText("Provider-disabled staging test data — no live account or delivery is claimed.")).not.toBeNull();
     expect(screen.queryByRole("button", { name: /Disconnect/i })).toBeNull();
   });
+
+  it("renders one shared card for every core Post platform", async () => {
+    mocks.m2Workspace.mockResolvedValue({ dbId: "workspace_1", id: "wsp_1" });
+    mocks.providerDisabledEnabled.mockReturnValue(true);
+    mocks.findMany.mockResolvedValue([]);
+
+    render(await ConnectionsPage());
+
+    for (const name of ["Instagram", "Facebook", "Threads", "Google Business Profile", "LinkedIn", "TikTok", "YouTube", "Pinterest", "X", "Reddit"]) {
+      expect(screen.getByRole("heading", { name })).not.toBeNull();
+    }
+    expect(screen.getAllByText("API approval required")).toHaveLength(9);
+  });
 });

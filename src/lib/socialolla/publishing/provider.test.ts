@@ -72,6 +72,17 @@ describe("publishing runtime boundary", () => {
     }, true)).toBe(true);
   });
 
+  it("keeps normalized staging compatibility for publishing and OAuth gates", () => {
+    const staging = {
+      NODE_ENV: " StAgInG ",
+      SOCIALOLLA_ENV: " staging ",
+      SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "true",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    };
+    expect(livePublishingEnabled(staging, true)).toBe(true);
+    expect(instagramPublishingOAuthEnabled(staging)).toBe(true);
+  });
+
   it("does not activate Instagram from production or the Post worker gate alone", () => {
     const base = { NODE_ENV: "production", SOCIALOLLA_ENV: "production" };
     expect(livePublishingEnabled(base, true)).toBe(false);
@@ -117,5 +128,21 @@ describe("publishing runtime boundary", () => {
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "TRUE" })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true " })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true" })).toBe(true);
+  });
+
+  it("exposes the Meta and Google adapters only behind their own explicit gates", () => {
+    vi.stubEnv("NODE_ENV", "staging");
+    vi.stubEnv("SOCIALOLLA_ENV", "staging");
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
+    const platforms = ["facebook", "threads", "google_business", "youtube", "linkedin", "pinterest", "x", "reddit"] as const;
+    for (const platform of platforms) {
+      const envName = `SOCIALOLLA_${platform.toUpperCase()}_PUBLISH_ENABLED`;
+      vi.stubEnv(envName, "true");
+      expect(createPublishingProvider(platform, { mediaStorage: {} as never })).toMatchObject({ platform, enabled: true });
+      vi.stubEnv(envName, "false");
+      expect(createPublishingProvider(platform, { mediaStorage: {} as never }).enabled).toBe(false);
+    }
+    vi.stubEnv("SOCIALOLLA_TIKTOK_PUBLISH_ENABLED", "true");
+    expect(createPublishingProvider("tiktok", { mediaStorage: {} as never }).enabled).toBe(false);
   });
 });

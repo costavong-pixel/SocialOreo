@@ -1,7 +1,14 @@
 import type { PostVariant, ProviderReceipt } from "./contracts";
 import { platformCapabilities, type PlatformCapabilities, type PublishingPlatform } from "./platform-adaptation";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
-import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
+import { postPublishingEnabled, postWorkerRuntimeAllowed } from "./gates";
+import { createPlatformPublishingProvider } from "./platform-provider";
+import { metaPlatformAdapters } from "./adapters/meta";
+import { googlePlatformAdapters } from "./adapters/google";
+import { otherPlatformAdapters } from "./adapters/other";
+import { PublishingProviderClaimLostError, PublishingProviderDisabledError } from "./provider-errors";
+
+export { PublishingProviderClaimLostError, PublishingProviderDisabledError } from "./provider-errors";
 
 export type PublishProviderInput = Readonly<{
   workspaceId: string;
@@ -19,36 +26,13 @@ export interface PublishProvider {
   publish(input: PublishProviderInput): Promise<ProviderReceipt>;
 }
 
-export class PublishingProviderDisabledError extends Error {
-  constructor(platform: string) {
-    super(`Live publishing is disabled for ${platform}; no provider request was made.`);
-    this.name = "PublishingProviderDisabledError";
-  }
-}
-
-export class PublishingProviderClaimLostError extends Error {
-  constructor() {
-    super("Publish job ownership was lost before the provider request.");
-    this.name = "PublishingProviderClaimLostError";
-  }
-}
-
-function isStagingRuntime(env: Record<string, string | undefined>): boolean {
-  return env.NODE_ENV?.trim().toLowerCase() === "staging" && env.SOCIALOLLA_ENV?.trim().toLowerCase() === "staging";
-}
-
-function isExactProductionRuntime(env: Record<string, string | undefined>): boolean {
-  return env.NODE_ENV === "production" && env.SOCIALOLLA_ENV === "production";
-}
-
 /** The worker gate is required for production publishing; provider opt-ins remain separate. */
 export function livePublishingRuntimeAllowed(env: Record<string, string | undefined> = process.env): boolean {
-  if (isStagingRuntime(env)) return true;
-  return isExactProductionRuntime(env) && env.SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED === "true";
+  return postWorkerRuntimeAllowed(env);
 }
 
 export function livePublishingEnabled(env: Record<string, string | undefined> = process.env, hasMediaStorage: boolean): boolean {
-  return hasMediaStorage && livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+  return postPublishingEnabled("instagram", env, hasMediaStorage);
 }
 
 /**
@@ -57,15 +41,40 @@ export function livePublishingEnabled(env: Record<string, string | undefined> = 
  * than relying on the Connections page hiding the link.
  */
 export function instagramPublishingOAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return livePublishingRuntimeAllowed(env) && env.SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED === "true" && !providerDisabledEnabled(env);
+  return postPublishingEnabled("instagram", env, true);
 }
 
 export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {
-  const capabilities = platformCapabilities(platform);
-  if (!capabilities || platform !== "instagram") throw new Error(`No publishing provider contract exists for ${platform}`);
-  if (options.mediaStorage && livePublishingEnabled(process.env, true)) {
+  const normalizedPlatform = platform.trim().toLowerCase();
+  const capabilities = platformCapabilities(normalizedPlatform);
+  if (!capabilities) throw new Error(`No publishing provider contract exists for ${platform}`);
+  if (normalizedPlatform === "instagram" && options.mediaStorage && livePublishingEnabled(process.env, true)) {
     const { createInstagramPublishingProvider } = require("./instagram-provider") as typeof import("./instagram-provider");
     return createInstagramPublishingProvider(options.mediaStorage);
   }
-  return { platform: "instagram", capabilities, enabled: false, async publish() { throw new PublishingProviderDisabledError("instagram"); } };
+  const adapter = ({
+    instagram: null,
+    facebook: metaPlatformAdapters.facebook,
+    threads: metaPlatformAdapters.threads,
+    google_business: googlePlatformAdapters.googleBusiness,
+    youtube: googlePlatformAdapters.youtube,
+    linkedin: otherPlatformAdapters.linkedin,
+    tiktok: otherPlatformAdapters.tiktok,
+    pinterest: otherPlatformAdapters.pinterest,
+    x: otherPlatformAdapters.x,
+    reddit: otherPlatformAdapters.reddit,
+  } as const)[capabilities.platform] ?? null;
+  // TikTok direct posting stays hard-disabled until the integration can prove
+  // creator-info/privacy controls and durable verified media URLs required by
+  // the Content Posting API. The adapter remains contract-tested, but a live
+  // factory can never cross its provider boundary yet.
+  if (adapter && options.mediaStorage && capabilities.platform !== "tiktok") return createPlatformPublishingProvider(adapter, options.mediaStorage);
+  return {
+    platform: capabilities.platform,
+    capabilities,
+    enabled: false,
+    async publish() {
+      throw new PublishingProviderDisabledError(capabilities.platform);
+    },
+  };
 }

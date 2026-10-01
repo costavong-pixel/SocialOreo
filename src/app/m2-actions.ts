@@ -11,7 +11,7 @@ import { isAuthIdentityCollisionError, syncUserFromAuth0 } from "@/lib/auth/sync
 import { requireAdminByAuthUserId } from "@/lib/auth/roles";
 import { getOrCreatePersonalWorkspace } from "@/lib/socialolla/workspace";
 import { proposeProfile, confirmProfile, addSandboxDestination, createFirstPostAndPlan } from "@/lib/socialolla/onboarding/onboarding-actions";
-import { createPostRequest, updatePostVariant, replacePostMedia, approveAndSchedulePost, listPostRequests, publishPostNow, cancelPostPublish, reschedulePostPublish } from "@/lib/socialolla/post/post-actions";
+import { createPostRequest, createMultiDestinationPostRequest, updatePostVariant, replacePostMedia, approveAndSchedulePost, listPostRequests, publishPostNow, cancelPostPublish, reschedulePostPublish } from "@/lib/socialolla/post/post-actions";
 import { detectMediaMimeType, mediaSizeLimitForMime, type MediaKind } from "@/lib/socialolla/media/media";
 import { createLocalPrivateMediaStorage } from "@/lib/socialolla/media/local-storage";
 import { createOwnedMediaReadGrant, deleteOwnedMedia, storeOwnedMedia } from "@/lib/socialolla/media/media-service";
@@ -112,7 +112,12 @@ export async function m2CreatePost(input: { destinationExternalId: string; langu
   return createPostRequest({ ...input, authUserId: user.dbId, confirmed: true });
 }
 
-export async function m2UpdateVariant(input: { postRequestExternalId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
+export async function m2CreateMultiDestinationPost(input: { destinationExternalIds: string[]; language: string; requestedCount: number; contentIntent?: string; mediaAssetIds?: string[] }) {
+  const user = await requireUser();
+  return createMultiDestinationPostRequest({ ...input, authUserId: user.dbId, confirmed: true });
+}
+
+export async function m2UpdateVariant(input: { postRequestExternalId: string; variantId: string; title: string; caption?: string; hashtags?: string[]; cta?: string; isFinal?: boolean; mediaAssetIds?: string[] }) {
   const user = await requireUser();
   return updatePostVariant({ ...input, authUserId: user.dbId });
 }
@@ -159,7 +164,7 @@ export async function m2DeleteMedia(assetId: string) {
   return deleteOwnedMedia({ authUserId: user.dbId, assetId });
 }
 
-export async function m2ReplacePostMedia(input: { postRequestExternalId: string; oldAssetId: string; newAssetId: string }) {
+export async function m2ReplacePostMedia(input: { postRequestExternalId: string; variantId: string; oldAssetId: string; newAssetId: string }) {
   const user = await requireUser();
   return replacePostMedia({ ...input, authUserId: user.dbId });
 }

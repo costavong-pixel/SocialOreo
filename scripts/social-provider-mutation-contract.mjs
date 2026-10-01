@@ -6,7 +6,7 @@ const root = process.cwd();
 const targets = {
   guard: "src/lib/providers/social/provider-guard.ts",
   router: "src/lib/providers/social/provider-router.ts",
-  publishing: "src/lib/socialolla/publishing/provider.ts",
+  publishing: "src/lib/socialolla/publishing/gates.ts",
 };
 
 const mutations = [
@@ -38,12 +38,12 @@ const mutations = [
   {
     id: "allow-publishing-outside-exact-staging",
     file: targets.publishing,
-    mutate: (value) => value.replace('env.NODE_ENV?.trim().toLowerCase() === "staging"', 'env.NODE_ENV?.trim().toLowerCase() !== "staging"'),
+    mutate: (value) => value.replace('nodeEnvironment === "staging" && socialollaEnvironment === "staging"', 'nodeEnvironment !== "staging" && socialollaEnvironment === "staging"'),
   },
   {
     id: "allow-publishing-with-disabled-default",
     file: targets.publishing,
-    mutate: (value) => value.replace("!providerDisabledEnabled(env)", "providerDisabledEnabled(env)"),
+    mutate: (value) => value.replace("providerDisabledEnabled(env)", "!providerDisabledEnabled(env)"),
   },
 ];
 

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     postVariant: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     postOccurrence: { create: vi.fn(), updateMany: vi.fn() },
     postDestination: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    publishJob: { findUnique: vi.fn(), create: vi.fn() },
     mediaAsset: { findMany: vi.fn() },
     scheduleSlot: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn() },
     sevenDayPlan: { create: vi.fn() },
@@ -93,6 +94,9 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
     mocks.prisma.postOccurrence.create.mockResolvedValue({ id: "o-1" });
     mocks.prisma.postOccurrence.updateMany.mockResolvedValue({ count: 1 });
     mocks.prisma.postDestination.create.mockResolvedValue({ id: "pd-1", externalId: "postdst_slice000000000000" });
+    mocks.prisma.postDestination.findFirst.mockResolvedValue({ id: "pd-1", postRequestId: "pr-1", destinationId: "dst-1", variantId: "v-1" });
+    mocks.prisma.publishJob.findUnique.mockResolvedValue(null);
+    mocks.prisma.publishJob.create.mockResolvedValue({ id: "job-1", externalId: "pub-1", idempotencyKey: "publish-key" });
     mocks.prisma.mediaAsset.findMany.mockResolvedValue([]);
     mocks.prisma.scheduleSlot.findFirst.mockResolvedValue(null);
     mocks.prisma.scheduleSlot.update.mockResolvedValue({});
@@ -139,6 +143,14 @@ describe("M2 slice actions (Post / onboarding / demo / assistant / admin)", () =
 
   it("Post: approve+schedule requires a final variant and confirmation", async () => {
     const { approveAndSchedulePost } = await import("@/lib/socialolla/post/post-actions");
+    mocks.prisma.postRequest.findFirst.mockResolvedValue({
+      id: "pr-1",
+      externalId: "req_slice000000000000",
+      workspaceId: "ws-1",
+      status: "REVIEW",
+      destinationRef: "dst_slice000000000000",
+      destinations: [{ externalId: "postdst_slice000000000000", variant: { id: "v-1", isFinal: true } }],
+    });
     const result = await approveAndSchedulePost({
       authUserId: "user-1",
       postRequestExternalId: "req_slice000000000000",
