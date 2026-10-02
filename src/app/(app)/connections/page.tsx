@@ -6,6 +6,7 @@ import { providerDisabledEnabled } from "@/lib/providers/social/provider-guard";
 import { CONNECTION_REGISTRY } from "@/lib/socialolla/connections/registry";
 import { connectionAvailable } from "@/lib/socialolla/connections/service";
 import { ConnectionCard } from "@/components/connections/connection-card";
+import { instagramConnectionOAuthEnabled } from "@/lib/socialolla/publishing/provider";
 
 export const metadata = { title: "Connections — SocialOlla" };
 
@@ -13,6 +14,7 @@ export default async function ConnectionsPage() {
   const workspace = await m2Workspace();
   const destinations = await prisma.destination.findMany({ where: { workspaceId: workspace.dbId }, orderBy: { createdAt: "asc" } });
   const publishingDisabled = providerDisabledEnabled();
+  const instagramConnectionAvailable = instagramConnectionOAuthEnabled();
   const destinationByPlatform = new Map(destinations.map((destination) => [destination.platform.toLowerCase(), destination]));
 
   return (
@@ -26,15 +28,15 @@ export default async function ConnectionsPage() {
             ? "Live social OAuth connections are not enabled in this environment. No live account connection is being claimed."
             : "Connections use one server-side, destination-scoped OAuth flow; provider publishing remains separately gated."}
         </p>
-        {!publishingDisabled && (
+        {instagramConnectionAvailable && (
           <Link href="/api/meta/instagram/publish/connect" className="mt-4 inline-flex rounded-full bg-[var(--social-blue)] px-5 py-2.5 text-sm font-extrabold text-[var(--social-ink)]">
-            Connect Instagram for publishing
+            Connect Instagram
           </Link>
         )}
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        {CONNECTION_REGISTRY.map((descriptor) => <ConnectionCard key={descriptor.platform} descriptor={descriptor} status={destinationByPlatform.get(descriptor.platform)?.status ?? "NOT_CONNECTED"} actionHref={descriptor.platform === "instagram" && !publishingDisabled ? "/api/meta/instagram/publish/connect" : connectionAvailable(descriptor.platform) ? `/api/connections/${descriptor.platform}/connect` : undefined} />)}
+        {CONNECTION_REGISTRY.map((descriptor) => <ConnectionCard key={descriptor.platform} descriptor={descriptor} status={destinationByPlatform.get(descriptor.platform)?.status ?? "NOT_CONNECTED"} actionHref={descriptor.platform === "instagram" && instagramConnectionAvailable ? "/api/meta/instagram/publish/connect" : connectionAvailable(descriptor.platform) ? `/api/connections/${descriptor.platform}/connect` : undefined} />)}
       </div>
 
       <div className="mt-6 rounded-3xl border border-white/10 bg-white/[0.02] p-5">
@@ -51,8 +53,8 @@ export default async function ConnectionsPage() {
                   <p className="font-bold">{destination.label}</p>
                   <p className="text-sm text-white/60">{destination.platform} · {destination.accountLabel ?? ""} · {destination.status}</p>
                   {instagram && <p className="text-xs text-white/45">Publishing token: {destination.accessTokenCiphertext ? "encrypted" : "absent"} · eligibility: {destination.publishingEligibilityVerifiedAt ? "verified" : "unverified"}</p>}
-                  {destination.status === "REAUTH_REQUIRED" && !publishingDisabled && <Link href={instagram ? "/api/meta/instagram/publish/connect" : `/api/connections/${destination.platform.toLowerCase()}/connect`} className="mt-2 inline-block text-sm font-bold text-amber-200">Reconnect {destination.platform}</Link>}
-                  {destination.status === "DISCONNECTED" && !publishingDisabled && <Link href={instagram ? "/api/meta/instagram/publish/connect" : `/api/connections/${destination.platform.toLowerCase()}/connect`} className="mt-2 inline-block text-sm font-bold text-amber-200">Reconnect {destination.platform}</Link>}
+                  {destination.status === "REAUTH_REQUIRED" && (instagram ? instagramConnectionAvailable : !publishingDisabled) && <Link href={instagram ? "/api/meta/instagram/publish/connect" : `/api/connections/${destination.platform.toLowerCase()}/connect`} className="mt-2 inline-block text-sm font-bold text-amber-200">Reconnect {destination.platform}</Link>}
+                  {destination.status === "DISCONNECTED" && (instagram ? instagramConnectionAvailable : !publishingDisabled) && <Link href={instagram ? "/api/meta/instagram/publish/connect" : `/api/connections/${destination.platform.toLowerCase()}/connect`} className="mt-2 inline-block text-sm font-bold text-amber-200">Reconnect {destination.platform}</Link>}
                   {!destination.providerDisabled && destination.status === "CONNECTED" && (
                     <form action={instagram ? m2DisconnectInstagramDestination : connectionPath} className="mt-3">
                       <input type="hidden" name="destinationExternalId" value={destination.externalId} />

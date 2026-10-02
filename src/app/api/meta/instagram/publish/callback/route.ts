@@ -8,7 +8,7 @@ import { verifyInstagramOAuthState } from "@/lib/instagram-insights/oauth";
 import { encryptInstagramToken } from "@/lib/instagram-insights/token-crypto";
 import { assertProfessionalAccount, exchangeInstagramPublishingAuthorizationCode, getInstagramPublishingProfile, verifyInstagramPublishingEligibility } from "@/lib/instagram-publishing/client";
 import { getInstagramPublishingConfig, INSTAGRAM_PUBLISHING_SCOPES } from "@/lib/instagram-publishing/config";
-import { instagramPublishingOAuthEnabled } from "@/lib/socialolla/publishing/provider";
+import { instagramConnectionOAuthEnabled } from "@/lib/socialolla/publishing/provider";
 
 function redirect(request: NextRequest, result: string) {
   const appUrl = (process.env.APP_URL ?? process.env.APP_BASE_URL)?.replace(/\/$/, "");
@@ -19,7 +19,7 @@ function redirect(request: NextRequest, result: string) {
 
 export async function GET(request: NextRequest) {
   const authUser = await getAcceptedSessionUser();
-  if (!instagramPublishingOAuthEnabled()) return redirect(request, "unavailable");
+  if (!instagramConnectionOAuthEnabled()) return redirect(request, "unavailable");
   const config = getInstagramPublishingConfig();
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");

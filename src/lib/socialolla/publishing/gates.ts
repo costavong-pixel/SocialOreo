@@ -19,6 +19,11 @@ export function postPublishingEnabled(platform: PublishingPlatform | string, env
   return env[platformGateEnvName(capabilities.platform)] === "true";
 }
 
+/** Instagram OAuth connection is separately gated from Instagram publishing. */
+export function instagramConnectionEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return postWorkerRuntimeAllowed(env) && !providerDisabledEnabled(env) && env.SOCIALOLLA_INSTAGRAM_CONNECTION_ENABLED === "true";
+}
+
 export function platformPublishingGate(platform: PublishingPlatform | string, env: Record<string, string | undefined> = process.env): { platform: PublishingPlatform; envKey: string; enabled: boolean } {
   const capabilities = platformCapabilities(platform);
   if (!capabilities) throw new Error(`Unsupported publishing platform: ${platform}`);

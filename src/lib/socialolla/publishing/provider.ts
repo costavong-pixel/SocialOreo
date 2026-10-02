@@ -1,7 +1,7 @@
 import type { PostVariant, ProviderReceipt } from "./contracts";
 import { platformCapabilities, type PlatformCapabilities, type PublishingPlatform } from "./platform-adaptation";
 import type { PrivateMediaStorage } from "@/lib/socialolla/media/media";
-import { postPublishingEnabled, postWorkerRuntimeAllowed } from "./gates";
+import { instagramConnectionEnabled, postPublishingEnabled, postWorkerRuntimeAllowed } from "./gates";
 import { createPlatformPublishingProvider } from "./platform-provider";
 import { metaPlatformAdapters } from "./adapters/meta";
 import { googlePlatformAdapters } from "./adapters/google";
@@ -42,6 +42,11 @@ export function livePublishingEnabled(env: Record<string, string | undefined> = 
  */
 export function instagramPublishingOAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
   return postPublishingEnabled("instagram", env, true);
+}
+
+/** Instagram account connection does not authorize Instagram publishing. */
+export function instagramConnectionOAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return instagramConnectionEnabled(env);
 }
 
 export function createPublishingProvider(platform: string, options: { mediaStorage?: PrivateMediaStorage } = {}): PublishProvider {

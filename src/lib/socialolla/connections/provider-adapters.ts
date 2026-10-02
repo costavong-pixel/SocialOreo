@@ -28,11 +28,11 @@ function expiresAt(value: unknown): Date | null {
   return typeof value === "number" && Number.isFinite(value) ? new Date(Date.now() + value * 1000) : null;
 }
 
-function tokenFromBody(platform: PublishingPlatform, body: Record<string, unknown>): OAuthTokenSet {
+function tokenFromBody(platform: PublishingPlatform, body: Record<string, unknown>, options: { allowMissingScope?: boolean } = {}): OAuthTokenSet {
   const accessToken = text(body.access_token);
   if (!accessToken) throw new ConnectionProviderError(platform);
   const scopes = arrayText(body.scope);
-  if (scopes.length === 0) throw new ConnectionProviderError(platform);
+  if (scopes.length === 0 && !options.allowMissingScope) throw new ConnectionProviderError(platform);
   return {
     accessToken,
     refreshToken: text(body.refresh_token),
@@ -87,6 +87,10 @@ function verifyFromList(destinationList: readonly DiscoveredConnectionDestinatio
   return found ?? { ...wanted, eligible: false, eligibilityReason: "Destination was not returned by the provider." };
 }
 
+function facebookPageCanCreateContent(tasks: readonly string[]): boolean {
+  return tasks.includes("PROFILE_PLUS_CREATE_CONTENT") || tasks.includes("CREATE_CONTENT");
+}
+
 const facebookScopes = ["pages_show_list", "pages_manage_posts", "pages_read_engagement"] as const;
 const facebook: ConnectionProviderAdapter = {
   platform: "facebook", capabilities: capabilities("facebook"), requiredScopes: facebookScopes, supportsPkce: false,
@@ -110,7 +114,7 @@ const facebook: ConnectionProviderAdapter = {
       if (!id) return [];
       const tasks = arrayText(page.tasks);
       const pageToken = text(page.access_token);
-      return [destination(id, text(page.name) ?? "Facebook Page", "PAGE", Boolean(pageToken && (tasks.length === 0 || tasks.includes("CREATE_CONTENT"))), { accountLabel: text(page.name), accessToken: pageToken ?? undefined })];
+      return [destination(id, text(page.name) ?? "Facebook Page", "PAGE", Boolean(pageToken && facebookPageCanCreateContent(tasks)), { accountLabel: text(page.name), accessToken: pageToken ?? undefined })];
     });
   },
   async verifyEligibility({ token, destination: wanted, http: client = http }) {
@@ -123,10 +127,11 @@ const threads: ConnectionProviderAdapter = {
   platform: "threads", capabilities: capabilities("threads"), requiredScopes: threadsScopes, supportsPkce: false,
   authorizationUrl: ({ clientId, redirectUri, state }) => authUrl("https://threads.net/oauth/authorize", { client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: threadsScopes.join(","), state }),
   async exchangeCallback({ clientId, clientSecret, code, redirectUri, http: client = http }) {
-    return tokenFromBody("threads", await requestJson("threads", "https://graph.threads.net/oauth/access_token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: formBody({ client_id: clientId, client_secret: clientSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code }) }, client));
+    // Meta's documented Threads authorization-code response is access_token + user_id and may omit scope. Accept that response shape here, but saveConnection still requires explicit evidence of every requested scope before persisting a connection.
+    return tokenFromBody("threads", await requestJson("threads", "https://graph.threads.net/oauth/access_token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: formBody({ client_id: clientId, client_secret: clientSecret, grant_type: "authorization_code", redirect_uri: redirectUri, code }) }, client), { allowMissingScope: true });
   },
   async refresh({ refreshToken, http: client = http }) {
-    return tokenFromBody("threads", await requestJson("threads", `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(refreshToken)}`, { method: "GET" }, client));
+    return tokenFromBody("threads", await requestJson("threads", `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(refreshToken)}`, { method: "GET" }, client), { allowMissingScope: true });
   },
   async revoke({ accessToken, http: client = http }) {
     await requestJson("threads", "https://graph.threads.net/v1.0/me/permissions", { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }, client);

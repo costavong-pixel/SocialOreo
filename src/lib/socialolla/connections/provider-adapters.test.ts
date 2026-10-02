@@ -42,10 +42,31 @@ describe("shared OAuth provider adapters", () => {
   it("discovers Meta pages with page-scoped credentials", async () => {
     const client: ConnectionHttpClient = async (url) => {
       expect(String(url)).toContain("/me/accounts");
-      return response({ data: [{ id: "page_1", name: "Slab Pizza", access_token: "page-token", tasks: ["CREATE_CONTENT"] }] });
+      return response({ data: [{ id: "page_1", name: "Slab Pizza", access_token: "page-token", tasks: ["PROFILE_PLUS_CREATE_CONTENT"] }] });
     };
     const destinations = await CONNECTION_PROVIDER_ADAPTERS.facebook!.discoverDestinations({ token: { accessToken: "user-token", scopes: [] }, http: client });
     expect(destinations[0]).toMatchObject({ platformUserId: "page_1", destinationType: "PAGE", accessToken: "page-token", eligible: true });
+  });
+
+  it("rejects Facebook Pages without an explicit content-creation task", async () => {
+    const discover = (tasks: string[]) => CONNECTION_PROVIDER_ADAPTERS.facebook!.discoverDestinations({
+      token: { accessToken: "user-token", scopes: [] },
+      http: async () => response({ data: [{ id: "page_1", name: "Slab Pizza", access_token: "page-token", tasks }] }),
+    });
+    await expect(discover(["PROFILE_PLUS_MODERATE"])).resolves.toMatchObject([{ eligible: false }]);
+    await expect(discover([])).resolves.toMatchObject([{ eligible: false }]);
+    await expect(discover(["CREATE_CONTENT"])).resolves.toMatchObject([{ eligible: true }]);
+  });
+
+  it("accepts the documented Threads token response shape without inferring permissions", async () => {
+    const token = await CONNECTION_PROVIDER_ADAPTERS.threads!.exchangeCallback({
+      clientId: "threads-client",
+      clientSecret: "threads-secret",
+      code: "code",
+      redirectUri: "https://socialolla.com/api/connections/threads/callback",
+      http: async () => response({ access_token: "threads-access", user_id: "threads-user" }),
+    });
+    expect(token).toMatchObject({ accessToken: "threads-access", scopes: [] });
   });
 
   it("discovers Google locations and YouTube channels without exposing tokens", async () => {

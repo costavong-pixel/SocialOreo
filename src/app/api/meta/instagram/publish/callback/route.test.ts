@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 const {
   mockGetAcceptedSessionUser,
-  mockInstagramPublishingOAuthEnabled,
+  mockInstagramConnectionOAuthEnabled,
   mockSyncUserFromAuth0,
   mockGetOrCreatePersonalWorkspace,
   mockVerifyInstagramOAuthState,
@@ -14,7 +14,7 @@ const {
   mockPrismaTransaction,
 } = vi.hoisted(() => ({
   mockGetAcceptedSessionUser: vi.fn(),
-  mockInstagramPublishingOAuthEnabled: vi.fn(),
+  mockInstagramConnectionOAuthEnabled: vi.fn(),
   mockSyncUserFromAuth0: vi.fn(),
   mockGetOrCreatePersonalWorkspace: vi.fn(),
   mockVerifyInstagramOAuthState: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock("@/lib/instagram-insights/oauth", () => ({ verifyInstagramOAuthState: (.
 vi.mock("@/lib/instagram-insights/token-crypto", () => ({ encryptInstagramToken: (...args: unknown[]) => mockEncryptInstagramToken(...args) }));
 vi.mock("@/lib/instagram-publishing/client", () => ({ assertProfessionalAccount: vi.fn(), exchangeInstagramPublishingAuthorizationCode: (...args: unknown[]) => mockExchangeInstagramPublishingAuthorizationCode(...args), getInstagramPublishingProfile: (...args: unknown[]) => mockGetInstagramPublishingProfile(...args), verifyInstagramPublishingEligibility: vi.fn() }));
 vi.mock("@/lib/instagram-publishing/config", () => ({ getInstagramPublishingConfig: (...args: unknown[]) => mockGetInstagramPublishingConfig(...args), INSTAGRAM_PUBLISHING_SCOPES: ["instagram_business_basic", "instagram_business_content_publish"] }));
-vi.mock("@/lib/socialolla/publishing/provider", () => ({ instagramPublishingOAuthEnabled: (...args: unknown[]) => mockInstagramPublishingOAuthEnabled(...args) }));
+vi.mock("@/lib/socialolla/publishing/provider", () => ({ instagramConnectionOAuthEnabled: (...args: unknown[]) => mockInstagramConnectionOAuthEnabled(...args) }));
 
 import { GET } from "./route";
 
@@ -48,7 +48,7 @@ describe("GET /api/meta/instagram/publish/callback", () => {
   it("returns failed to the configured public app URL when Next sees a loopback request URL", async () => {
     process.env.APP_URL = "https://staging.socialolla.com";
     mockGetAcceptedSessionUser.mockResolvedValue(null);
-    mockInstagramPublishingOAuthEnabled.mockReturnValue(true);
+    mockInstagramConnectionOAuthEnabled.mockReturnValue(true);
 
     const response = await GET(new NextRequest("https://localhost:3004/api/meta/instagram/publish/callback"));
 
@@ -60,7 +60,7 @@ describe("GET /api/meta/instagram/publish/callback", () => {
   it("does not use a revoked entitlement snapshot to authorize another destination", async () => {
     process.env.APP_URL = "https://staging.socialolla.com";
     mockGetAcceptedSessionUser.mockResolvedValue({ id: "auth-user", email: "owner@example.com" });
-    mockInstagramPublishingOAuthEnabled.mockReturnValue(true);
+    mockInstagramConnectionOAuthEnabled.mockReturnValue(true);
     mockGetInstagramPublishingConfig.mockReturnValue({ tokenEncryptionKey: "encryption-key" });
     mockSyncUserFromAuth0.mockResolvedValue({ id: "user-1" });
     mockVerifyInstagramOAuthState.mockReturnValue(true);
