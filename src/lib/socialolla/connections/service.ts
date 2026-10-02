@@ -123,6 +123,7 @@ export async function refreshConnection(input: { userId: string; platform: strin
     const refreshToken = decryptConnectionSecret(destination.refreshTokenCiphertext, key);
     if (!connectionAvailable(platform)) throw new Error("Connection is disabled.");
     const token = await config.adapter.refresh({ clientId: config.client.clientId, clientSecret: config.client.clientSecret, refreshToken });
+    if (!config.adapter.requiredScopes.every((scope) => token.scopes.includes(scope))) throw new Error("OAuth token is missing the required connection scopes.");
     if (!connectionAvailable(platform)) throw new Error("Connection is disabled.");
     const discovered = await config.adapter.discoverDestinations({ token });
     const matched = discovered.find((item) => item.platformUserId === destination.platformUserId);

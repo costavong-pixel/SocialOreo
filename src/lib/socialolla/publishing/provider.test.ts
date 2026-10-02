@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createPublishingProvider, instagramPublishingOAuthEnabled, livePublishingEnabled, livePublishingRuntimeAllowed } from "./provider";
+import { createPublishingProvider, instagramConnectionOAuthEnabled, instagramPublishingOAuthEnabled, livePublishingEnabled, livePublishingRuntimeAllowed } from "./provider";
 
 describe("publishing runtime boundary", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -128,6 +128,22 @@ describe("publishing runtime boundary", () => {
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "TRUE" })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true " })).toBe(false);
     expect(instagramPublishingOAuthEnabled({ ...providerGates, SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true" })).toBe(true);
+  });
+
+  it("allows Instagram connection without publishing when the connection gate is enabled", () => {
+    const production = {
+      NODE_ENV: "production",
+      SOCIALOLLA_ENV: "production",
+      SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED: "true",
+      SOCIALOLLA_INSTAGRAM_CONNECTION_ENABLED: "true",
+      SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "false",
+      SOCIALOLLA_PROVIDER_DISABLED: "false",
+    };
+    expect(instagramConnectionOAuthEnabled(production)).toBe(true);
+    expect(instagramPublishingOAuthEnabled(production)).toBe(false);
+    expect(instagramConnectionOAuthEnabled({ ...production, SOCIALOLLA_INSTAGRAM_CONNECTION_ENABLED: "false", SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED: "true" })).toBe(false);
+    expect(instagramConnectionOAuthEnabled({ ...production, SOCIALOLLA_INSTAGRAM_CONNECTION_ENABLED: "TRUE" })).toBe(false);
+    expect(instagramConnectionOAuthEnabled({ ...production, SOCIALOLLA_PROVIDER_DISABLED: "true" })).toBe(false);
   });
 
   it("exposes the Meta and Google adapters only behind their own explicit gates", () => {

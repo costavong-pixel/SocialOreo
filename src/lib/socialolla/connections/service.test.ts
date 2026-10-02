@@ -36,4 +36,19 @@ describe("connection service fail-closed boundaries", () => {
     })).rejects.toThrow(/required connection scopes/);
     vi.unstubAllEnvs();
   });
+
+  it("fails closed for the official Threads response when granted permissions are not evidenced", async () => {
+    vi.stubEnv("SOCIALOLLA_CONNECTION_TOKEN_ENCRYPTION_KEY", randomBytes(32).toString("base64"));
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SOCIALOLLA_ENV", "production");
+    vi.stubEnv("SOCIALOLLA_PROVIDER_DISABLED", "false");
+    vi.stubEnv("SOCIALOLLA_THREADS_CONNECTION_ENABLED", "true");
+    await expect(saveConnection({
+      userId: "user_not_reached",
+      platform: "threads",
+      token: { accessToken: "threads-access", scopes: [] },
+      destinations: [{ platformUserId: "threads-user", label: "Threads", destinationType: "ACCOUNT", eligible: true }],
+    })).rejects.toThrow(/required connection scopes/);
+    vi.unstubAllEnvs();
+  });
 });

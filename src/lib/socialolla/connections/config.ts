@@ -19,8 +19,10 @@ export function connectionRedirectUri(platform: PublishingPlatform, env: Record<
 export function connectionClientConfig(platform: PublishingPlatform, env: Record<string, string | undefined> = process.env): ConnectionClientConfig | null {
   const candidates: ReadonlyArray<readonly [string, string, string, string]> = platform === "tiktok"
     ? [["SOCIALOLLA_TIKTOK_CLIENT_KEY", "SOCIALOLLA_TIKTOK_CLIENT_SECRET", "", ""]]
-    : platform === "facebook" || platform === "threads"
-    ? [["SOCIALOLLA_META_CLIENT_ID", "SOCIALOLLA_META_CLIENT_SECRET", "META_INSTAGRAM_CLIENT_ID", "META_INSTAGRAM_CLIENT_SECRET"]]
+    : platform === "threads"
+    ? [["SOCIALOLLA_THREADS_CLIENT_ID", "SOCIALOLLA_THREADS_CLIENT_SECRET", "", ""]]
+    : platform === "facebook"
+    ? [["SOCIALOLLA_META_CLIENT_ID", "SOCIALOLLA_META_CLIENT_SECRET", "", ""]]
     : platform === "google_business" || platform === "youtube"
       ? [["SOCIALOLLA_GOOGLE_CLIENT_ID", "SOCIALOLLA_GOOGLE_CLIENT_SECRET", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]]
       : [[`SOCIALOLLA_${upperPlatform(platform)}_CLIENT_ID`, `SOCIALOLLA_${upperPlatform(platform)}_CLIENT_SECRET`, "", ""]];
@@ -35,7 +37,8 @@ export function connectionClientConfig(platform: PublishingPlatform, env: Record
 
 export function connectionClientEnvKeys(platform: PublishingPlatform): readonly string[] {
   if (platform === "tiktok") return ["SOCIALOLLA_TIKTOK_CLIENT_KEY", "SOCIALOLLA_TIKTOK_CLIENT_SECRET"];
-  if (platform === "facebook" || platform === "threads") return ["SOCIALOLLA_META_CLIENT_ID", "SOCIALOLLA_META_CLIENT_SECRET"];
+  if (platform === "threads") return ["SOCIALOLLA_THREADS_CLIENT_ID", "SOCIALOLLA_THREADS_CLIENT_SECRET"];
+  if (platform === "facebook") return ["SOCIALOLLA_META_CLIENT_ID", "SOCIALOLLA_META_CLIENT_SECRET"];
   if (platform === "google_business" || platform === "youtube") return ["SOCIALOLLA_GOOGLE_CLIENT_ID", "SOCIALOLLA_GOOGLE_CLIENT_SECRET"];
   return [`SOCIALOLLA_${upperPlatform(platform)}_CLIENT_ID`, `SOCIALOLLA_${upperPlatform(platform)}_CLIENT_SECRET`];
 }
