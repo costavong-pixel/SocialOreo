@@ -92,15 +92,28 @@ function facebookPageCanCreateContent(tasks: readonly string[]): boolean {
 }
 
 const facebookScopes = ["pages_show_list", "pages_manage_posts", "pages_read_engagement"] as const;
+
+async function facebookToken(body: Record<string, unknown>, client: ConnectionHttpClient): Promise<OAuthTokenSet> {
+  const token = tokenFromBody("facebook", body, { allowMissingScope: true });
+  const permissions = await requestJson("facebook", "https://graph.facebook.com/v25.0/me/permissions?fields=permission,status", { headers: { Authorization: `Bearer ${token.accessToken}` } }, client);
+  const grantedScopes = (Array.isArray(permissions.data) ? permissions.data : []).flatMap((itemValue) => {
+    const item = record(itemValue);
+    const permission = text(item.permission);
+    return permission && text(item.status)?.toLowerCase() === "granted" ? [permission] : [];
+  });
+  if (grantedScopes.length === 0) throw new ConnectionProviderError("facebook");
+  return { ...token, scopes: grantedScopes };
+}
+
 const facebook: ConnectionProviderAdapter = {
   platform: "facebook", capabilities: capabilities("facebook"), requiredScopes: facebookScopes, supportsPkce: false,
   authorizationUrl: ({ clientId, redirectUri, state }) => authUrl("https://www.facebook.com/v25.0/dialog/oauth", { client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: facebookScopes.join(","), state }),
   async exchangeCallback({ clientId, clientSecret, code, redirectUri, http: client = http }) {
-    return tokenFromBody("facebook", await requestJson("facebook", "https://graph.facebook.com/v25.0/oauth/access_token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: formBody({ client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }) }, client));
+    return facebookToken(await requestJson("facebook", "https://graph.facebook.com/v25.0/oauth/access_token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: formBody({ client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }) }, client), client);
   },
   async refresh({ clientId, clientSecret, refreshToken, http: client = http }) {
     const body = await requestJson("facebook", "https://graph.facebook.com/v25.0/oauth/access_token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: formBody({ grant_type: "fb_exchange_token", client_id: clientId, client_secret: clientSecret, fb_exchange_token: refreshToken }) }, client);
-    return { ...tokenFromBody("facebook", body), refreshToken: text(body.access_token) ?? refreshToken };
+    return { ...await facebookToken(body, client), refreshToken: text(body.access_token) ?? refreshToken };
   },
   async revoke({ accessToken, http: client = http }) {
     await requestJson("facebook", "https://graph.facebook.com/v25.0/me/permissions", { method: "DELETE", headers: { Authorization: `Bearer ${accessToken}` } }, client);

@@ -30,7 +30,9 @@ describe("shared OAuth provider adapters", () => {
   it("uses one callback, refresh, and disconnect contract for every non-Instagram provider", async () => {
     const providers = Object.entries(CONNECTION_PROVIDER_ADAPTERS).filter(([platform]) => platform !== "instagram") as Array<[keyof typeof CONNECTION_PROVIDER_ADAPTERS, NonNullable<(typeof CONNECTION_PROVIDER_ADAPTERS)[keyof typeof CONNECTION_PROVIDER_ADAPTERS]>]>;
     for (const [platform, adapter] of providers) {
-      const tokenClient: ConnectionHttpClient = async () => response({ access_token: `${platform}-access`, refresh_token: `${platform}-refresh`, expires_in: 3600, scope: adapter.requiredScopes.join(" ") });
+      const tokenClient: ConnectionHttpClient = async (url) => String(url).includes("/me/permissions")
+        ? response({ data: adapter.requiredScopes.map((permission) => ({ permission, status: "granted" })) })
+        : response({ access_token: `${platform}-access`, refresh_token: `${platform}-refresh`, expires_in: 3600, scope: adapter.requiredScopes.join(" ") });
       const exchange = await adapter.exchangeCallback({ clientId: "client", clientSecret: "secret", code: "code", redirectUri: `https://socialolla.com/api/connections/${platform}/callback`, codeVerifier: adapter.supportsPkce ? "verifier" : undefined, http: tokenClient });
       expect(exchange).toMatchObject({ accessToken: `${platform}-access`, refreshToken: `${platform}-refresh` });
       const refreshed = await adapter.refresh({ clientId: "client", clientSecret: "secret", refreshToken: "refresh", http: tokenClient });
@@ -102,5 +104,26 @@ describe("shared OAuth provider adapters", () => {
       redirectUri: "https://socialolla.com/callback",
       http: async () => response({ access_token: "access-token", expires_in: 3600 }),
     })).rejects.toMatchObject({ provider: "facebook" });
+  });
+
+  it("resolves Facebook grants from the authoritative permissions endpoint", async () => {
+    const urls: string[] = [];
+    const token = await CONNECTION_PROVIDER_ADAPTERS.facebook!.exchangeCallback({
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      code: "code",
+      redirectUri: "https://socialolla.com/callback",
+      http: async (url) => {
+        urls.push(String(url));
+        return String(url).includes("/me/permissions")
+          ? response({ data: [{ permission: "pages_show_list", status: "granted" }, { permission: "pages_manage_posts", status: "granted" }, { permission: "pages_read_engagement", status: "granted" }] })
+          : response({ access_token: "access-token", expires_in: 3600 });
+      },
+    });
+    expect(token.scopes).toEqual(["pages_show_list", "pages_manage_posts", "pages_read_engagement"]);
+    expect(urls).toEqual([
+      "https://graph.facebook.com/v25.0/oauth/access_token",
+      "https://graph.facebook.com/v25.0/me/permissions?fields=permission,status",
+    ]);
   });
 });
