@@ -469,6 +469,19 @@ describe("production release preflight", () => {
     await expect(runReleasePreflight(productionInput(broken))).rejects.toThrow(/existing target inside candidate\/node_modules/);
   });
 
+  it("rejects an absolute Next runtime link even when its target is inside candidate node_modules", async () => {
+    const layout = await createLayout();
+    await makeTreeWritable(layout.candidateDirectory);
+    const linkDirectory = join(layout.candidateDirectory, ".next", "node_modules", "@prisma");
+    const link = join(linkDirectory, "client-runtime");
+    const target = join(layout.candidateDirectory, "node_modules", "@prisma", "client");
+    await mkdir(linkDirectory, { recursive: true });
+    await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(layout.candidateDirectory);
+
+    await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/target must be relative/);
+  });
+
   it("fails closed when production identity or provider-disabled mode is unsafe", async () => {
     const layout = await createLayout();
     await expect(runReleasePreflight({ ...productionInput(layout), socialollaEnvironment: "staging" })).rejects.toThrow(/SOCIALOLLA_ENV/);

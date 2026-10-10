@@ -587,7 +587,9 @@ function isContainedPath(target, root) {
 }
 
 function assertRelativeTargetStaysInsideRoot(rawTarget, startDirectory, rootDirectory, label) {
-  if (isAbsolute(rawTarget)) return;
+  if (isAbsolute(rawTarget)) {
+    throw new Error(`${label} target must be relative.`);
+  }
 
   let current = startDirectory;
   for (const segment of rawTarget.split(/[\\/]+/)) {
