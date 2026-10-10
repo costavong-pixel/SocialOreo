@@ -65,8 +65,8 @@ independently fail-closed. Instagram's existing key remains
 `SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED`. Production Watch provider execution
 separately requires `SOCIALOLLA_PRODUCTION_WATCH_PROVIDER_ENABLED=true` and
 `SOCIALOLLA_PROVIDER_DISABLED=false`; that path is Instagram-only. TikTok
-publishing remains hard-disabled by the provider factory, regardless of its
-environment gate.
+production execution is disabled. It remains hard-disabled by the provider
+factory, regardless of its environment gate.
 
 ## PREPARE
 
