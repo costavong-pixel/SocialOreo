@@ -434,7 +434,7 @@ describe("production release preflight", () => {
     await mkdir(externalLinkDirectory, { recursive: true });
     await symlink(externalTarget, externalLink, process.platform === "win32" ? "junction" : "dir");
     await makeTreeReadOnly(external.candidateDirectory);
-    await expect(runReleasePreflight(productionInput(external))).rejects.toThrow(/inside candidate\/node_modules/);
+    await expect(runReleasePreflight(productionInput(external))).rejects.toThrow(/target must be relative/);
 
     const traversal = await createLayout();
     await makeTreeWritable(traversal.candidateDirectory);
