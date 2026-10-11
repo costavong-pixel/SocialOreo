@@ -12,10 +12,14 @@ replace, remove, chmod, or restart anything. They do not invoke Next.js, a
 worker engine, Prisma, PostgreSQL, Square, Meta, Instagram, Watch, or any other
 provider.
 
-Production provider activation remains a separate owner-authorized gate. Set
-`SOCIALOLLA_PROVIDER_DISABLED=true` explicitly while using these checks; an
-unset or other value fails closed. The staging worker guards and existing
-Post/Watch engines are not changed by this procedure.
+Production provider activation remains a separate owner-authorized gate. The
+preflight command requires `SOCIALOLLA_PROVIDER_DISABLED=true` in its own
+process environment. This is a check-only override: the preflight does not
+source or change `/srv/socialolla/shared/production.env`. Do not copy that
+override into the live environment when an existing Watch deployment requires
+`SOCIALOLLA_PROVIDER_DISABLED=false`. The preflight itself invokes no worker or
+provider. The staging worker guards and existing Post/Watch engines are not
+changed by this procedure.
 
 ## Release layout
 
@@ -48,13 +52,27 @@ outside that directory.
 `/srv/socialolla/shared/production.env` must be an existing regular file outside
 `releases`. A release must not contain `production.env` at its root or below;
 the preflight never reads or prints its contents. A release is immutable before
-qualification: every entry must be a regular file or directory with no write
-permission bits. The only permitted exception is a direct npm runtime symlink
-inside a `node_modules/.bin` directory. Each such link must be relative, must
-resolve to a regular file inside the same release's `node_modules`, and must
-match its owning package's declared `bin` entry. Broken, absolute, escaping, or
-unrelated release symlinks fail closed. The preflight verifies that contract
-using read-only filesystem inspection; it never changes permissions.
+qualification: every regular file and directory must have no write permission
+bits. The source preflight permits exactly two contained symlink classes:
+
+- npm runtime links in `node_modules/.bin`: each link must be relative and
+  resolve to an existing regular file inside the same release's root
+  `node_modules`. It must match the owning package's declared `bin` entry.
+- Next.js runtime links whose link path is below `.next/node_modules/**`: each
+  target must be relative, exist, and resolve inside the same release's root
+  `node_modules` (not merely somewhere else in the release). `..` components
+  are permitted only when the normalized target remains within the candidate;
+  traversal outside the candidate, absolute targets, and canonical-path escape
+  are rejected. The preflight requires the resolved target to exist and does
+  not add a separate file-type check for this Next runtime-link class.
+
+Broken links and every symlink outside those two classes fail closed. No
+release path component may traverse a symlink, and the candidate remains
+read-only; preflight inspects permissions and canonical paths without changing
+either. These checks are implemented by
+`scripts/production-release-preflight.mjs` and covered by
+`scripts/production-release-preflight.test.ts`; do not broaden the exception
+based on a packaging symptom.
 
 A release manifest is created as part of the separately authorized
 release-build process and has this shape; it contains no credentials:
@@ -111,6 +129,13 @@ The command succeeds only when:
 4. `current` and `previous` are existing symbolic links to different release
    directories; and
 5. the candidate differs from `current`.
+
+`SOCIALOLLA_PROVIDER_DISABLED=true` above is an explicit environment value for
+the preflight process only. Do not source the live production environment into
+that invocation and do not treat its result as evidence that the live provider
+flag is `true`. For the currently live Watch deployment, the observed value is
+`SOCIALOLLA_PROVIDER_DISABLED=false`; preserve that live value during the
+Watch-preserving cutover described below.
 
 The normal JSON result reports `rollbackAvailable=true` only after the strict
 current/previous pair passes. It deliberately reports only release identities
@@ -189,6 +214,92 @@ The temporary link names must be unique to the operation and must be removed
 if the operation is interrupted. Never use a recursive delete or replace a
 release directory in place. A failed second `mv` leaves the old `current` link
 active; stop and investigate before retrying.
+
+## Existing production cutover that preserves live Watch
+
+This plan is for replacing an already-live release while preserving the
+existing scheduled Watch operation. It does not authorize a cutover. Obtain a
+separate owner authorization for the exact candidate and execution window.
+The generic first-install instructions to keep providers and timers inactive
+do not describe this existing live deployment.
+
+The read-only production snapshot recorded for this plan on 2026-10-10 was:
+
+```text
+SOCIALOLLA_PROVIDER_DISABLED=false
+SOCIALOLLA_PRODUCTION_POST_WORKER_ENABLED=true
+SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED=true
+SOCIALOLLA_PRODUCTION_WATCH_PROVIDER_ENABLED=true
+Post timer=active/enabled
+Watch timer=active/enabled
+Prisma pending migrations=none
+```
+
+Recheck every value immediately before any separately authorized cutover. Do
+not set `SOCIALOLLA_PROVIDER_DISABLED=true` in the shared production file: it
+would block the existing live Watch provider path. Preserve the current global
+provider value, both worker-gate values, the Watch provider-gate value, and
+both timer states throughout the release switch. Do not stop, disable, restart,
+or manually invoke a worker or timer as part of the web cutover. Scheduled
+Watch work may continue normally; retain the old release as `previous` so any
+already-running process remains supported. Do not manually trigger Watch or
+make any provider test call.
+
+Before the switch, read the production environment by key and boolean state
+only, without printing values for secrets. Confirm all ten Post publishing
+gates are false or absent. The read-only snapshot supplied for 2026-10-10
+reports that condition for all ten keys; record each key's exact present,
+false, or absent state when rechecking:
+
+```text
+SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED
+SOCIALOLLA_FACEBOOK_PUBLISH_ENABLED
+SOCIALOLLA_THREADS_PUBLISH_ENABLED
+SOCIALOLLA_GOOGLE_BUSINESS_PUBLISH_ENABLED
+SOCIALOLLA_LINKEDIN_PUBLISH_ENABLED
+SOCIALOLLA_TIKTOK_PUBLISH_ENABLED
+SOCIALOLLA_YOUTUBE_PUBLISH_ENABLED
+SOCIALOLLA_PINTEREST_PUBLISH_ENABLED
+SOCIALOLLA_X_PUBLISH_ENABLED
+SOCIALOLLA_REDDIT_PUBLISH_ENABLED
+```
+
+Any exact `true` is a stop condition for this plan; do not change it here.
+TikTok publishing remains hard-disabled by the provider factory regardless of
+its environment gate. Separately inventory the connection gates below by
+key/state only. Do not start OAuth, connect an account, or interpret a
+connection gate as publishing authorization:
+
+```text
+SOCIALOLLA_INSTAGRAM_CONNECTION_ENABLED
+SOCIALOLLA_FACEBOOK_CONNECTION_ENABLED
+SOCIALOLLA_THREADS_CONNECTION_ENABLED
+SOCIALOLLA_GOOGLE_BUSINESS_CONNECTION_ENABLED
+SOCIALOLLA_YOUTUBE_CONNECTION_ENABLED
+SOCIALOLLA_LINKEDIN_CONNECTION_ENABLED
+SOCIALOLLA_TIKTOK_CONNECTION_ENABLED
+SOCIALOLLA_PINTEREST_CONNECTION_ENABLED
+SOCIALOLLA_X_CONNECTION_ENABLED
+SOCIALOLLA_REDDIT_CONNECTION_ENABLED
+```
+
+At the cutover gate, recheck public health, the active and rollback release
+identities, database reachability and migration status, the web service, and
+the worker/timer state. The evidence supplied for this plan reports no pending
+Prisma migrations; verify that remains true. Any newly pending migration
+requires a separate migration authorization and stops this plan. Use the
+normal preflight and atomic link sequence above, with
+`SOCIALOLLA_PROVIDER_DISABLED=true` only in the preflight process environment.
+The web handoff must follow the separately authorized production procedure;
+do not alter production.env, provider credentials, worker flags, or timer
+state.
+
+The prepared candidate at
+`/srv/socialolla/releases/1da2b760119497e73433f433e35709ae9fff765f-2026-10-10T14-17-31.845Z`
+passed preflight for source revision `1da2b760119497e73433f433e35709ae9fff765f`.
+Because this documentation repair will produce a newer `main` SHA and the
+preflight binds the manifest to the exact source revision, that candidate must
+be rebuilt and requalified from the new merged `main` before cutover.
 
 ## Post-switch and rollback verification
 

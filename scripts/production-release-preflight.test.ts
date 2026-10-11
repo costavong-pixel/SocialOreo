@@ -434,7 +434,7 @@ describe("production release preflight", () => {
     await mkdir(externalLinkDirectory, { recursive: true });
     await symlink(externalTarget, externalLink, process.platform === "win32" ? "junction" : "dir");
     await makeTreeReadOnly(external.candidateDirectory);
-    await expect(runReleasePreflight(productionInput(external))).rejects.toThrow(/inside candidate\/node_modules/);
+    await expect(runReleasePreflight(productionInput(external))).rejects.toThrow(/target must be relative/);
 
     const traversal = await createLayout();
     await makeTreeWritable(traversal.candidateDirectory);
@@ -467,6 +467,19 @@ describe("production release preflight", () => {
     await symlink(relative(brokenLinkDirectory, brokenTarget), brokenLink, process.platform === "win32" ? "junction" : "dir");
     await makeTreeReadOnly(broken.candidateDirectory);
     await expect(runReleasePreflight(productionInput(broken))).rejects.toThrow(/existing target inside candidate\/node_modules/);
+  });
+
+  it("rejects an absolute Next runtime link even when its target is inside candidate node_modules", async () => {
+    const layout = await createLayout();
+    await makeTreeWritable(layout.candidateDirectory);
+    const linkDirectory = join(layout.candidateDirectory, ".next", "node_modules", "@prisma");
+    const link = join(linkDirectory, "client-runtime");
+    const target = join(layout.candidateDirectory, "node_modules", "@prisma", "client");
+    await mkdir(linkDirectory, { recursive: true });
+    await symlink(target, link, process.platform === "win32" ? "junction" : "dir");
+    await makeTreeReadOnly(layout.candidateDirectory);
+
+    await expect(runReleasePreflight(productionInput(layout))).rejects.toThrow(/target must be relative/);
   });
 
   it("fails closed when production identity or provider-disabled mode is unsafe", async () => {

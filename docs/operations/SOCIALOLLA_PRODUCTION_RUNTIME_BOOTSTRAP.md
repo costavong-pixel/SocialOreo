@@ -25,9 +25,18 @@ The existing worker commands use `tsx`, which is shipped as a production
 dependency. Before any operator-controlled activation, the release preflight
 must confirm that `node_modules/tsx/package.json` identifies `tsx`, that its
 declared runtime file is present, and that `node_modules/.bin/tsx` is a
-contained relative npm link to that executable, read-only file. No other
-release symlink is allowed; the check is read-only and never changes release
-permissions.
+contained relative npm link to that executable, read-only file. The same
+preflight also allows Next.js runtime symlinks below
+`.next/node_modules/**`, but only when each link has a relative target, the
+target exists, and its canonical resolution remains inside this candidate's
+root `node_modules`. Normalized `..` components may not escape the candidate;
+absolute targets, broken links, symlinked path components, and targets outside
+root `node_modules` are rejected. `.bin` links must resolve to regular files
+matching the owning package's declared `bin` entry. For Next runtime links,
+the preflight requires existence and containment but adds no separate target
+file-type check. Every other release symlink is rejected. All regular files
+and directories remain read-only, and preflight inspects rather than changing
+permissions. See the cutover runbook for the complete tested contract.
 The `/srv` systemd target is a Linux release tree, so Windows npm `.cmd` and
 `.ps1` shims are not accepted as production runtime entries.
 
@@ -41,13 +50,23 @@ SOCIALOLLA_PRODUCTION_WATCH_WORKER_ENABLED=true
 
 Only the exact lowercase string `true` enables its corresponding worker. Both
 `NODE_ENV` and `SOCIALOLLA_ENV` must be exactly `production`. A production
-environment alone does not enable either worker. Provider-disabled mode remains
-the safe default. Post publishing separately requires
-`SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED=true` and
-`SOCIALOLLA_PROVIDER_DISABLED=false`. Production Watch provider execution
+environment alone does not enable either worker. Provider-disabled mode is the
+safe default for a new, inactive installation. It is not a universal live
+state: the existing production Watch operation requires
+`SOCIALOLLA_PROVIDER_DISABLED=false` together with its Watch worker and Watch
+provider gates. Preserve the current live values during an existing-release
+cutover; do not apply the new-install defaults to a live Watch deployment. The
+preflight's `SOCIALOLLA_PROVIDER_DISABLED=true` is process-scoped to that check
+and must not be copied into the shared production environment. Post publishing
+separately requires the production Post worker gate, the exact
+platform-specific `SOCIALOLLA_<PLATFORM>_PUBLISH_ENABLED=true` gate, and
+`SOCIALOLLA_PROVIDER_DISABLED=false`; all ten publishing gates remain
+independently fail-closed. Instagram's existing key remains
+`SOCIALOLLA_INSTAGRAM_PUBLISH_ENABLED`. Production Watch provider execution
 separately requires `SOCIALOLLA_PRODUCTION_WATCH_PROVIDER_ENABLED=true` and
 `SOCIALOLLA_PROVIDER_DISABLED=false`; that path is Instagram-only. TikTok
-production execution is disabled.
+production execution is disabled. It remains hard-disabled by the provider
+factory, regardless of its environment gate.
 
 ## PREPARE
 
@@ -69,8 +88,11 @@ production execution is disabled.
 - Verify the `socialolla` service account and runtime prerequisites through
   the approved infrastructure process. Do not migrate the database or change
   `current`/`previous` symlinks during preparation.
-- Keep the production worker enable flags absent or set to a value other than
-  exact `true`. Keep providers disabled.
+- For a new, inactive installation only, keep production worker enable flags
+  absent or set to a value other than exact `true`, and keep providers
+  disabled. For an existing deployment with live Watch, preserve the observed
+  worker/provider values instead; use the Watch-preserving cutover plan in the
+  production cutover runbook.
 
 ## QUALIFY
 
@@ -83,8 +105,11 @@ production execution is disabled.
 - For the first release, run the read-only production release preflight in
   `FIRST_DEPLOY` mode. It permits absent `current` and `previous` links and
   reports `rollbackAvailable=false`; it does not create or change either link.
-- Confirm provider-disabled defaults and the exact worker/provider gates from
-  the intended external environment without printing its contents.
+- Inventory the exact worker/provider and platform gates from the intended
+  external environment by key and boolean state only; never print secrets. A
+  new inactive deployment must meet the fail-closed defaults. An existing live
+  Watch deployment must retain its current global provider, Watch worker,
+  Watch provider, and timer values as specified in the cutover runbook.
 - Do not start worker engines as a qualification shortcut. Unit tests and the
   existing staging tests exercise the definitions and guards without making
   production calls or database changes.
@@ -105,12 +130,16 @@ operator-controlled procedures.
 ## ACTIVATE
 
 Web, worker, and provider activation are separate owner-authorized actions.
-Installing or enabling a unit is never implied by this source change. Keep the
-Post and Watch timers inactive until the owner explicitly authorizes each
-worker and its operational checks. Set the matching exact production worker
-flag only for an authorized worker activation. Leave provider-disabled mode
-enabled until a separate provider approval; a worker flag alone is not a
-provider authorization.
+Installing or enabling a unit is never implied by this source change. For a
+new inactive installation, keep Post and Watch timers inactive until the owner
+explicitly authorizes each worker and its operational checks. For a release
+replacement where Watch is already live, do not pause, stop, disable, or
+restart its worker/timer, and do not change its worker/provider flags during
+the web cutover. Preserve the existing global provider value required by Watch;
+the preflight's provider-disabled override is not the live environment state.
+A worker flag alone is not a provider authorization, and every Post publishing
+gate must remain false or absent for the Watch-preserving cutover. Inventory
+connection gates read-only and do not start OAuth as part of release cutover.
 
 Instagram publishing and OAuth retain the separate Instagram publishing and
 provider gates. Watch live execution has the separate production Watch provider
