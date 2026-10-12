@@ -1,54 +1,76 @@
-# SocialOlla Final Pricing Gate
+# SocialOlla Final Pricing Decision
 
-**Status:** OWNER DECISION — REPOSITORY AUTHORITATIVE  
-**Scope:** SocialOlla pricing sequence and decision authority
+**Status:** OWNER APPROVED — REPOSITORY AUTHORITATIVE  
+**Scope:** SocialOlla launch pricing and included monthly credit policy
 
 ## Canonical owner decision
 
-SocialOlla pricing is intentionally **not determined yet**.
+The owner has completed the final SocialOlla pricing decision.
 
-Pricing must be the **last product/business decision** before launch. No agent, implementation worker, reviewer, or planning document may treat any historical, provisional, sandbox, test, or previously discussed amount as the approved launch price.
+### Post lifetime offer
 
-The pricing phase may begin only after the owner confirms that all non-pricing launch work is complete and the launch-scope product is operating properly to the required customer-ready standard.
+- **Product:** SocialOlla Post
+- **Price:** **$99 USD one-time**
+- **Access model:** **Lifetime access to Post**
+- **Included monthly credits:** **1,200 credits per month**
 
-Before the pricing phase, complete and accept all applicable non-pricing work, including:
+The lifetime Post entitlement and the monthly credit allowance are separate concepts. Resetting or exhausting the monthly included credits does not cancel the customer's lifetime Post entitlement.
 
-- launch-scope functionality and customer usability;
-- provider integrations required for the advertised launch scope;
-- worker/scheduler/retry/reconciliation behavior;
-- payment and entitlement mechanics using non-authoritative test/sandbox amounts where needed;
-- production-readiness and cutover qualification;
-- final security and dependency qualification;
-- launch copy, operational controls, recovery, and other non-pricing launch blockers.
+## Included monthly credit policy
 
-## Rules before the pricing phase
+The 1,200 credits included with the lifetime Post offer are a recurring monthly usage allowance.
 
-1. **Do not determine or recommend a final price.**
-2. **Do not publish a launch price.**
-3. **Do not treat an existing checkout, environment, fixture, test value, or historical document amount as owner-approved pricing.**
-4. Existing sandbox/test amounts may remain only where required to prove payment mechanics; they do not establish the final customer price.
-5. Historical or provisional price references are superseded for decision authority by this document.
-6. Do not change customer-facing pricing or production billing amounts without a new explicit owner pricing decision.
-7. If an agent reaches pricing before all non-pricing launch gates are complete, it must defer pricing and continue the remaining non-pricing work instead.
+Canonical rules:
 
-## Final pricing gate
+- **MONTHLY_INCLUDED_CREDITS=1200**
+- **MONTHLY_INCLUDED_CREDITS_ROLLOVER=NO**
+- **MONTHLY_INCLUDED_CREDITS_RESET=MONTHLY**
+- Unused included monthly credits expire at the monthly reset and do not carry into the next month.
+- The next monthly cycle receives a fresh 1,200-credit allowance.
 
-When every non-pricing launch requirement has been completed and accepted, return to the owner for one dedicated pricing decision.
+These included credits are intended primarily for **Watch** and other **credit-metered SocialOlla features that may be introduced in the future**.
 
-Only the owner may approve:
+Credits are a usage-control mechanism for metered functionality; they are not the lifetime Post entitlement itself.
 
-- final launch price or prices;
-- billing model;
-- launch discount or founder offer, if any;
-- included usage/credits tied to the commercial offer;
-- customer-facing pricing copy;
-- production checkout amount configuration.
+## Purchased credits remain separate
 
-After the owner approves pricing, implementation may wire that approved decision into customer-facing copy and production checkout, perform bounded verification, and proceed to the final launch authorization. It must not reopen unrelated product scope or restart completed security/functionality work without a new evidence-based blocker.
+Purchased/add-on credits are a separate balance from the 1,200 included monthly credits. This decision does not silently change the existing purchased-credit validity policy. Any future change to purchased-credit price, validity, expiry, or consumption priority requires a separate owner decision.
 
-## Interpretation
+Implementation must keep included monthly credits distinguishable from purchased credits so monthly reset behavior cannot accidentally remove purchased balances.
 
-**PRICING_STATUS=UNDECIDED**  
-**PRICING_SEQUENCE=LAST_PRODUCT_BUSINESS_DECISION**  
-**HISTORICAL_OR_PROVISIONAL_PRICES=NON_AUTHORITATIVE**  
-**OWNER_APPROVAL_REQUIRED=YES**
+## Commercial authority
+
+This decision supersedes all historical, provisional, sandbox, test, and previously discussed SocialOlla Post launch prices.
+
+Canonical commercial state:
+
+- **POST_LIFETIME_PRICE_USD=99**
+- **POST_BILLING_MODEL=ONE_TIME_LIFETIME**
+- **POST_MONTHLY_INCLUDED_CREDITS=1200**
+- **POST_MONTHLY_INCLUDED_CREDITS_ROLLOVER=NO**
+- **POST_MONTHLY_INCLUDED_CREDITS_RESET=MONTHLY**
+- **CREDIT_PRIMARY_USE=WATCH_AND_FUTURE_METERED_FEATURES**
+- **PRICING_STATUS=OWNER_APPROVED**
+
+## Implementation boundary
+
+This document records the approved commercial decision only.
+
+It does **not** by itself authorize:
+
+- changing production checkout amounts;
+- enabling live payment collection;
+- deploying production;
+- changing Square production configuration;
+- changing provider effects;
+- changing purchased-credit policy.
+
+Production pricing copy and checkout configuration may be wired only through the normal bounded implementation/review/owner deployment process.
+
+Once implemented, customer-facing copy must clearly communicate that:
+
+1. $99 is a one-time payment for lifetime Post access;
+2. the offer includes 1,200 credits each month;
+3. unused included monthly credits do not roll over;
+4. included monthly credits reset every month; and
+5. credits are intended for Watch and other metered SocialOlla capabilities.
