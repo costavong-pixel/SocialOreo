@@ -1,13 +1,16 @@
 # SocialOreo / SocialOlla Agent Instructions
 
-This is the permanent repository policy for automated work. A current Hermes GitHub issue supplies only changing, bounded task scope; it never overrides this file.
+This is the permanent repository policy for automated work. A current Hermes GitHub issue supplies changing, bounded task scope and must not weaken these protections.
 
-## Roles
+## Operating roles
 
-- **Hermes using GPT-5.6 Luna** is the project and product coordinator. Hermes validates repository governance and issue scope, selects bounded work, maintains evidence, and returns `PASS`, `FAIL`, or `BLOCKED`.
-- **GPT-5.3 Codex Spark** is the preferred implementation worker.
-- **DeepSeek** is an implementation fallback only when Spark is unavailable and Hermes records the fallback reason.
-- **An independent reviewer** checks the exact proposed commit, tests, acceptance contract, and draft PR. The reviewer must not be the implementation worker.
+- **Hermes using GPT-5.6 Terra** is the default project/product manager and coordinator.
+- **Implementation is capability-based, not CLI-based.** Hermes may implement with its native tools or delegate to any configured, approved worker that fits the task.
+- **GPT-5.6 Luna** is the currently verified implementation worker.
+- **DeepSeek V4 Flash** remains an approved low-cost implementation worker/fallback. Preserve its configured credential and routing unless the owner explicitly authorizes a change. A failed probe requires diagnosis and temporary use of another verified worker, not disabling or deleting DeepSeek.
+- **Z.ai GLM 5.3 Flash through OpenRouter** is the independent exact-commit reviewer. It must not implement the change it reviews.
+
+Codex CLI, Codex Spark, and any other particular coding CLI or model are optional. Their absence must not block work when an approved worker is available.
 
 No implementation worker may redefine scope, approve its own work, declare product completion, merge, authorize production, or bypass repository governance.
 
@@ -15,21 +18,21 @@ No implementation worker may redefine scope, approve its own work, declare produ
 
 Every automated task must:
 
-1. Identify the repository.
-2. Read this root `AGENTS.md`.
-3. Read every repository-authoritative document referenced here.
-4. Read the current Hermes GitHub issue/task contract.
-5. Validate that the issue does not conflict with this policy.
-6. Implement only the approved bounded scope.
-7. Run required validation.
-8. Create or update a draft PR.
-9. Return control to Hermes and the independent reviewer.
+1. Identify the exact repository, worktree, branch, base SHA, and current changes.
+2. Read this root `AGENTS.md` and the current GitHub issue/task contract.
+3. Read the repository evidence and tests relevant to the requested behavior.
+4. Validate that the task contract does not conflict with this policy.
+5. Preserve unrelated changes and implement only the approved bounded scope.
+6. Run focused validation, investigate failures, and run proportionate regression checks.
+7. Obtain independent review of the exact final commit.
+8. Create or update one draft PR for the milestone when the task contract authorizes delivery.
+9. Return factual evidence, remaining risks, and owner-only actions.
 
-If this file is absent, fail closed. If an issue conflicts with this policy, return `BLOCKED` and the exact conflict; never silently choose which instruction to ignore.
+If this file is absent or the issue conflicts with it, fail closed and report the exact conflict.
 
-## Task contracts
+## Task contracts and standing autonomy
 
-Hermes issues contain only task-specific information:
+Task issues should contain the applicable fields:
 
 ```text
 FEATURE_ID
@@ -45,47 +48,70 @@ ACCEPTANCE_CRITERIA
 TEST_REQUIREMENTS
 ALLOWED_AREAS
 KNOWN_BLOCKERS
+AUTONOMY_MODE: BOUNDED_IMPLEMENTATION | READ_ONLY | OWNER_CHECKPOINTS
 ```
 
-Do not place credentials, tokens, raw customer data, or permanent repository policy in a task issue.
+`AUTONOMY_MODE: BOUNDED_IMPLEMENTATION` is standing authorization for repository discovery, an isolated `codex/*` or `hermes/*` branch/worktree, edits inside `ALLOWED_AREAS`, tests, debugging, documentation, commits, feature-branch pushes, issue evidence updates, independent review, and a draft PR. Do not repeatedly request approval for those routine steps.
+
+It never authorizes merge, production deployment, live provider effects, payments, purchases, credentials, repository/security setting changes, destructive data changes, or broader scope.
+
+Do not place credentials, tokens, raw customer data, or permanent personal information in a task issue.
+
+## Multiple-project isolation
+
+Hermes may coordinate multiple products, but each repository milestone must have its own task contract, isolated worktree, branch, state, tests, and draft PR. Use one writer per worktree. Never reuse credentials, databases, customer data, deployment state, or uncommitted files across projects. On this VPS, run no more than two implementation children concurrently; queue additional work by owner priority.
+
+## Model selection and evidence
+
+Model selection is an operating decision, not an owner-interruption point.
+
+- Prefer the lowest-cost verified worker capable of the bounded task.
+- Use Luna when complexity, tool reliability, or unavailable cheaper workers require it.
+- Keep DeepSeek available as the approved low-cost fallback. Use it for work only after a fresh provider probe succeeds; if the probe fails, diagnose without deleting, disabling, rotating, or replacing its credential or routing.
+- A missing optional CLI is `AVAILABLE_WORKER_NOT_SELECTED`, not a task blocker.
+- Do not change workers to conceal code, test, validation, or review failures; diagnose and repair them.
+- Never claim a provider/model ran without direct evidence.
+
+Every delivered implementation records:
+
+```text
+IMPLEMENTATION_PROVIDER: <provider actually used>
+IMPLEMENTATION_MODEL: <model actually used>
+MODEL_SELECTION_REASON: <capability, cost, or availability reason>
+REVIEWER_PROVIDER: openrouter
+REVIEWER_MODEL: z-ai/glm-5.3-flash
+review_head_sha: <exact final commit reviewed>
+```
+
+The reviewer must differ from the implementation worker. If no independent reviewer is available, the delivery is `BLOCKED` and must not be represented as complete.
+
+Respect external provider caps. Never purchase credits, raise billing limits, or modify credentials as ordinary repository work.
 
 ## Product completion
 
-Backend or engine implementation alone is not a finished customer feature. A feature is complete only when its applicable acceptance contract covers:
+Backend or engine code alone is not a finished customer feature. Applicable acceptance must cover:
 
-- engine;
+- engine behavior;
 - usable customer UI;
-- integration;
-- persistence/state;
-- success flow;
-- failure/error flow;
-- customer discoverability and usability;
-- required tests; and
-- required runtime evidence.
+- integration and account/workspace isolation;
+- persistence and state transitions;
+- success and failure behavior;
+- customer discoverability;
+- focused and regression tests; and
+- required runtime/provider evidence.
 
-An API endpoint, unit test, worker, service, database model, or merged backend PR does not by itself make a customer-facing capability complete. If existing engine functionality has no usable UI, the feature remains incomplete.
-
-Before adding backend architecture, inspect current `main` and reuse existing Post, Watch, provider, and runtime functionality. Do not unnecessarily rebuild the runtime foundation from PR #23.
+Before adding backend architecture, inspect current `main` and reuse existing Post, Watch, provider, identity, credit, and runtime foundations. Do not label provider-disabled, mocked, source-only, or health evidence as real customer/provider acceptance.
 
 ## Work and delivery boundaries
 
-- Work only on `codex/*` branches and only within the task issue's allowed areas.
-- Never push directly to `main` or force-push.
-- Never self-approve, self-merge, or enable auto-merge.
-- Never modify GitHub workflows, security settings, repository settings, secrets, DNS, billing, or deployment configuration as ordinary feature work.
-- Never deploy production or enable live social, payment, or other provider effects without a separate current owner authorization.
-- Create or update a draft PR and return exact diffs, tests, runtime evidence, side-effect counts, rollback information, and blockers to Hermes.
-- Hermes and the independent reviewer decide whether the proposed work passes; the owner retains merge and production authority.
+- Never work directly on `main`, force-push, self-approve, self-merge, or enable auto-merge.
+- Preserve unrelated dirty work and use explicit file staging.
+- Never modify GitHub workflows, repository/security settings, secrets, DNS, billing, databases, or deployment configuration as ordinary feature work.
+- Never deploy production or enable live social, payment, messaging, or other provider effects without current owner authorization.
+- Keep tokens, cookies, authorization codes, private keys, raw OAuth state, raw provider errors, and customer data out of Git, issues, tests, UI, and reports.
+- Report exact diffs, tests, review evidence, side effects, rollback information, and blockers.
+- The owner retains merge and production authority.
 
-## DeepSeek fallback
+## Failure and continuation rules
 
-When Spark is unavailable, Hermes may assign DeepSeek a tightly bounded implementation task only when the issue records:
-
-```text
-IMPLEMENTATION_MODEL: deepseek-...
-FALLBACK_REASON: PRIMARY_CODER_UNAVAILABLE | SPARK_UNAVAILABLE | SPARK_QUOTA_EXHAUSTED | SPARK_PROVIDER_OUTAGE
-REVIEWER_PROFILE: <different named reviewer profile>
-REVIEWER_MODEL: <non-DeepSeek reviewer model>
-```
-
-The exact final commit must be recorded as `review_head_sha`. DeepSeek may not approve, merge, release, or declare completion. If the independent reviewer is unavailable, the task is `BLOCKED`.
+Continue through routine implementation without asking the owner to choose tools or models. Retry only transient failures and keep retries bounded. Diagnose repeated failures from logs, code, tests, and runtime evidence. Preserve completed checkpoints. Ask the owner only for a material product decision or authority involving merge, production, external provider action, credentials, money, legal consent, or destructive change.
